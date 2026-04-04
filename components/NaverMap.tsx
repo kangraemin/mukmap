@@ -56,7 +56,14 @@ export default function NaverMap({
     const script = document.createElement('script')
     script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${clientId}&submodules=geocoder`
     script.async = true
-    script.onload = () => setSdkLoaded(true)
+    script.onload = () => {
+      // MarkerClustering 라이브러리 로드
+      const clusterScript = document.createElement('script')
+      clusterScript.src = 'https://navermaps.github.io/maps.js.ncp/docs/js/MarkerClustering.js'
+      clusterScript.onload = () => setSdkLoaded(true)
+      clusterScript.onerror = () => setSdkLoaded(true) // 실패해도 지도는 동작
+      document.head.appendChild(clusterScript)
+    }
     document.head.appendChild(script)
   }, [])
 
