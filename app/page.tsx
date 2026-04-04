@@ -86,12 +86,14 @@ export default function Home() {
     setCategories([])
   }, [])
 
-  const handleMarkerClick = useCallback((_id: number) => {
+  const handleMarkerClick = useCallback((id: number) => {
     // Could scroll to card in sidebar
+    console.debug('marker clicked:', id)
   }, [])
 
-  const handleSelectRestaurant = useCallback((_id: number) => {
+  const handleSelectRestaurant = useCallback((id: number) => {
     // Could center map on restaurant
+    console.debug('restaurant selected:', id)
   }, [])
 
   const handleSelectChannel = useCallback((id: string) => {

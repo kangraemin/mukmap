@@ -246,9 +246,9 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       {/* Naver Map SDK */}
-      {/* eslint-disable-next-line @next/next/no-before-interactive-script-outside-document */}
+      {/* eslint-disable-next-line @next/next/no-sync-scripts */}
       <script
-        src={`https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=${process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID}`}
+        src={`https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID}`}
       />
 
       <div className="mx-auto max-w-6xl">

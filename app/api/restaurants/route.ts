@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
           channel_thumbnail: channel?.thumbnail_url || null,
         }
       })
-      const { videos: _v, ...rest } = r
+      const { videos: _rawVideos, ...rest } = r
       return { ...rest, videos }
     })
 

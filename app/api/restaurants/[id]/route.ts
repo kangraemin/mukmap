@@ -57,7 +57,7 @@ export async function GET(
       }
     })
 
-    const { videos: _v, ...rest } = restaurant
+    const { videos: _rawVideos, ...rest } = restaurant
     return NextResponse.json({ ...rest, videos })
   } catch {
     return NextResponse.json({ error: 'Restaurant not found' }, { status: 404 })

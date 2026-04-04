@@ -25,7 +25,7 @@ export async function GET() {
             .map((v: { restaurant_id: number | null }) => v.restaurant_id)
             .filter(Boolean)
         )
-        const { videos: _v, ...rest } = ch
+        const { videos: _videos, ...rest } = ch
         return { ...rest, restaurant_count: restaurantIds.size }
       })
       .filter((ch) => ch.restaurant_count > 0)
