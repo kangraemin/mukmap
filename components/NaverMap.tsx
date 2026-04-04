@@ -217,11 +217,11 @@ export default function NaverMap({
       newMarkers.push(marker)
     }
 
-    // Clustering if 50+ markers
-    if (newMarkers.length >= 50 && typeof window.MarkerClustering !== 'undefined') {
+    // Clustering
+    if (newMarkers.length >= 2 && typeof window.MarkerClustering !== 'undefined') {
       newMarkers.forEach((m) => m.setMap(null))
       clusterRef.current = new window.MarkerClustering({
-        minClusterSize: 3,
+        minClusterSize: 2,
         maxZoom: 16,
         map,
         markers: newMarkers,
