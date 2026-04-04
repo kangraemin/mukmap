@@ -212,6 +212,7 @@ def main():
     parser = argparse.ArgumentParser(description="MukMap data collector")
     parser.add_argument("--max-per-channel", type=int, default=10)
     parser.add_argument("--dry-run", action="store_true", help="No DB writes")
+    parser.add_argument("--channel", type=str, help="특정 채널만 수집 (이름, 예: 둘시네아)")
     args = parser.parse_args()
 
     load_env()
@@ -251,7 +252,13 @@ def main():
     all_new_videos = []
 
     # 1. Fetch new videos from each channel
-    for channel in CHANNELS:
+    channels = CHANNELS
+    if args.channel:
+        channels = [c for c in CHANNELS if args.channel.lower() in c["name"].lower()]
+        if not channels:
+            logger.error("채널 '%s'을 찾을 수 없습니다. 가능한 채널: %s", args.channel, ", ".join(c["name"] for c in CHANNELS))
+            sys.exit(1)
+    for channel in channels:
         logger.info("Fetching videos for: %s", channel["name"])
         videos = fetch_channel_videos(youtube, channel["id"], args.max_per_channel)
         total_stats["youtube_units"] += 100  # search.list = 100 units
