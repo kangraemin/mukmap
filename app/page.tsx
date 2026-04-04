@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import NaverMap from '@/components/NaverMap'
 import ChannelFilter from '@/components/ChannelFilter'
 import RegionCategoryFilter from '@/components/RegionCategoryFilter'
@@ -21,7 +20,7 @@ interface Bounds {
 type SheetState = 'collapsed' | 'half' | 'full'
 
 export default function Home() {
-  const router = useRouter()
+  const [focusedRestaurantId, setFocusedRestaurantId] = useState<number | null>(null)
   const [bounds, setBounds] = useState<Bounds | null>(null)
   const [restaurants, setRestaurants] = useState<RestaurantWithVideos[]>([])
   const [selectedChannels, setSelectedChannels] = useState<string[]>([])
@@ -89,12 +88,12 @@ export default function Home() {
   }, [])
 
   const handleMarkerClick = useCallback((id: number) => {
-    router.push(`/restaurant/${id}`)
-  }, [router])
+    setFocusedRestaurantId(id)
+  }, [])
 
   const handleSelectRestaurant = useCallback((id: number) => {
-    router.push(`/restaurant/${id}`)
-  }, [router])
+    setFocusedRestaurantId(id)
+  }, [])
 
   const handleSelectChannel = useCallback((id: string) => {
     setSelectedChannels((prev) => {
@@ -134,7 +133,7 @@ export default function Home() {
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       {/* Top bar */}
-      <header className="relative z-20 flex h-14 items-center gap-3 bg-white px-4 shadow-sm">
+      <header className="relative z-20 flex h-14 items-center gap-3 bg-surface-lowest px-4 shadow-sm">
         <h1 className="flex-shrink-0 text-lg font-bold text-primary">MukMap</h1>
         <SearchBar
           onSelectRestaurant={handleSelectRestaurant}
@@ -145,13 +144,13 @@ export default function Home() {
 
       <div className="relative flex flex-1 overflow-hidden">
         {/* Desktop sidebar */}
-        <aside className="hidden w-80 flex-shrink-0 flex-col overflow-y-auto bg-gray-50 p-4 lg:flex">
+        <aside className="hidden w-80 flex-shrink-0 flex-col overflow-y-auto bg-surface-low p-4 lg:flex">
           <ChannelFilter
             selectedChannels={selectedChannels}
             onChannelToggle={handleChannelToggle}
             onMaxExceeded={() => setToast('유튜버는 최대 5명까지 선택 가능합니다')}
           />
-          <div className="my-4 border-t border-gray-200" />
+          <div className="my-4 border-t border-surface-high" />
           <RegionCategoryFilter
             region={region}
             categories={categories}
@@ -159,10 +158,10 @@ export default function Home() {
             onCategoryToggle={handleCategoryToggle}
             onReset={handleReset}
           />
-          <div className="my-4 border-t border-gray-200" />
+          <div className="my-4 border-t border-surface-high" />
 
           {/* Restaurant count */}
-          <p className="mb-2 text-xs text-gray-400">
+          <p className="mb-2 text-xs text-on-surface-variant">
             {loading ? '검색 중...' : `총 ${restaurants.length}개 맛집`}
           </p>
 
@@ -178,6 +177,7 @@ export default function Home() {
                 thumbnailUrl={r.videos?.[0]?.thumbnail_url}
                 rating={r.videos?.[0]?.rating}
                 channelName={r.videos?.[0]?.channel_name}
+                isSelected={r.id === focusedRestaurantId}
                 onClick={() => handleMarkerClick(r.id)}
               />
             ))}
@@ -192,6 +192,7 @@ export default function Home() {
             onMarkerClick={handleMarkerClick}
             selectedChannels={selectedChannels}
             fitToMarkers={fitToMarkers}
+            focusedRestaurantId={focusedRestaurantId}
           />
         </div>
 
@@ -200,11 +201,11 @@ export default function Home() {
           ref={sheetRef}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
-          className={`fixed bottom-0 left-0 right-0 z-30 rounded-t-2xl bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.1)] transition-all duration-300 lg:hidden ${sheetHeight[sheetState]}`}
+          className={`fixed bottom-0 left-0 right-0 z-30 rounded-t-2xl bg-surface-lowest shadow-[0_-4px_20px_rgba(0,0,0,0.1)] transition-all duration-300 lg:hidden ${sheetHeight[sheetState]}`}
         >
           {/* Handle */}
           <div className="flex justify-center py-2">
-            <div className="h-1 w-10 rounded-full bg-gray-200" />
+            <div className="h-1 w-10 rounded-full bg-surface-high" />
           </div>
 
           <div className="overflow-y-auto px-4" style={{ maxHeight: 'calc(100% - 24px)' }}>
@@ -224,8 +225,8 @@ export default function Home() {
                   onClick={() => handleCategoryToggle(cat)}
                   className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
                     categories.includes(cat)
-                      ? 'bg-primary text-white'
-                      : 'bg-gray-200 text-gray-600'
+                      ? 'bg-gradient-to-r from-primary to-primary-container text-white'
+                      : 'bg-surface-low text-on-surface-variant'
                   }`}
                 >
                   {cat}
@@ -234,7 +235,7 @@ export default function Home() {
             </div>
 
             {/* Restaurant list */}
-            <p className="mb-2 text-xs text-gray-400">
+            <p className="mb-2 text-xs text-on-surface-variant">
               {loading ? '검색 중...' : `총 ${restaurants.length}개 맛집`}
             </p>
             <div className="space-y-2 pb-4">
@@ -248,6 +249,7 @@ export default function Home() {
                   thumbnailUrl={r.videos?.[0]?.thumbnail_url}
                   rating={r.videos?.[0]?.rating}
                   channelName={r.videos?.[0]?.channel_name}
+                  isSelected={r.id === focusedRestaurantId}
                 />
               ))}
             </div>
@@ -285,8 +287,8 @@ function ChannelChips({
           onClick={() => onToggle(ch.id)}
           className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap ${
             selectedChannels.includes(ch.id)
-              ? 'bg-primary text-white'
-              : 'bg-gray-100 text-gray-600'
+              ? 'bg-gradient-to-r from-primary to-primary-container text-white'
+              : 'bg-surface-low text-on-surface-variant'
           }`}
         >
           {ch.name}

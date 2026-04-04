@@ -9,8 +9,8 @@ export const CATEGORIES = [
   '분식', '고기/구이', '해산물', '기타'
 ] as const
 
-export const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 }
-export const DEFAULT_ZOOM = 11
+export const DEFAULT_CENTER = { lat: 36.5, lng: 127.5 } // 한국 중심
+export const DEFAULT_ZOOM = 7 // 한국 전체
 
 export const MARKER_COLORS = ['#FF6B35', '#2196F3', '#4CAF50', '#9C27B0', '#FF9800'] as const
 

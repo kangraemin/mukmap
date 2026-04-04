@@ -34,7 +34,7 @@ export default function ChannelFilter({
 
   return (
     <div className="space-y-1.5">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">유튜버</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">유튜버</h3>
       {channels.map((ch) => {
         const isSelected = selectedChannels.includes(ch.id)
         return (
@@ -43,30 +43,40 @@ export default function ChannelFilter({
             onClick={() => handleToggle(ch.id)}
             className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${
               isSelected
-                ? 'border-l-[3px] border-primary bg-primary-light'
-                : 'hover:bg-gray-100'
+                ? 'border-l-[3px] border-primary bg-surface'
+                : 'hover:bg-surface-low'
             }`}
           >
-            <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full bg-gray-200">
+            <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-primary to-primary-container">
               {ch.thumbnail_url ? (
                 <Image src={ch.thumbnail_url} alt={ch.name} fill className="object-cover" sizes="40px" />
               ) : (
-                <div className="flex h-full items-center justify-center text-xs text-gray-400">
+                <div className="flex h-full items-center justify-center text-xs text-white font-semibold">
                   {ch.name[0]}
                 </div>
               )}
             </div>
             <div className="flex-1 overflow-hidden">
-              <p className="truncate text-sm font-medium text-secondary">{ch.name}</p>
+              <p className="truncate text-sm font-medium text-on-surface">{ch.name}</p>
             </div>
-            <span className="flex-shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+            <span className="flex-shrink-0 rounded-full bg-primary-container px-2 py-0.5 text-xs text-white">
               {ch.restaurant_count}
             </span>
           </button>
         )
       })}
       {channels.length === 0 && (
-        <p className="py-4 text-center text-xs text-gray-400">채널 데이터 없음</p>
+        <div className="space-y-2">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2">
+              <div className="h-10 w-10 animate-pulse rounded-full bg-surface-high" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-3 w-20 animate-pulse rounded bg-surface-high" />
+                <div className="h-2 w-12 animate-pulse rounded bg-surface-high" />
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )

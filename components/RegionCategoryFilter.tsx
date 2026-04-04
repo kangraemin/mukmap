@@ -22,16 +22,16 @@ export default function RegionCategoryFilter({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
           필터
           {activeCount > 0 && (
-            <span className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white">
+            <span className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary-container text-[10px] text-white">
               {activeCount}
             </span>
           )}
         </h3>
         {activeCount > 0 && (
-          <button onClick={onReset} className="text-xs text-primary hover:underline">
+          <button onClick={onReset} className="rounded-md bg-secondary-container px-2 py-0.5 text-xs text-secondary">
             초기화
           </button>
         )}
@@ -41,7 +41,7 @@ export default function RegionCategoryFilter({
       <select
         value={region}
         onChange={(e) => onRegionChange(e.target.value)}
-        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-secondary"
+        className="w-full rounded-lg border-0 bg-surface-lowest px-3 py-2 text-sm text-on-surface shadow-sm"
       >
         <option value="">전체 지역</option>
         {REGIONS.map((r) => (
@@ -59,8 +59,8 @@ export default function RegionCategoryFilter({
               onClick={() => onCategoryToggle(cat)}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                 isActive
-                  ? 'bg-primary text-white'
-                  : 'bg-gray-200 text-gray-600 hover:bg-gray-100'
+                  ? 'bg-gradient-to-r from-primary to-primary-container text-white'
+                  : 'bg-surface-low text-on-surface-variant'
               }`}
             >
               {cat}

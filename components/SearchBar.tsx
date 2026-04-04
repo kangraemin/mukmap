@@ -102,9 +102,9 @@ export default function SearchBar({
   }
 
   const typeIcon: Record<string, string> = {
-    channel: '👤',
-    restaurant: '🍽️',
-    region: '📍',
+    channel: '\uD83D\uDC64',
+    restaurant: '\uD83C\uDF7D\uFE0F',
+    region: '\uD83D\uDCCD',
   }
 
   return (
@@ -118,24 +118,24 @@ export default function SearchBar({
         onFocus={() => results.length > 0 && setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 200)}
         placeholder="맛집, 유튜버, 지역 검색..."
-        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-secondary placeholder:text-gray-400 focus:border-primary focus:bg-white focus:outline-none"
+        className="w-full rounded-lg bg-surface-high px-4 py-2 text-sm text-on-surface placeholder:text-on-surface-variant focus:bg-surface-lowest focus:ring-1 focus:ring-primary/20 focus:outline-none"
       />
 
       {open && results.length > 0 && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-xl bg-white shadow-lg">
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-xl bg-surface-lowest shadow-[0_4px_24px_rgba(78,33,30,0.12)]">
           {results.map((item, idx) => (
             <button
               key={`${item.type}-${item.id}`}
               onMouseDown={() => handleSelect(item)}
               className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors ${
-                idx === activeIndex ? 'bg-primary-light' : 'hover:bg-gray-50'
+                idx === activeIndex ? 'bg-primary-light' : 'hover:bg-surface-low'
               }`}
             >
               <span className="text-base">{typeIcon[item.type]}</span>
               <div className="flex-1 overflow-hidden">
-                <span className="font-medium text-secondary">{item.label}</span>
+                <span className="font-medium text-on-surface">{item.label}</span>
                 {item.sub && (
-                  <span className="ml-2 text-xs text-gray-400">{item.sub}</span>
+                  <span className="ml-2 text-xs text-on-surface-variant">{item.sub}</span>
                 )}
               </div>
             </button>
