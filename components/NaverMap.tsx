@@ -224,47 +224,7 @@ export default function NaverMap({
       newMarkers.push(marker)
     }
 
-    // Clustering
-    if (newMarkers.length >= 2 && typeof window.MarkerClustering !== 'undefined') {
-      newMarkers.forEach((m) => m.setMap(null))
-
-      clusterRef.current = new window.MarkerClustering({
-        minClusterSize: 2,
-        maxZoom: 16,
-        map,
-        markers: newMarkers,
-        gridSize: 120,
-        icons: [
-          {
-            content: '<div class="mukmap-cluster"></div>',
-            size: new naver.maps.Size(44, 44),
-            anchor: new naver.maps.Point(22, 22),
-          },
-        ],
-        indexGenerator: [2, 5, 10, 20, 50],
-        stylingFunction: (clusterMarker: unknown, count: number) => {
-          const el = clusterMarker as HTMLElement
-          if (el) {
-            el.innerHTML = `<div style="cursor:pointer;width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#FF6B35,#FF8C5A);color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;box-shadow:0 3px 12px rgba(255,107,53,0.4);border:2.5px solid white;">${count}</div>`
-          }
-        },
-      })
-
-      // 클러스터 클릭 → 줌 인
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const clustering = clusterRef.current as any
-      if (clustering) {
-        naver.maps.Event.addListener(clustering, 'clusterclick', (...args: unknown[]) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const cluster = args[0] as any
-          const center = cluster?.getCenter?.() || cluster?._center
-          if (center) {
-            map.setCenter(center)
-            map.setZoom(map.getZoom() + 3)
-          }
-        })
-      }
-    }
+    // 마커는 개별 표시 (map에 이미 추가됨)
 
     markersRef.current = newMarkers
   }, [restaurants, sdkLoaded, getChannelColor, onMarkerClick, openInfoWindow])

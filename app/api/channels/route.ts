@@ -9,7 +9,10 @@ export async function GET() {
         *,
         videos (
           id,
-          restaurant_id
+          restaurant_id,
+          restaurants!inner (
+            is_visible
+          )
         )
       `)
 
@@ -20,8 +23,10 @@ export async function GET() {
 
     const result = (channels || [])
       .map((ch) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const visibleVideos = (ch.videos || []).filter((v: any) => v.restaurants?.is_visible === true)
         const restaurantIds = new Set(
-          (ch.videos || [])
+          visibleVideos
             .map((v: { restaurant_id: number | null }) => v.restaurant_id)
             .filter(Boolean)
         )
