@@ -56,7 +56,14 @@ export default function Home() {
     setLoading(true)
     fetch(`/api/restaurants?${params}`)
       .then((r) => r.json())
-      .then((data) => setRestaurants(data.restaurants || []))
+      .then((data) => {
+        const newList = data.restaurants || []
+        setRestaurants((prev) => {
+          // 같은 데이터면 리렌더링 방지
+          if (prev.length === newList.length && prev.length > 0 && prev[0]?.id === newList[0]?.id) return prev
+          return newList
+        })
+      })
       .catch(() => setRestaurants([]))
       .finally(() => setLoading(false))
   }, [bounds, selectedChannels, region, categories])

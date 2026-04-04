@@ -72,6 +72,11 @@ export default function NaverMap({
     })
     mapRef.current = map
 
+    // 지도 빈 곳 클릭 → 인포윈도우 닫기
+    naver.maps.Event.addListener(map, 'click', () => {
+      if (infoWindowRef.current) infoWindowRef.current.close()
+    })
+
     // Initial bounds
     const bounds = map.getBounds()
     onBoundsChange({
@@ -92,7 +97,7 @@ export default function NaverMap({
           ne_lat: b.getNE().lat(),
           ne_lng: b.getNE().lng(),
         })
-      }, 300)
+      }, 500)
     })
   }, [sdkLoaded, onBoundsChange])
 
@@ -243,8 +248,8 @@ export default function NaverMap({
         })
 
         naver.maps.Event.addListener(marker, 'click', () => {
-          map.setCenter(new naver.maps.LatLng(avgLat, avgLng))
-          map.setZoom(zoom + 3)
+          if (infoWindowRef.current) infoWindowRef.current.close()
+          map.morph(new naver.maps.LatLng(avgLat, avgLng), Math.min(zoom + 3, 16), { duration: 500 })
         })
         newMarkers.push(marker)
       }
@@ -261,11 +266,23 @@ export default function NaverMap({
     const restaurant = restaurants.find((r) => r.id === focusedRestaurantId)
     if (!restaurant || !restaurant.lat || !restaurant.lng) return
 
-    const marker = restaurantMarkerMapRef.current.get(focusedRestaurantId)
-    if (!marker) return
+    if (infoWindowRef.current) infoWindowRef.current.close()
+    const pos = new naver.maps.LatLng(restaurant.lat, restaurant.lng)
 
-    map.panTo(new naver.maps.LatLng(restaurant.lat, restaurant.lng))
-    openInfoWindow(restaurant, marker)
+    const marker = restaurantMarkerMapRef.current.get(focusedRestaurantId)
+    if (marker) {
+      // 개별 마커 있음 → 이동 + 인포윈도우
+      map.morph(pos, Math.max(map.getZoom(), 13), { duration: 500 })
+      setTimeout(() => openInfoWindow(restaurant, marker), 600)
+    } else {
+      // 클러스터에 묶여있음 → 줌 인하면 개별 마커 생성됨
+      map.morph(pos, 15, { duration: 500 })
+      // 줌 완료 후 마커 찾아서 인포윈도우
+      setTimeout(() => {
+        const m = restaurantMarkerMapRef.current.get(focusedRestaurantId)
+        if (m) openInfoWindow(restaurant, m)
+      }, 1500)
+    }
   }, [focusedRestaurantId, restaurants, openInfoWindow])
 
   // Fit bounds to markers
