@@ -64,11 +64,27 @@ def fetch_channel_videos(youtube, channel_id: str, max_results: int = 10) -> lis
             type="video",
         ).execute()
 
+        video_ids = [item["id"]["videoId"] for item in response.get("items", [])]
+        if not video_ids:
+            return []
+
+        # Fetch full details (including description) via videos.list
+        details_resp = youtube.videos().list(
+            part="snippet",
+            id=",".join(video_ids),
+        ).execute()
+
+        details_map = {}
+        for item in details_resp.get("items", []):
+            details_map[item["id"]] = item["snippet"].get("description", "")
+
         videos = []
         for item in response.get("items", []):
+            vid = item["id"]["videoId"]
             videos.append({
-                "video_id": item["id"]["videoId"],
+                "video_id": vid,
                 "title": item["snippet"]["title"],
+                "description": details_map.get(vid, ""),
                 "thumbnail_url": item["snippet"]["thumbnails"].get("medium", {}).get("url"),
                 "published_at": item["snippet"]["publishedAt"],
                 "channel_id": channel_id,
@@ -110,7 +126,11 @@ def process_video(video: dict, dry_run: bool, db_client) -> dict:
         return stats
 
     # 2. Extract restaurants via Claude
-    restaurants, token_usage = extract_restaurants(transcript)
+    restaurants, token_usage = extract_restaurants(
+        transcript,
+        title=video.get("title", ""),
+        description=video.get("description", ""),
+    )
     stats["input_tokens"] = token_usage.get("input_tokens", 0)
     stats["output_tokens"] = token_usage.get("output_tokens", 0)
 
