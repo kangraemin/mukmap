@@ -228,11 +228,6 @@ export default function NaverMap({
     if (newMarkers.length >= 2 && typeof window.MarkerClustering !== 'undefined') {
       newMarkers.forEach((m) => m.setMap(null))
 
-      const clusterIconHtml = (count: number) => `
-        <div style="cursor:pointer;width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#FF6B35,#FF8C5A);color:white;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;box-shadow:0 3px 12px rgba(255,107,53,0.4);border:2px solid white;">
-          ${count}
-        </div>`
-
       clusterRef.current = new window.MarkerClustering({
         minClusterSize: 2,
         maxZoom: 16,
@@ -240,23 +235,28 @@ export default function NaverMap({
         markers: newMarkers,
         gridSize: 120,
         icons: [
-          { content: clusterIconHtml(0), size: new naver.maps.Size(40, 40), anchor: new naver.maps.Point(20, 20) },
+          {
+            content: '<div class="mukmap-cluster"></div>',
+            size: new naver.maps.Size(44, 44),
+            anchor: new naver.maps.Point(22, 22),
+          },
         ],
         indexGenerator: [2, 5, 10, 20, 50],
         stylingFunction: (clusterMarker: unknown, count: number) => {
           const el = clusterMarker as HTMLElement
-          if (el && el.innerHTML !== undefined) {
-            el.innerHTML = `<div style="cursor:pointer;width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#FF6B35,#FF8C5A);color:white;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;box-shadow:0 3px 12px rgba(255,107,53,0.4);border:2px solid white;">${count}</div>`
+          if (el) {
+            el.innerHTML = `<div style="cursor:pointer;width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#FF6B35,#FF8C5A);color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;box-shadow:0 3px 12px rgba(255,107,53,0.4);border:2.5px solid white;">${count}</div>`
           }
         },
       })
 
-      // 클러스터 클릭 시 줌 인
+      // 클러스터 클릭 → 줌 인
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const clustering = clusterRef.current as any
       if (clustering) {
         naver.maps.Event.addListener(clustering, 'clusterclick', (...args: unknown[]) => {
-          const cluster = args[0] as { getCenter?: () => naver.maps.LatLng; _center?: naver.maps.LatLng }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const cluster = args[0] as any
           const center = cluster?.getCenter?.() || cluster?._center
           if (center) {
             map.setCenter(center)
