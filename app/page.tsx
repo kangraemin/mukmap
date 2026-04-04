@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import NaverMap from '@/components/NaverMap'
 import ChannelFilter from '@/components/ChannelFilter'
 import RegionCategoryFilter from '@/components/RegionCategoryFilter'
@@ -20,6 +21,7 @@ interface Bounds {
 type SheetState = 'collapsed' | 'half' | 'full'
 
 export default function Home() {
+  const router = useRouter()
   const [bounds, setBounds] = useState<Bounds | null>(null)
   const [restaurants, setRestaurants] = useState<RestaurantWithVideos[]>([])
   const [selectedChannels, setSelectedChannels] = useState<string[]>([])
@@ -87,14 +89,12 @@ export default function Home() {
   }, [])
 
   const handleMarkerClick = useCallback((id: number) => {
-    // Could scroll to card in sidebar
-    console.debug('marker clicked:', id)
-  }, [])
+    router.push(`/restaurant/${id}`)
+  }, [router])
 
   const handleSelectRestaurant = useCallback((id: number) => {
-    // Could center map on restaurant
-    console.debug('restaurant selected:', id)
-  }, [])
+    router.push(`/restaurant/${id}`)
+  }, [router])
 
   const handleSelectChannel = useCallback((id: string) => {
     setSelectedChannels((prev) => {
