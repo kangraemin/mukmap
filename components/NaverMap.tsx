@@ -243,9 +243,11 @@ export default function NaverMap({
           { content: clusterIconHtml(0), size: new naver.maps.Size(40, 40), anchor: new naver.maps.Point(20, 20) },
         ],
         indexGenerator: [2, 5, 10, 20, 50],
-        stylingFunction: (clusterMarker: HTMLElement, count: number) => {
-          const el = clusterMarker.querySelector('div')
-          if (el) el.textContent = String(count)
+        stylingFunction: (clusterMarker: unknown, count: number) => {
+          const el = clusterMarker as HTMLElement
+          if (el && el.innerHTML !== undefined) {
+            el.innerHTML = `<div style="cursor:pointer;width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#FF6B35,#FF8C5A);color:white;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;box-shadow:0 3px 12px rgba(255,107,53,0.4);border:2px solid white;">${count}</div>`
+          }
         },
       })
 
