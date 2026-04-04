@@ -191,17 +191,26 @@ export default async function RestaurantPage({ params }: PageProps) {
                     </div>
                   </div>
 
-                  {/* YouTube embed */}
-                  <div className="mt-3 aspect-video w-full overflow-hidden rounded-lg">
-                    <iframe
-                      src={`https://www.youtube.com/embed/${v.video_id}${v.timestamp_seconds ? `?start=${v.timestamp_seconds}` : ''}`}
-                      title={v.title || ''}
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                      loading="lazy"
-                      className="h-full w-full"
+                  {/* YouTube thumbnail + link */}
+                  <a
+                    href={`https://www.youtube.com/watch?v=${v.video_id}${v.timestamp_seconds ? `&t=${v.timestamp_seconds}` : ''}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group relative mt-3 block aspect-video w-full overflow-hidden rounded-lg bg-gray-100"
+                  >
+                    <Image
+                      src={`https://i.ytimg.com/vi/${v.video_id}/mqdefault.jpg`}
+                      alt={v.title || '영상 썸네일'}
+                      fill
+                      className="object-cover transition-transform group-hover:scale-105"
+                      sizes="(max-width: 768px) 100vw, 600px"
                     />
-                  </div>
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/20 transition-colors group-hover:bg-black/30">
+                      <svg className="h-12 w-12 text-white drop-shadow-lg" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </div>
+                  </a>
                 </div>
               ))}
 
