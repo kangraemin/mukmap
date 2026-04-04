@@ -17,7 +17,7 @@ export const MARKER_COLORS = ['#FF6B35', '#2196F3', '#4CAF50', '#9C27B0', '#FF98
 export const RATINGS = ['강력추천', '추천', '보통', '비추', '언급없음'] as const
 
 export const INITIAL_CHANNELS = [
-  { id: 'UCG_drWLe2Z0rf5lwqnsjCBw', name: '돌시네아' },
+  { id: 'UCehQiKylaW68H_OtRS36wGQ', name: '둘시네아' },
   { id: 'UCl23-Cci_SMqyGXE1T_LYUg', name: '성시경 먹을텐데' },
   { id: 'UCfpaSruWW3S4dibonKXENjA', name: '쯔양' },
   { id: 'UCA6KBBX8cLwYZNepxlE_7SA', name: '히밥' },
