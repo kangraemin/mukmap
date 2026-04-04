@@ -227,16 +227,41 @@ export default function NaverMap({
     // Clustering
     if (newMarkers.length >= 2 && typeof window.MarkerClustering !== 'undefined') {
       newMarkers.forEach((m) => m.setMap(null))
+
+      const clusterIconHtml = (count: number) => `
+        <div style="cursor:pointer;width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#FF6B35,#FF8C5A);color:white;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;box-shadow:0 3px 12px rgba(255,107,53,0.4);border:2px solid white;">
+          ${count}
+        </div>`
+
       clusterRef.current = new window.MarkerClustering({
         minClusterSize: 2,
         maxZoom: 16,
         map,
         markers: newMarkers,
         gridSize: 120,
-        stylingFunction: (clusterMarker, count) => {
-          clusterMarker.innerHTML = `<div style="width:36px;height:36px;border-radius:50%;background:#FF6B35;color:white;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,0.2);">${count}</div>`
+        icons: [
+          { content: clusterIconHtml(0), size: new naver.maps.Size(40, 40), anchor: new naver.maps.Point(20, 20) },
+        ],
+        indexGenerator: [2, 5, 10, 20, 50],
+        stylingFunction: (clusterMarker: HTMLElement, count: number) => {
+          const el = clusterMarker.querySelector('div')
+          if (el) el.textContent = String(count)
         },
       })
+
+      // 클러스터 클릭 시 줌 인
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const clustering = clusterRef.current as any
+      if (clustering) {
+        naver.maps.Event.addListener(clustering, 'clusterclick', (...args: unknown[]) => {
+          const cluster = args[0] as { getCenter?: () => naver.maps.LatLng; _center?: naver.maps.LatLng }
+          const center = cluster?.getCenter?.() || cluster?._center
+          if (center) {
+            map.setCenter(center)
+            map.setZoom(map.getZoom() + 3)
+          }
+        })
+      }
     }
 
     markersRef.current = newMarkers
