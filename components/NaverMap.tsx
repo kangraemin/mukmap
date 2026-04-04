@@ -32,7 +32,7 @@ export default function NaverMap({
   const mapRef = useRef<naver.maps.Map | null>(null)
   const markersRef = useRef<naver.maps.Marker[]>([])
   const infoWindowRef = useRef<naver.maps.InfoWindow | null>(null)
-  const clusterRef = useRef<{ setMap(map: naver.maps.Map | null): void } | null>(null)
+  // clusterRef removed — using grid-based clustering
   const [sdkLoaded, setSdkLoaded] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const restaurantMarkerMapRef = useRef<Map<number, naver.maps.Marker>>(new Map())
@@ -56,14 +56,7 @@ export default function NaverMap({
     const script = document.createElement('script')
     script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${clientId}&submodules=geocoder`
     script.async = true
-    script.onload = () => {
-      // MarkerClustering 라이브러리 로드
-      const clusterScript = document.createElement('script')
-      clusterScript.src = 'https://navermaps.github.io/maps.js.ncp/docs/js/MarkerClustering.js'
-      clusterScript.onload = () => setSdkLoaded(true)
-      clusterScript.onerror = () => setSdkLoaded(true) // 실패해도 지도는 동작
-      document.head.appendChild(clusterScript)
-    }
+    script.onload = () => setSdkLoaded(true)
     document.head.appendChild(script)
   }, [])
 
@@ -181,50 +174,81 @@ export default function NaverMap({
     markersRef.current.forEach((m) => m.setMap(null))
     markersRef.current = []
     restaurantMarkerMapRef.current.clear()
-    if (clusterRef.current) {
-      clusterRef.current.setMap(null)
-      clusterRef.current = null
-    }
+    // 이전 마커 정리는 위에서 처리
     if (infoWindowRef.current) {
       infoWindowRef.current.close()
     }
 
-    const newMarkers: naver.maps.Marker[] = []
+    // 줌 레벨 기반 그리드 클러스터링
+    const zoom = map.getZoom()
+    const gridSize = zoom <= 8 ? 0.5 : zoom <= 10 ? 0.2 : zoom <= 12 ? 0.05 : zoom <= 14 ? 0.01 : 0
 
-    for (const restaurant of restaurants) {
-      if (!restaurant.lat || !restaurant.lng) continue
+    const validRestaurants = restaurants.filter(r => r.lat && r.lng)
+    const groups: Map<string, typeof validRestaurants> = new Map()
 
-      const mainVideo = restaurant.videos?.[0]
-      const color = mainVideo ? getChannelColor(mainVideo.channel_id) : MARKER_COLORS[0]
-      const count = restaurant.videos?.length || 0
-
-      const marker = new naver.maps.Marker({
-        position: new naver.maps.LatLng(restaurant.lat, restaurant.lng),
-        map,
-        icon: {
-          content: `<div style="cursor:pointer;">
-            <svg width="32" height="40" viewBox="0 0 32 40">
-              <path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 24 16 24s16-12 16-24C32 7.2 24.8 0 16 0z" fill="${color}"/>
-              <circle cx="16" cy="16" r="8" fill="white"/>
-              <text x="16" y="20" text-anchor="middle" fill="${color}" font-size="11" font-weight="bold">${count}</text>
-            </svg>
-          </div>`,
-          size: new naver.maps.Size(32, 40),
-          anchor: new naver.maps.Point(16, 40),
-        },
-      })
-
-      restaurantMarkerMapRef.current.set(restaurant.id, marker)
-
-      naver.maps.Event.addListener(marker, 'click', () => {
-        openInfoWindow(restaurant, marker)
-        onMarkerClick(restaurant.id)
-      })
-
-      newMarkers.push(marker)
+    if (gridSize > 0) {
+      for (const r of validRestaurants) {
+        const key = `${Math.round(r.lat! / gridSize)}_${Math.round(r.lng! / gridSize)}`
+        if (!groups.has(key)) groups.set(key, [])
+        groups.get(key)!.push(r)
+      }
+    } else {
+      for (const r of validRestaurants) {
+        groups.set(`s_${r.id}`, [r])
+      }
     }
 
-    // 마커는 개별 표시 (map에 이미 추가됨)
+    const newMarkers: naver.maps.Marker[] = []
+
+    groups.forEach((group) => {
+      if (group.length === 1) {
+        const restaurant = group[0]
+        const mainVideo = restaurant.videos?.[0]
+        const color = mainVideo ? getChannelColor(mainVideo.channel_id) : MARKER_COLORS[0]
+
+        const marker = new naver.maps.Marker({
+          position: new naver.maps.LatLng(restaurant.lat!, restaurant.lng!),
+          map,
+          icon: {
+            content: `<div style="cursor:pointer;">
+              <svg width="32" height="40" viewBox="0 0 32 40">
+                <path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 24 16 24s16-12 16-24C32 7.2 24.8 0 16 0z" fill="${color}"/>
+                <circle cx="16" cy="16" r="8" fill="white"/>
+              </svg>
+            </div>`,
+            size: new naver.maps.Size(32, 40),
+            anchor: new naver.maps.Point(16, 40),
+          },
+        })
+
+        restaurantMarkerMapRef.current.set(restaurant.id, marker)
+        naver.maps.Event.addListener(marker, 'click', () => {
+          openInfoWindow(restaurant, marker)
+          onMarkerClick(restaurant.id)
+        })
+        newMarkers.push(marker)
+      } else {
+        const avgLat = group.reduce((s: number, r: { lat: number | null }) => s + r.lat!, 0) / group.length
+        const avgLng = group.reduce((s: number, r: { lng: number | null }) => s + r.lng!, 0) / group.length
+        const count = group.length
+
+        const marker = new naver.maps.Marker({
+          position: new naver.maps.LatLng(avgLat, avgLng),
+          map,
+          icon: {
+            content: `<div style="cursor:pointer;width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#FF6B35,#FF8C5A);color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;box-shadow:0 3px 12px rgba(255,107,53,0.4);border:2.5px solid white;">${count}</div>`,
+            size: new naver.maps.Size(44, 44),
+            anchor: new naver.maps.Point(22, 22),
+          },
+        })
+
+        naver.maps.Event.addListener(marker, 'click', () => {
+          map.setCenter(new naver.maps.LatLng(avgLat, avgLng))
+          map.setZoom(zoom + 3)
+        })
+        newMarkers.push(marker)
+      }
+    })
 
     markersRef.current = newMarkers
   }, [restaurants, sdkLoaded, getChannelColor, onMarkerClick, openInfoWindow])
