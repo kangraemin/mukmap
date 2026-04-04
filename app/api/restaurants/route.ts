@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
       `)
       .not('lat', 'is', null)
       .not('lng', 'is', null)
+      .eq('is_visible', true)
       .gte('lat', Number(sw_lat))
       .lte('lat', Number(ne_lat))
       .gte('lng', Number(sw_lng))

@@ -16,6 +16,7 @@ export interface Restaurant {
   region: string | null
   naver_place_id: string | null
   needs_review: boolean
+  is_visible: boolean
   created_at: string
 }
 
