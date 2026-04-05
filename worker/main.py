@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from googleapiclient.discovery import build
 
-from transcript_fetcher import fetch_transcript
+from transcript_fetcher import fetch_transcript, setup_browser, teardown_browser
 from restaurant_extractor import extract_restaurants
 from naver_search import search_restaurant
 from supabase_client import (
@@ -145,6 +145,8 @@ def main():
         logger.error("Missing env vars: %s", ", ".join(missing))
         sys.exit(1)
 
+    setup_browser()
+
     db_client = get_client()
     youtube = build("youtube", "v3", developerKey=os.environ["YOUTUBE_API_KEY"])
     existing_ids = get_existing_video_ids(db_client)
@@ -185,6 +187,7 @@ def main():
         input_cost = totals["input_tokens"] * HAIKU_INPUT_PRICE / 1_000_000
         output_cost = totals["output_tokens"] * HAIKU_OUTPUT_PRICE / 1_000_000
         print(f"\n=== 수집 결과 ===\n처리 영상: 1개\n추출 맛집: {totals['restaurants_found']}개\nClaude Haiku: ${input_cost + output_cost:.3f}")
+        teardown_browser()
         return
 
     # 1. Fetch new videos
@@ -256,6 +259,8 @@ def main():
     )
     print(f"네이버 검색: {totals['naver_calls']}회")
     print(f"YouTube API: {totals['youtube_units']} units")
+
+    teardown_browser()
 
 
 if __name__ == "__main__":

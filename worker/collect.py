@@ -18,7 +18,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from googleapiclient.discovery import build
 
-from transcript_fetcher import fetch_transcript
+from transcript_fetcher import fetch_transcript, setup_browser, teardown_browser
 from restaurant_extractor import extract_restaurants
 from naver_search import search_restaurant
 
@@ -245,6 +245,7 @@ def main():
     args = parser.parse_args()
 
     load_env()
+    setup_browser()
 
     # Validate required env vars
     required = ["YOUTUBE_API_KEY", "ANTHROPIC_API_KEY", "NAVER_SEARCH_CLIENT_ID", "NAVER_SEARCH_CLIENT_SECRET"]
@@ -309,6 +310,7 @@ def main():
             from supabase_client import update_queue_status
             update_queue_status(db_client, args.video_id, "done")
 
+        teardown_browser()
         _print_summary(total_stats)
         return
 
@@ -355,6 +357,8 @@ def main():
             delay = random.uniform(8, 15)
             logger.debug("Sleeping %.1fs", delay)
             time.sleep(delay)
+
+    teardown_browser()
 
     # Summary
     _print_summary(total_stats)

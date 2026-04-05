@@ -17,7 +17,9 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install -r worker/requirements.txt
+        run: |
+          pip install -r worker/requirements.txt
+          pip install 'yt-dlp[curl-cffi]'
       - name: Run collector
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
