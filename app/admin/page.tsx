@@ -11,6 +11,7 @@ interface Restaurant {
   category: string
   region: string | null
   needs_review: boolean
+  is_visible: boolean
   created_at: string
 }
 
@@ -64,7 +65,7 @@ export default function AdminPage() {
   const fetchReviewRestaurants = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/restaurants?sw_lat=-90&sw_lng=-180&ne_lat=90&ne_lng=180&limit=200`)
+      const res = await fetch(`/api/restaurants?sw_lat=-90&sw_lng=-180&ne_lat=90&ne_lng=180&limit=200&include_hidden=true`)
       const data = await res.json()
       setRestaurants((data.restaurants || []).filter((r: Restaurant) => r.needs_review))
     } catch { /* empty */ }
@@ -74,7 +75,7 @@ export default function AdminPage() {
   const fetchAllRestaurants = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/restaurants?sw_lat=-90&sw_lng=-180&ne_lat=90&ne_lng=180&limit=200`)
+      const res = await fetch(`/api/restaurants?sw_lat=-90&sw_lng=-180&ne_lat=90&ne_lng=180&limit=200&include_hidden=true`)
       const data = await res.json()
       setAllRestaurants(data.restaurants || [])
     } catch { /* empty */ }
@@ -407,7 +408,7 @@ export default function AdminPage() {
           <div>
             <div className="space-y-2">
               {allRestaurants.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((r) => (
-                <div key={r.id} className="flex items-center justify-between rounded-lg bg-white p-3 shadow-sm">
+                <div key={r.id} className={`flex items-center justify-between rounded-lg bg-white p-3 shadow-sm ${r.is_visible === false ? 'opacity-50' : ''}`}>
                   <div>
                     <span className="font-medium">{r.name}</span>
                     <span className="ml-2 text-sm text-gray-400">
@@ -416,13 +417,36 @@ export default function AdminPage() {
                     {r.needs_review && (
                       <span className="ml-2 rounded bg-warning px-1.5 text-xs">보정필요</span>
                     )}
+                    {r.is_visible === false && (
+                      <span className="ml-2 rounded bg-gray-300 px-1.5 text-xs text-gray-600">숨김</span>
+                    )}
                   </div>
-                  <button
-                    onClick={() => deleteRestaurant(r.id)}
-                    className="text-sm text-error hover:underline"
-                  >
-                    삭제
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        const res = await fetch('/api/admin/restaurants', {
+                          method: 'PATCH',
+                          headers: getHeaders(),
+                          body: JSON.stringify({ id: r.id, is_visible: !r.is_visible }),
+                        })
+                        if (res.ok) {
+                          setAllRestaurants(prev => prev.map(item =>
+                            item.id === r.id ? { ...item, is_visible: !item.is_visible } : item
+                          ))
+                        }
+                      }}
+                      className="text-sm hover:underline"
+                      title={r.is_visible ? '숨기기' : '표시하기'}
+                    >
+                      {r.is_visible !== false ? '👁' : '🚫'}
+                    </button>
+                    <button
+                      onClick={() => deleteRestaurant(r.id)}
+                      className="text-sm text-error hover:underline"
+                    >
+                      삭제
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

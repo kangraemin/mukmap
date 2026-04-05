@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
   const region = params.get('region')
   const category = params.get('category')?.split(',').filter(Boolean)
   const limit = Math.min(Number(params.get('limit') || 200), 200)
+  const include_hidden = params.get('include_hidden') === 'true'
 
   try {
     let query = supabase
@@ -44,7 +45,10 @@ export async function GET(request: NextRequest) {
       `)
       .not('lat', 'is', null)
       .not('lng', 'is', null)
-      .eq('is_visible', true)
+
+    if (!include_hidden) {
+      query = query.eq('is_visible', true)
+    }
       .gte('lat', Number(sw_lat))
       .lte('lat', Number(ne_lat))
       .gte('lng', Number(sw_lng))

@@ -141,7 +141,7 @@ export default function NaverMap({
     return `<div style="max-width:280px;padding:16px;font-family:'Plus Jakarta Sans','Pretendard Variable',sans-serif;background:#ffffff;border-radius:12px;box-shadow:0 4px 24px rgba(78,33,30,0.12);">
       ${thumbnailHtml}
       <h3 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:15px;font-weight:700;color:#4e211e;margin:0;">${restaurant.name}</h3>
-      <p style="font-size:12px;color:#834c48;margin:4px 0 8px;">${restaurant.category} · ${restaurant.region || ''}</p>
+      <p style="font-size:12px;color:#834c48;margin:4px 0 8px;">${restaurant.category}${restaurant.region ? ' · ' + restaurant.region : ''}</p>
       ${videoItems}
       <div style="display:flex;gap:6px;margin-top:12px;">
         <a href="/restaurant/${restaurant.id}" style="font-size:11px;padding:6px 12px;background:linear-gradient(135deg,#a63300,#ff7949);color:white;border-radius:8px;text-decoration:none;font-weight:600;">상세보기</a>

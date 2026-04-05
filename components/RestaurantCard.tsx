@@ -46,12 +46,17 @@ export default function RestaurantCard({
       <div className="flex-1 overflow-hidden">
         <h3 className="truncate text-sm font-semibold text-on-surface">{name}</h3>
         <p className="text-xs text-on-surface-variant">
-          {category} · {region || ''}
+          {category}{region ? ` · ${region}` : ''}
         </p>
         <div className="mt-1 flex items-center gap-1.5">
           {rating && (
             <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${ratingColor[rating] || 'bg-surface-low text-on-surface-variant'}`}>
               {rating}
+            </span>
+          )}
+          {region && (
+            <span className="rounded bg-surface-low px-1.5 py-0.5 text-[10px] text-on-surface-variant">
+              {region}
             </span>
           )}
           {channelName && (

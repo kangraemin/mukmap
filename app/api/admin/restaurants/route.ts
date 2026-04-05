@@ -18,7 +18,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'id is required' }, { status: 400 })
   }
 
-  const allowedFields = ['name', 'address', 'lat', 'lng', 'category', 'region', 'naver_place_id', 'needs_review']
+  const allowedFields = ['name', 'address', 'lat', 'lng', 'category', 'region', 'naver_place_id', 'needs_review', 'is_visible']
   const filtered: Record<string, unknown> = {}
   for (const key of allowedFields) {
     if (key in updates) {
