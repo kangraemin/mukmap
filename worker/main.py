@@ -35,7 +35,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 CHANNELS = [
-    {"id": "UCG_drWLe2Z0rf5lwqnsjCBw", "name": "돌시네아"},
+    {"id": "UCehQiKylaW68H_OtRS36wGQ", "name": "둘시네아"},
     {"id": "UCyn-K7rZLXjGl7VXGweIlcA", "name": "백종원"},
     {"id": "UCl23-Cci_SMqyGXE1T_LYUg", "name": "성시경 먹을텐데"},
     {"id": "UCfpaSruWW3S4dibonKXENjA", "name": "쯔양"},
