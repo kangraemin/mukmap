@@ -223,12 +223,25 @@ def process_video(video: dict, dry_run: bool, db_client, reprocess: bool = False
     return stats
 
 
+def _print_summary(total_stats: dict) -> None:
+    input_cost = total_stats["input_tokens"] * HAIKU_INPUT_PRICE / 1_000_000
+    output_cost = total_stats["output_tokens"] * HAIKU_OUTPUT_PRICE / 1_000_000
+    total_cost = input_cost + output_cost
+    print("\n=== 수집 결과 ===")
+    print(f"처리 영상: {total_stats['videos_processed']}개")
+    print(f"추출 맛집: {total_stats['restaurants_found']}개 (좌표 있음: {total_stats['with_coords']}, 보정 필요: {total_stats['needs_review']})")
+    print(f"Claude Haiku: input {total_stats['input_tokens']} tokens, output {total_stats['output_tokens']} tokens (${total_cost:.3f})")
+    print(f"네이버 검색: {total_stats['naver_calls']}회")
+    print(f"YouTube API: {total_stats['youtube_units']} units")
+
+
 def main():
     parser = argparse.ArgumentParser(description="MukMap data collector")
     parser.add_argument("--max-per-channel", type=int, default=10)
     parser.add_argument("--dry-run", action="store_true", help="No DB writes")
     parser.add_argument("--reprocess", action="store_true", help="캐시된 추출 결과로 좌표만 재검색")
     parser.add_argument("--channel", type=str, help="특정 채널만 수집 (이름, 예: 둘시네아)")
+    parser.add_argument("--video-id", type=str, help="특정 영상 하나만 처리 (video ID)")
     args = parser.parse_args()
 
     load_env()
@@ -266,6 +279,38 @@ def main():
     }
 
     all_new_videos = []
+
+    # --video-id: 특정 영상 하나만 처리
+    if args.video_id:
+        video = {"video_id": args.video_id, "title": "", "description": "", "channel_id": "", "thumbnail_url": ""}
+        try:
+            resp = youtube.videos().list(part="snippet", id=args.video_id).execute()
+            if resp.get("items"):
+                snippet = resp["items"][0]["snippet"]
+                video["title"] = snippet["title"]
+                video["description"] = snippet.get("description", "")
+                video["channel_id"] = snippet["channelId"]
+                video["thumbnail_url"] = snippet.get("thumbnails", {}).get("medium", {}).get("url")
+        except Exception as e:
+            logger.error("YouTube API error: %s", e)
+
+        logger.info("Processing single video: %s (%s)", video["title"], args.video_id)
+        total_stats["youtube_units"] += 1
+
+        if not args.dry_run:
+            insert_to_queue(db_client, args.video_id, video["channel_id"])
+
+        stats = process_video(video, args.dry_run, db_client, reprocess=args.reprocess)
+        total_stats["videos_processed"] += 1
+        for k in ["restaurants_found", "with_coords", "needs_review", "input_tokens", "output_tokens", "naver_calls"]:
+            total_stats[k] += stats.get(k, 0)
+
+        if not args.dry_run and stats["restaurants_found"] > 0:
+            from supabase_client import update_queue_status
+            update_queue_status(db_client, args.video_id, "done")
+
+        _print_summary(total_stats)
+        return
 
     # 1. Fetch new videos from each channel
     channels = CHANNELS
@@ -312,22 +357,7 @@ def main():
             time.sleep(delay)
 
     # Summary
-    input_cost = total_stats["input_tokens"] * HAIKU_INPUT_PRICE / 1_000_000
-    output_cost = total_stats["output_tokens"] * HAIKU_OUTPUT_PRICE / 1_000_000
-    total_cost = input_cost + output_cost
-
-    print("\n=== 수집 결과 ===")
-    print(f"처리 영상: {total_stats['videos_processed']}개")
-    print(
-        f"추출 맛집: {total_stats['restaurants_found']}개 "
-        f"(좌표 있음: {total_stats['with_coords']}, 보정 필요: {total_stats['needs_review']})"
-    )
-    print(
-        f"Claude Haiku: input {total_stats['input_tokens']} tokens, "
-        f"output {total_stats['output_tokens']} tokens (${total_cost:.3f})"
-    )
-    print(f"네이버 검색: {total_stats['naver_calls']}회")
-    print(f"YouTube API: {total_stats['youtube_units']} units")
+    _print_summary(total_stats)
 
     if args.dry_run:
         print("\n[DRY-RUN 모드] DB 저장 없음")

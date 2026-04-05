@@ -2,7 +2,11 @@ name: MukMap Data Collector
 on:
   schedule:
     - cron: '0 */6 * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      video_id:
+        description: '특정 영상 ID (비워두면 전체 수집)'
+        required: false
 
 jobs:
   collect:
@@ -22,4 +26,9 @@ jobs:
           NAVER_SEARCH_CLIENT_ID: ${{ secrets.NAVER_SEARCH_CLIENT_ID }}
           NAVER_SEARCH_CLIENT_SECRET: ${{ secrets.NAVER_SEARCH_CLIENT_SECRET }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-        run: python worker/main.py
+        run: |
+          if [ -n "${{ github.event.inputs.video_id }}" ]; then
+            python worker/main.py --video-id "${{ github.event.inputs.video_id }}"
+          else
+            python worker/main.py
+          fi

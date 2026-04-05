@@ -130,6 +130,11 @@ def process_video(video: dict, db_client) -> dict:
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--video-id", type=str, help="특정 영상 하나만 처리")
+    args = parser.parse_args()
+
     # Validate env vars
     required = [
         "SUPABASE_URL", "SUPABASE_SERVICE_KEY", "YOUTUBE_API_KEY",
@@ -156,6 +161,31 @@ def main():
     }
 
     all_new_videos = []
+
+    # --video-id: 특정 영상 하나만 처리
+    if args.video_id:
+        video = {"video_id": args.video_id, "title": "", "description": "", "channel_id": ""}
+        try:
+            resp = youtube.videos().list(part="snippet", id=args.video_id).execute()
+            if resp.get("items"):
+                snippet = resp["items"][0]["snippet"]
+                video["title"] = snippet["title"]
+                video["description"] = snippet.get("description", "")
+                video["channel_id"] = snippet["channelId"]
+        except Exception as e:
+            logger.error("YouTube API error: %s", e)
+
+        logger.info("Processing single video: %s (%s)", video["title"], args.video_id)
+        insert_to_queue(db_client, args.video_id, video["channel_id"])
+        stats = process_video(video, db_client)
+        totals["videos_processed"] += 1
+        for k in ["restaurants_found", "with_coords", "needs_review", "input_tokens", "output_tokens", "naver_calls"]:
+            totals[k] += stats.get(k, 0)
+        # summary
+        input_cost = totals["input_tokens"] * HAIKU_INPUT_PRICE / 1_000_000
+        output_cost = totals["output_tokens"] * HAIKU_OUTPUT_PRICE / 1_000_000
+        print(f"\n=== 수집 결과 ===\n처리 영상: 1개\n추출 맛집: {totals['restaurants_found']}개\nClaude Haiku: ${input_cost + output_cost:.3f}")
+        return
 
     # 1. Fetch new videos
     for channel in CHANNELS:
