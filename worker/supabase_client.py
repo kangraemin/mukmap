@@ -83,3 +83,27 @@ def upsert_video(client: Client, video: dict) -> None:
 def get_existing_video_ids(client: Client) -> set[str]:
     res = client.table("processing_queue").select("video_id").execute()
     return {r["video_id"] for r in res.data}
+
+
+def save_extraction_result(client: Client, video_id: str, result: list[dict]) -> None:
+    """Save Claude extraction result JSON to processing_queue."""
+    import json
+    client.table("processing_queue").update(
+        {"extraction_result": json.dumps(result, ensure_ascii=False)}
+    ).eq("video_id", video_id).execute()
+
+
+def get_cached_extraction(client: Client, video_id: str) -> list[dict] | None:
+    """Get cached extraction result from processing_queue."""
+    import json
+    res = (
+        client.table("processing_queue")
+        .select("extraction_result")
+        .eq("video_id", video_id)
+        .single()
+        .execute()
+    )
+    raw = res.data.get("extraction_result") if res.data else None
+    if raw:
+        return json.loads(raw) if isinstance(raw, str) else raw
+    return None

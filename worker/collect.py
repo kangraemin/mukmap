@@ -95,7 +95,7 @@ def fetch_channel_videos(youtube, channel_id: str, max_results: int = 10) -> lis
         return []
 
 
-def process_video(video: dict, dry_run: bool, db_client) -> dict:
+def process_video(video: dict, dry_run: bool, db_client, reprocess: bool = False) -> dict:
     """Process a single video: transcript → Claude → Naver → DB.
 
     Returns stats dict.
@@ -116,23 +116,38 @@ def process_video(video: dict, dry_run: bool, db_client) -> dict:
         from supabase_client import update_queue_status
         update_queue_status(db_client, video_id, "processing")
 
-    # 1. Fetch transcript
-    transcript = fetch_transcript(video_id)
-    if not transcript:
-        logger.info("  No transcript available")
-        if not dry_run:
-            from supabase_client import update_queue_status
-            update_queue_status(db_client, video_id, "no_transcript")
-        return stats
+    # reprocess 모드: 캐시된 추출 결과 사용
+    restaurants = None
+    if reprocess and not dry_run:
+        from supabase_client import get_cached_extraction
+        cached = get_cached_extraction(db_client, video_id)
+        if cached:
+            logger.info("  Using cached extraction (%d restaurants)", len(cached))
+            restaurants = cached
 
-    # 2. Extract restaurants via Claude
-    restaurants, token_usage = extract_restaurants(
-        transcript,
-        title=video.get("title", ""),
-        description=video.get("description", ""),
-    )
-    stats["input_tokens"] = token_usage.get("input_tokens", 0)
-    stats["output_tokens"] = token_usage.get("output_tokens", 0)
+    if restaurants is None:
+        # 1. Fetch transcript
+        transcript = fetch_transcript(video_id)
+        if not transcript:
+            logger.info("  No transcript available")
+            if not dry_run:
+                from supabase_client import update_queue_status
+                update_queue_status(db_client, video_id, "no_transcript")
+            return stats
+
+        # 2. Extract restaurants via Claude
+        restaurants, token_usage = extract_restaurants(
+            transcript,
+            title=video.get("title", ""),
+            description=video.get("description", ""),
+        )
+        stats["input_tokens"] = token_usage.get("input_tokens", 0)
+        stats["output_tokens"] = token_usage.get("output_tokens", 0)
+
+        # 추출 결과 캐싱
+        if restaurants and not dry_run:
+            from supabase_client import save_extraction_result
+            save_extraction_result(db_client, video_id, restaurants)
 
     if not restaurants:
         logger.info("  No restaurants found in transcript")
@@ -212,6 +227,7 @@ def main():
     parser = argparse.ArgumentParser(description="MukMap data collector")
     parser.add_argument("--max-per-channel", type=int, default=10)
     parser.add_argument("--dry-run", action="store_true", help="No DB writes")
+    parser.add_argument("--reprocess", action="store_true", help="캐시된 추출 결과로 좌표만 재검색")
     parser.add_argument("--channel", type=str, help="특정 채널만 수집 (이름, 예: 둘시네아)")
     args = parser.parse_args()
 
@@ -263,10 +279,15 @@ def main():
         videos = fetch_channel_videos(youtube, channel["id"], args.max_per_channel)
         total_stats["youtube_units"] += 100  # search.list = 100 units
 
-        new_videos = [v for v in videos if v["video_id"] not in existing_ids]
-        logger.info("  %d new videos (of %d)", len(new_videos), len(videos))
+        if args.reprocess:
+            # reprocess: 모든 영상 포함 (이미 처리된 것도)
+            new_videos = videos
+            logger.info("  %d videos to reprocess (of %d)", len(new_videos), len(videos))
+        else:
+            new_videos = [v for v in videos if v["video_id"] not in existing_ids]
+            logger.info("  %d new videos (of %d)", len(new_videos), len(videos))
 
-        if not args.dry_run and new_videos:
+        if not args.dry_run and not args.reprocess and new_videos:
             for v in new_videos:
                 insert_to_queue(db_client, v["video_id"], v["channel_id"])
 
@@ -274,7 +295,7 @@ def main():
 
     # 2. Process videos
     for i, video in enumerate(all_new_videos):
-        stats = process_video(video, args.dry_run, db_client)
+        stats = process_video(video, args.dry_run, db_client, reprocess=args.reprocess)
 
         total_stats["videos_processed"] += 1
         total_stats["restaurants_found"] += stats["restaurants_found"]
@@ -286,7 +307,7 @@ def main():
 
         # Rate limit delay between videos
         if i < len(all_new_videos) - 1:
-            delay = random.uniform(2, 5)
+            delay = random.uniform(8, 15)
             logger.debug("Sleeping %.1fs", delay)
             time.sleep(delay)
 
