@@ -8,4 +8,4 @@ RUN pip install --no-cache-dir -r requirements.txt fastapi uvicorn
 
 COPY worker/ .
 
-CMD uvicorn api:app --host 0.0.0.0 --port ${PORT:-8000}
+CMD ["/bin/sh", "-c", "uvicorn api:app --host 0.0.0.0 --port $PORT"]
