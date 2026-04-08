@@ -1,27 +1,41 @@
 import json
 import logging
+import os
 import subprocess
 import tempfile
-import os
+
+import requests
 
 logger = logging.getLogger(__name__)
 
 
 def fetch_transcript(video_id: str) -> list[dict] | None:
-    """Fetch transcript for a YouTube video using yt-dlp.
+    """Fetch transcript for a YouTube video.
+
+    1차: yt-dlp로 자막 다운로드
+    2차: Groq Whisper fallback (오디오 다운 → 음성인식)
 
     Returns list of {"text": str, "start": float} or None if unavailable.
     """
+    result = _fetch_via_ytdlp(video_id)
+    if result:
+        return result
+
+    logger.info("yt-dlp 자막 실패, Groq Whisper fallback 시도: %s", video_id)
+    return _fetch_via_whisper(video_id)
+
+
+def _fetch_via_ytdlp(video_id: str) -> list[dict] | None:
+    """yt-dlp로 자막 다운로드."""
     url = f"https://www.youtube.com/watch?v={video_id}"
 
     with tempfile.TemporaryDirectory() as tmpdir:
         output_template = os.path.join(tmpdir, "sub")
 
-        # Try Korean subs first, then auto-generated
         for sub_args in [
             ["--write-sub", "--sub-lang", "ko"],
             ["--write-auto-sub", "--sub-lang", "ko"],
-            ["--write-auto-sub"],  # any language
+            ["--write-auto-sub"],
         ]:
             cmd = [
                 "yt-dlp",
@@ -33,21 +47,11 @@ def fetch_transcript(video_id: str) -> list[dict] | None:
             ]
 
             try:
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
+                subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             except subprocess.TimeoutExpired:
-                logger.warning("yt-dlp timeout for %s", video_id)
                 continue
 
-            # Find the generated subtitle file
-            sub_files = [
-                f for f in os.listdir(tmpdir)
-                if f.endswith(".json3")
-            ]
+            sub_files = [f for f in os.listdir(tmpdir) if f.endswith(".json3")]
 
             if sub_files:
                 sub_path = os.path.join(tmpdir, sub_files[0])
@@ -61,9 +65,74 @@ def fetch_transcript(video_id: str) -> list[dict] | None:
                     logger.warning("Failed to parse subtitle for %s: %s", video_id, e)
                     continue
 
-            # Clean up for next attempt
             for f in os.listdir(tmpdir):
                 os.remove(os.path.join(tmpdir, f))
+
+    return None
+
+
+def _fetch_via_whisper(video_id: str) -> list[dict] | None:
+    """yt-dlp 오디오 다운 → Groq Whisper Turbo → 자막 변환."""
+    groq_key = os.environ.get("GROQ_API_KEY")
+    if not groq_key:
+        logger.warning("GROQ_API_KEY 없음, Whisper fallback 스킵")
+        return None
+
+    url = f"https://www.youtube.com/watch?v={video_id}"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        output_template = os.path.join(tmpdir, "audio.%(ext)s")
+        audio_path = os.path.join(tmpdir, "audio.mp3")
+
+        cmd = [
+            "yt-dlp", "-x",
+            "--audio-format", "mp3",
+            "--audio-quality", "5",
+            "-o", output_template,
+            url,
+        ]
+
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        except subprocess.TimeoutExpired:
+            logger.warning("오디오 다운로드 타임아웃: %s", video_id)
+            return None
+
+        if not os.path.exists(audio_path):
+            logger.warning("오디오 파일 없음: %s", video_id)
+            return None
+
+        try:
+            with open(audio_path, "rb") as f:
+                resp = requests.post(
+                    "https://api.groq.com/openai/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {groq_key}"},
+                    files={"file": ("audio.mp3", f, "audio/mpeg")},
+                    data={
+                        "model": "whisper-large-v3-turbo",
+                        "language": "ko",
+                        "response_format": "verbose_json",
+                    },
+                    timeout=120,
+                )
+        except requests.RequestException as e:
+            logger.warning("Groq API 요청 실패: %s", e)
+            return None
+
+        if resp.status_code != 200:
+            logger.warning("Groq Whisper 실패 (%s): %s", resp.status_code, resp.text[:200])
+            return None
+
+        data = resp.json()
+        segments = []
+        for seg in data.get("segments", []):
+            text = seg.get("text", "").strip()
+            if text:
+                segments.append({"text": text, "start": seg.get("start", 0.0)})
+
+        if segments:
+            logger.info("Groq Whisper 성공: %s (%d segments)", video_id, len(segments))
+            return segments
 
     logger.warning("No transcript for %s", video_id)
     return None
@@ -89,7 +158,6 @@ def _parse_json3(data: dict) -> list[dict] | None:
     return segments if segments else None
 
 
-# yt-dlp 방식에서는 브라우저 관리 불필요 — 호환성을 위해 no-op 함수 유지
 def setup_browser():
     pass
 
