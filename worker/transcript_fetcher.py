@@ -35,7 +35,9 @@ def fetch_transcript(video_id: str) -> list[dict] | None:
         ]
 
         try:
-            subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            if result.returncode != 0:
+                logger.warning("yt-dlp 오디오 다운 실패: %s\nstderr: %s", video_id, result.stderr[:500])
         except subprocess.TimeoutExpired:
             logger.warning("오디오 다운로드 타임아웃: %s", video_id)
             return None
