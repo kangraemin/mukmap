@@ -535,7 +535,7 @@ def extract_region(address: str) -> str | None:
 ## 11. 디렉토리 구조
 
 ```
-youtubeScript/
+mukmap/
 ├── app/
 │   ├── layout.tsx                    # 루트 레이아웃 (카카오맵 SDK)
 │   ├── page.tsx                      # 메인 지도 페이지
