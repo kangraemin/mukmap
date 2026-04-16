@@ -34,3 +34,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# claude / ai-bouncer
+.claude/
+.ai-bouncer-tasks/
+
+# raw data dumps
+/rawdata/
