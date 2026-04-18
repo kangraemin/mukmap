@@ -48,3 +48,4 @@ __pycache__/
 
 # raw data dumps
 /rawdata/
+.gstack/
