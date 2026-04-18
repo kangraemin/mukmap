@@ -20,7 +20,8 @@ from googleapiclient.discovery import build
 
 from transcript_fetcher import fetch_transcript
 from restaurant_extractor import extract_restaurants
-from naver_search import search_restaurant
+from naver_search import search_restaurant, REGION_MAP as _REGION_MAP
+from chain_blacklist import is_chain
 from description_parser import parse_description_places
 from skip_logger import log_skipped
 from supabase_client import (
@@ -52,16 +53,6 @@ HAIKU_INPUT_PRICE = 0.80
 HAIKU_OUTPUT_PRICE = 4.00
 DEFAULT_MAX_AGE_DAYS = 30
 DEFAULT_COST_LIMIT_USD = 2.0
-
-_REGION_MAP = {
-    "서울": "서울", "경기": "경기", "인천": "인천",
-    "부산": "부산", "대구": "대구", "대전": "대전",
-    "광주": "광주", "울산": "울산", "세종": "세종",
-    "강원": "강원", "충북": "충북", "충남": "충남",
-    "전북": "전북", "전남": "전남", "경북": "경북",
-    "경남": "경남", "제주": "제주",
-}
-
 
 def _region_from_address(address: str | None) -> str | None:
     if not address:
@@ -165,6 +156,13 @@ def process_video(video: dict, db_client, cost_remaining_usd: float = float("inf
 
     # 4. Naver search → 실패 시 DB 스킵 + JSONL
     for rest in restaurants:
+        # AI가 프롬프트 블랙리스트를 지키지 않고 체인점을 뽑은 경우 차단
+        if is_chain(rest.get("name", "")):
+            stats["skipped"] += 1
+            log_skipped(video, rest, reason="chain_blacklist")
+            logger.info("  체인점 스킵(AI): %s", rest.get("name"))
+            continue
+
         location = search_restaurant(rest.get("name", ""), rest.get("address_hint", ""))
         stats["naver_calls"] += 1
 
@@ -172,6 +170,13 @@ def process_video(video: dict, db_client, cost_remaining_usd: float = float("inf
             stats["skipped"] += 1
             log_skipped(video, rest, reason="naver_no_region_match")
             logger.info("  스킵: %s (hint=%r)", rest.get("name"), rest.get("address_hint"))
+            continue
+
+        # 네이버가 '롯데리아 면목중앙점'처럼 체인 지점명으로 교정 리턴하는 경우도 차단
+        if is_chain(location.get("name", "")):
+            stats["skipped"] += 1
+            log_skipped(video, rest, reason="chain_blacklist_naver_name")
+            logger.info("  체인점 스킵(네이버): %s", location.get("name"))
             continue
 
         stats["with_coords"] += 1
