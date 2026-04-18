@@ -45,15 +45,15 @@ export async function GET(request: NextRequest) {
       `)
       .not('lat', 'is', null)
       .not('lng', 'is', null)
-
-    if (!include_hidden) {
-      query = query.eq('is_visible', true)
-    }
       .gte('lat', Number(sw_lat))
       .lte('lat', Number(ne_lat))
       .gte('lng', Number(sw_lng))
       .lte('lng', Number(ne_lng))
       .limit(limit)
+
+    if (!include_hidden) {
+      query = query.eq('is_visible', true)
+    }
 
     if (region) {
       query = query.eq('region', region)
