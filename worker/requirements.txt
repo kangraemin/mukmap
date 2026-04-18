@@ -1,7 +1,5 @@
 supabase
 anthropic
-yt-dlp
-curl-cffi
 google-api-python-client
 requests
 python-dotenv
