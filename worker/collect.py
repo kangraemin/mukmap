@@ -463,6 +463,28 @@ def main():
 
     if args.dry_run:
         print("\n[DRY-RUN 모드] DB 저장 없음")
+    elif total_stats["videos_processed"] > 0:
+        trigger_revalidate()
+
+
+def trigger_revalidate() -> None:
+    """수집 후 mukmap.kr 캐시 무효화. 실패해도 워커는 성공 처리."""
+    base = os.environ.get("MUKMAP_BASE_URL")
+    secret = os.environ.get("REVALIDATE_SECRET")
+    if not base or not secret:
+        logger.info("revalidate 스킵: MUKMAP_BASE_URL / REVALIDATE_SECRET 미설정")
+        return
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            f"{base.rstrip('/')}/api/revalidate",
+            method="POST",
+            headers={"x-revalidate-secret": secret},
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            logger.info("revalidate 호출 성공: %s", r.status)
+    except Exception as e:
+        logger.warning("revalidate 호출 실패 (무시): %s", e)
 
 
 if __name__ == "__main__":
