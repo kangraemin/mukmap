@@ -6,12 +6,14 @@ os.environ (injected by GitHub Actions secrets).
 """
 
 import argparse
+import json
 import logging
 import os
 import random
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 # Add worker dir to path for sibling imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -40,19 +42,55 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 CHANNELS = [
-    {"id": "UCehQiKylaW68H_OtRS36wGQ", "name": "둘시네아"},
-    {"id": "UCyn-K7rZLXjGl7VXGweIlcA", "name": "백종원"},
-    {"id": "UCl23-Cci_SMqyGXE1T_LYUg", "name": "성시경 먹을텐데"},
-    {"id": "UCfpaSruWW3S4dibonKXENjA", "name": "쯔양"},
-    {"id": "UCA6KBBX8cLwYZNepxlE_7SA", "name": "히밥"},
+    {"id": "UCehQiKylaW68H_OtRS36wGQ", "slug": "dulcinea_studio", "name": "둘시네아"},
+    {"id": "UCfpaSruWW3S4dibonKXENjA", "slug": "tzuyang", "name": "쯔양"},
+    {"id": "UCzgpOnor-MzT-1iflZil2GQ", "slug": "jaesunrang", "name": "재선랑"},
+    {"id": "UC-OAmhcFgX9t_OF6fQ-4B1w", "slug": "kimjjamppong", "name": "김쨈뽕"},
+    {"id": "UC-x55HF1-IilhxZOzwJm7JA", "slug": "kimsawon", "name": "김사원"},
 ]
-
-MAX_PER_CHANNEL = 10
 
 HAIKU_INPUT_PRICE = 0.80
 HAIKU_OUTPUT_PRICE = 4.00
 DEFAULT_MAX_AGE_DAYS = 30
 DEFAULT_COST_LIMIT_USD = 2.0
+
+_METADATA_PATH = Path(__file__).resolve().parent.parent / "rawdata" / "metadata.json"
+
+
+def load_metadata() -> dict[str, dict]:
+    if not _METADATA_PATH.exists():
+        logger.error("rawdata/metadata.json 없음. scripts/fetch_metadata.py 먼저 실행.")
+        sys.exit(1)
+    return json.loads(_METADATA_PATH.read_text(encoding="utf-8"))
+
+
+def collect_candidate_videos(
+    metadata: dict[str, dict],
+    channel_ids: set[str],
+    max_age_days: int,
+    existing_ids: set[str],
+) -> list[dict]:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    out: list[dict] = []
+    for vid, meta in metadata.items():
+        if meta.get("channel_id") not in channel_ids:
+            continue
+        if (meta.get("published_at") or "") < cutoff:
+            continue
+        if vid in existing_ids:
+            continue
+        out.append({
+            "video_id": vid,
+            "title": meta.get("title", ""),
+            "description": meta.get("description", ""),
+            "thumbnail_url": meta.get("thumbnail_url"),
+            "published_at": meta.get("published_at"),
+            "channel_id": meta.get("channel_id"),
+        })
+    out.sort(key=lambda v: v["published_at"] or "", reverse=True)
+    return out
 
 def _region_from_address(address: str | None) -> str | None:
     if not address:
@@ -269,52 +307,22 @@ def main():
         )
         return
 
-    # 1. Fetch new videos (with publishedAfter)
-    for channel in CHANNELS:
-        logger.info("Fetching: %s", channel["name"])
-        try:
-            params = dict(
-                part="snippet", channelId=channel["id"],
-                maxResults=MAX_PER_CHANNEL, order="date", type="video",
-            )
-            age = channel.get("max_age_days", DEFAULT_MAX_AGE_DAYS)
-            if age:
-                cutoff = datetime.now(timezone.utc) - timedelta(days=age)
-                params["publishedAfter"] = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
-            response = youtube.search().list(**params).execute()
-            totals["youtube_units"] += 100
-
-            for item in response.get("items", []):
-                vid = item["id"]["videoId"]
-                if vid not in existing_ids:
-                    video = {
-                        "video_id": vid,
-                        "title": item["snippet"]["title"],
-                        "thumbnail_url": item["snippet"]["thumbnails"].get("medium", {}).get("url"),
-                        "published_at": item["snippet"]["publishedAt"],
-                        "channel_id": channel["id"],
-                    }
-                    insert_to_queue(db_client, vid, channel["id"])
-                    all_new_videos.append(video)
-                    existing_ids.add(vid)
-
-            logger.info("  %d new videos", sum(1 for v in all_new_videos if v["channel_id"] == channel["id"]))
-        except Exception as e:
-            logger.error("YouTube API error for %s: %s", channel["name"], e)
-
-    # 1b. Fetch description for all new videos in bulk (snippet)
+    # 1. rawdata/metadata.json 기반 수집 대상 선별
+    metadata = load_metadata()
+    channel_id_set = {c["id"] for c in CHANNELS}
+    all_new_videos = collect_candidate_videos(
+        metadata=metadata,
+        channel_ids=channel_id_set,
+        max_age_days=DEFAULT_MAX_AGE_DAYS,
+        existing_ids=existing_ids,
+    )
+    logger.info(
+        "수집 대상: %d영상 (metadata %d개 중 최근 %d일)",
+        len(all_new_videos), len(metadata), DEFAULT_MAX_AGE_DAYS,
+    )
     if all_new_videos:
-        try:
-            vids = [v["video_id"] for v in all_new_videos]
-            desc_map = {}
-            for i in range(0, len(vids), 50):
-                resp = youtube.videos().list(part="snippet", id=",".join(vids[i:i+50])).execute()
-                for item in resp.get("items", []):
-                    desc_map[item["id"]] = item["snippet"].get("description", "")
-            for v in all_new_videos:
-                v["description"] = desc_map.get(v["video_id"], "")
-        except Exception as e:
-            logger.warning("videos.list 실패, description 빈 상태로 진행: %s", e)
+        for v in all_new_videos:
+            insert_to_queue(db_client, v["video_id"], v["channel_id"])
 
     # 2. Process videos (with cost-limit)
     for i, video in enumerate(all_new_videos):

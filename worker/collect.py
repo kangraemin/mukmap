@@ -9,6 +9,7 @@ Usage:
 """
 
 import argparse
+import json
 import logging
 import os
 import random
@@ -33,14 +34,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Channels to collect from. per-channel `max_age_days`로 override 가능.
+# Channels to collect from. rawdata/transcripts/{slug}와 매칭.
 CHANNELS = [
-    {"id": "UCehQiKylaW68H_OtRS36wGQ", "name": "둘시네아"},
-    {"id": "UCyn-K7rZLXjGl7VXGweIlcA", "name": "백종원"},
-    {"id": "UCl23-Cci_SMqyGXE1T_LYUg", "name": "성시경 먹을텐데"},
-    {"id": "UCfpaSruWW3S4dibonKXENjA", "name": "쯔양"},
-    {"id": "UCA6KBBX8cLwYZNepxlE_7SA", "name": "히밥"},
+    {"id": "UCehQiKylaW68H_OtRS36wGQ", "slug": "dulcinea_studio", "name": "둘시네아"},
+    {"id": "UCfpaSruWW3S4dibonKXENjA", "slug": "tzuyang", "name": "쯔양"},
+    {"id": "UCzgpOnor-MzT-1iflZil2GQ", "slug": "jaesunrang", "name": "재선랑"},
+    {"id": "UC-OAmhcFgX9t_OF6fQ-4B1w", "slug": "kimjjamppong", "name": "김쨈뽕"},
+    {"id": "UC-x55HF1-IilhxZOzwJm7JA", "slug": "kimsawon", "name": "김사원"},
 ]
+
+_METADATA_PATH = Path(__file__).resolve().parent.parent / "rawdata" / "metadata.json"
 
 # Claude Haiku pricing (per million tokens)
 HAIKU_INPUT_PRICE = 0.80   # $/M input tokens
@@ -90,47 +93,51 @@ def get_youtube_service():
     return build("youtube", "v3", developerKey=os.environ["YOUTUBE_API_KEY"])
 
 
-def fetch_channel_videos(
-    youtube, channel_id: str, max_results: int = 10,
-    max_age_days: int | None = None,
-) -> list[dict]:
-    """Fetch recent videos from a YouTube channel. max_age_days로 publishedAfter 제한."""
-    try:
-        params = dict(
-            part="snippet", channelId=channel_id,
-            maxResults=max_results, order="date", type="video",
+def load_metadata() -> dict[str, dict]:
+    """rawdata/metadata.json 로드. 없으면 에러."""
+    if not _METADATA_PATH.exists():
+        logger.error(
+            "rawdata/metadata.json 없음. 먼저 `python scripts/fetch_metadata.py`를 실행하세요."
         )
-        if max_age_days:
-            cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
-            params["publishedAfter"] = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
-        response = youtube.search().list(**params).execute()
+        sys.exit(1)
+    return json.loads(_METADATA_PATH.read_text(encoding="utf-8"))
 
-        video_ids = [item["id"]["videoId"] for item in response.get("items", [])]
-        if not video_ids:
-            return []
 
-        details_resp = youtube.videos().list(
-            part="snippet", id=",".join(video_ids),
-        ).execute()
-        details_map = {}
-        for item in details_resp.get("items", []):
-            details_map[item["id"]] = item["snippet"].get("description", "")
+def collect_candidate_videos(
+    metadata: dict[str, dict],
+    channel_ids: set[str],
+    max_age_days: int,
+    existing_ids: set[str],
+    reprocess: bool,
+) -> list[dict]:
+    """metadata.json에서 조건 맞는 영상만 선별.
 
-        videos = []
-        for item in response.get("items", []):
-            vid = item["id"]["videoId"]
-            videos.append({
-                "video_id": vid,
-                "title": item["snippet"]["title"],
-                "description": details_map.get(vid, ""),
-                "thumbnail_url": item["snippet"]["thumbnails"].get("medium", {}).get("url"),
-                "published_at": item["snippet"]["publishedAt"],
-                "channel_id": channel_id,
-            })
-        return videos
-    except Exception as e:
-        logger.error("YouTube API error for channel %s: %s", channel_id, e)
-        return []
+    - channel_id가 수집 대상 채널에 속하고
+    - published_at이 최근 max_age_days 이내이고
+    - reprocess가 아니면 processing_queue에 없는 것만
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    out: list[dict] = []
+    for vid, meta in metadata.items():
+        if meta.get("channel_id") not in channel_ids:
+            continue
+        if (meta.get("published_at") or "") < cutoff:
+            continue
+        if not reprocess and vid in existing_ids:
+            continue
+        out.append({
+            "video_id": vid,
+            "title": meta.get("title", ""),
+            "description": meta.get("description", ""),
+            "thumbnail_url": meta.get("thumbnail_url"),
+            "published_at": meta.get("published_at"),
+            "channel_id": meta.get("channel_id"),
+        })
+    # 최신 영상부터 처리
+    out.sort(key=lambda v: v["published_at"] or "", reverse=True)
+    return out
 
 
 def process_video(
@@ -328,6 +335,10 @@ def main():
         "--cost-limit", type=float, default=DEFAULT_COST_LIMIT_USD,
         help=f"누적 Haiku 비용 상한 USD (기본 {DEFAULT_COST_LIMIT_USD}). 초과 시 AI 호출 중단",
     )
+    parser.add_argument(
+        "--max-age-days", type=int, default=DEFAULT_MAX_AGE_DAYS,
+        help=f"published_at 기준 최근 N일 이내만 처리 (기본 {DEFAULT_MAX_AGE_DAYS})",
+    )
     args = parser.parse_args()
 
     load_env()
@@ -397,7 +408,7 @@ def main():
         _print_summary(total_stats, aborted=False, cost_limit=args.cost_limit)
         return
 
-    # 1. Fetch new videos
+    # 1. rawdata/metadata.json 기반 수집 대상 선별
     channels = CHANNELS
     if args.channel:
         channels = [c for c in CHANNELS if args.channel.lower() in c["name"].lower()]
@@ -406,28 +417,23 @@ def main():
                          args.channel, ", ".join(c["name"] for c in CHANNELS))
             sys.exit(1)
 
-    all_new_videos: list[dict] = []
-    for channel in channels:
-        age = channel.get("max_age_days", DEFAULT_MAX_AGE_DAYS)
-        logger.info("Fetching: %s (최근 %s일)", channel["name"], age)
-        videos = fetch_channel_videos(
-            youtube, channel["id"], args.max_per_channel,
-            max_age_days=age,
-        )
-        total_stats["youtube_units"] += 100
+    metadata = load_metadata()
+    channel_id_set = {c["id"] for c in channels}
+    all_new_videos = collect_candidate_videos(
+        metadata=metadata,
+        channel_ids=channel_id_set,
+        max_age_days=args.max_age_days,
+        existing_ids=existing_ids,
+        reprocess=args.reprocess,
+    )
+    logger.info(
+        "수집 대상: %d영상 (metadata %d개 중 최근 %d일, 채널 %d개 필터)",
+        len(all_new_videos), len(metadata), args.max_age_days, len(channels),
+    )
 
-        if args.reprocess:
-            new_videos = videos
-            logger.info("  %d videos to reprocess (of %d)", len(new_videos), len(videos))
-        else:
-            new_videos = [v for v in videos if v["video_id"] not in existing_ids]
-            logger.info("  %d new videos (of %d)", len(new_videos), len(videos))
-
-        if not args.dry_run and not args.reprocess and new_videos:
-            for v in new_videos:
-                insert_to_queue(db_client, v["video_id"], v["channel_id"])
-
-        all_new_videos.extend(new_videos)
+    if not args.dry_run and not args.reprocess and all_new_videos:
+        for v in all_new_videos:
+            insert_to_queue(db_client, v["video_id"], v["channel_id"])
 
     # 2. Process videos (with cost-limit check)
     for i, video in enumerate(all_new_videos):
