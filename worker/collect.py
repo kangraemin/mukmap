@@ -20,7 +20,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from googleapiclient.discovery import build
 
-from transcript_fetcher import fetch_transcript, setup_browser, teardown_browser
+from transcript_fetcher import fetch_transcript
 from restaurant_extractor import extract_restaurants
 from naver_search import search_restaurant
 from description_parser import parse_description_places
@@ -326,7 +326,6 @@ def main():
     args = parser.parse_args()
 
     load_env()
-    setup_browser()
 
     required = ["YOUTUBE_API_KEY", "ANTHROPIC_API_KEY", "NAVER_SEARCH_CLIENT_ID", "NAVER_SEARCH_CLIENT_SECRET"]
     if not args.dry_run:
@@ -390,7 +389,6 @@ def main():
         for k in ("restaurants_found", "with_coords", "needs_review",
                   "desc_parsed", "skipped", "input_tokens", "output_tokens", "naver_calls"):
             total_stats[k] += stats.get(k, 0)
-        teardown_browser()
         _print_summary(total_stats, aborted=False, cost_limit=args.cost_limit)
         return
 
@@ -450,7 +448,6 @@ def main():
             logger.debug("Sleeping %.1fs", delay)
             time.sleep(delay)
 
-    teardown_browser()
     _print_summary(total_stats, aborted=aborted, cost_limit=args.cost_limit)
 
     if args.dry_run:

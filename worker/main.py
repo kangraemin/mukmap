@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from googleapiclient.discovery import build
 
-from transcript_fetcher import fetch_transcript, setup_browser, teardown_browser
+from transcript_fetcher import fetch_transcript
 from restaurant_extractor import extract_restaurants
 from naver_search import search_restaurant
 from description_parser import parse_description_places
@@ -209,8 +209,6 @@ def main():
         logger.error("Missing env vars: %s", ", ".join(missing))
         sys.exit(1)
 
-    setup_browser()
-
     db_client = get_client()
     youtube = build("youtube", "v3", developerKey=os.environ["YOUTUBE_API_KEY"])
     existing_ids = get_existing_video_ids(db_client)
@@ -264,7 +262,6 @@ def main():
             f"(description 파싱: {totals['desc_parsed']}, 스킵: {totals['skipped']})\n"
             f"Claude Haiku: ${input_cost + output_cost:.3f}"
         )
-        teardown_browser()
         return
 
     # 1. Fetch new videos (with publishedAfter)
@@ -365,8 +362,6 @@ def main():
     print(f"YouTube API: {totals['youtube_units']} units")
     if totals["skipped"]:
         print(f"→ 스킵된 가게 확인: rawdata/skipped/")
-
-    teardown_browser()
 
 
 if __name__ == "__main__":

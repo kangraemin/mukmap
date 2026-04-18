@@ -1,94 +1,41 @@
-import json
-import logging
-import os
-import subprocess
-import tempfile
+"""로컬 자막 로더.
 
-import requests
+rawdata/transcripts/*/{video_id}.txt 를 읽어 segments로 파싱한다.
+파일 없으면 None 반환 — 파이프라인은 description(naver.me)으로 fallback.
+"""
+import logging
+import re
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+_TS_LINE = re.compile(r"^(\d+):(\d+)\s*(.*)$")
+_RAWDATA_DIR = Path(__file__).resolve().parent.parent / "rawdata" / "transcripts"
+
 
 def fetch_transcript(video_id: str) -> list[dict] | None:
-    """Fetch transcript for a YouTube video via Groq Whisper.
-
-    yt-dlp로 오디오 다운로드 → Groq Whisper Turbo로 음성인식.
-
-    Returns list of {"text": str, "start": float} or None if unavailable.
-    """
-    groq_key = os.environ.get("GROQ_API_KEY")
-    if not groq_key:
-        logger.warning("GROQ_API_KEY 없음, 자막 추출 불가")
+    """rawdata/transcripts/*/{video_id}.txt → [{"start": float, "text": str}]."""
+    matches = list(_RAWDATA_DIR.glob(f"*/{video_id}.txt"))
+    if not matches:
+        logger.info("로컬 자막 없음: %s", video_id)
         return None
-
-    url = f"https://www.youtube.com/watch?v={video_id}"
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        audio_path = os.path.join(tmpdir, "audio.mp3")
-
-        cmd = [
-            "yt-dlp", "-x",
-            "--audio-format", "mp3",
-            "--audio-quality", "5",
-            "-o", os.path.join(tmpdir, "audio.%(ext)s"),
-            url,
-        ]
-
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            if result.returncode != 0:
-                logger.warning("yt-dlp 오디오 다운 실패: %s\nstderr: %s", video_id, result.stderr[:500])
-        except subprocess.TimeoutExpired:
-            logger.warning("오디오 다운로드 타임아웃: %s", video_id)
-            return None
-
-        if not os.path.exists(audio_path):
-            logger.warning("오디오 파일 없음: %s", video_id)
-            return None
-
-        try:
-            with open(audio_path, "rb") as f:
-                resp = requests.post(
-                    "https://api.groq.com/openai/v1/audio/transcriptions",
-                    headers={"Authorization": f"Bearer {groq_key}"},
-                    files={"file": ("audio.mp3", f, "audio/mpeg")},
-                    data={
-                        "model": "whisper-large-v3-turbo",
-                        "language": "ko",
-                        "response_format": "verbose_json",
-                    },
-                    timeout=120,
-                )
-        except requests.RequestException as e:
-            logger.warning("Groq API 요청 실패: %s", e)
-            return None
-
-        if resp.status_code != 200:
-            logger.warning("Groq Whisper 실패 (%s): %s", resp.status_code, resp.text[:200])
-            return None
-
-        data = resp.json()
-        segments = []
-        for seg in data.get("segments", []):
-            text = seg.get("text", "").strip()
-            if text:
-                segments.append({"text": text, "start": seg.get("start", 0.0)})
-
-        if segments:
-            logger.info("Groq Whisper 성공: %s (%d segments)", video_id, len(segments))
-            return segments
-
-    logger.warning("No transcript for %s", video_id)
-    return None
-
-
-def setup_browser():
-    pass
-
-
-def teardown_browser():
-    pass
-
-
-def get_browser():
-    return None
+    path = matches[0]
+    lines = path.read_text(encoding="utf-8").splitlines()
+    segs: list[dict] = []
+    for line in lines[2:]:  # 제목/URL 스킵
+        s = line.strip()
+        if not s:
+            continue
+        m = _TS_LINE.match(s)
+        if not m:
+            if segs:
+                segs[-1]["text"] += " " + s
+            continue
+        mm, ss, rest = m.group(1), m.group(2), m.group(3)
+        segs.append({"start": float(int(mm) * 60 + int(ss)), "text": rest.strip()})
+    if segs:
+        logger.info(
+            "로컬 자막 사용: %s (%d segments, %s)",
+            video_id, len(segs), path.name,
+        )
+    return segs if segs else None
