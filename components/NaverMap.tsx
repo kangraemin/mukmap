@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { MARKER_COLORS, DEFAULT_CENTER, DEFAULT_ZOOM } from '@/lib/constants'
+import { getChannelHue, channelColor, DEFAULT_CENTER, DEFAULT_ZOOM } from '@/lib/constants'
 import type { RestaurantWithVideos } from '@/lib/types'
 
 interface Bounds {
@@ -103,9 +103,9 @@ export default function NaverMap({
 
   // Channel color map
   const getChannelColor = useCallback((channelId: string) => {
-    if (selectedChannels.length === 0) return MARKER_COLORS[0]
     const idx = selectedChannels.indexOf(channelId)
-    return MARKER_COLORS[idx >= 0 ? idx % MARKER_COLORS.length : 0]
+    const hue = getChannelHue(channelId, idx >= 0 ? idx : 0)
+    return channelColor(hue)
   }, [selectedChannels])
 
   // Helper to build infowindow content
@@ -118,11 +118,11 @@ export default function NaverMap({
 
     const ratingBadgeStyle = (rating: string | null) => {
       switch (rating) {
-        case '강력추천': return 'background:#a63300;color:white;'
-        case '추천': return 'background:#ff7949;color:white;'
-        case '보통': return 'background:#ffdad7;color:#4e211e;'
-        case '비추': return 'background:#b31b25;color:white;'
-        default: return 'background:#ffdad7;color:#4e211e;'
+        case '강력추천': return 'background:oklch(0.68 0.18 28);color:white;'
+        case '추천': return 'background:oklch(0.94 0.04 60);color:oklch(0.42 0.12 35);'
+        case '보통': return 'background:#F1EDE3;color:#6B5F4A;'
+        case '비추': return 'background:#EDE8DC;color:#9A8E78;'
+        default: return 'background:#EDE8DC;color:#9A8E78;'
       }
     }
 
@@ -130,22 +130,23 @@ export default function NaverMap({
       const ytUrl = `https://youtube.com/watch?v=${v.video_id}${v.timestamp_seconds ? `&t=${v.timestamp_seconds}` : ''}`
       return `<div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
         ${v.channel_thumbnail ? `<img src="${v.channel_thumbnail}" style="width:20px;height:20px;border-radius:50%;" />` : ''}
-        <span style="font-size:11px;color:#834c48;">${v.channel_name || ''}</span>
-        <span style="font-size:10px;padding:2px 6px;border-radius:4px;${ratingBadgeStyle(v.rating)}">${v.rating || ''}</span>
-        <a href="${ytUrl}" target="_blank" style="font-size:10px;color:#ff7949;text-decoration:underline;background:transparent;">영상보기</a>
+        <span style="font-size:11px;color:#5A5142;">${v.channel_name || ''}</span>
+        <span style="font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;${ratingBadgeStyle(v.rating)}">${v.rating || ''}</span>
+        <a href="${ytUrl}" target="_blank" style="font-size:10px;color:oklch(0.68 0.18 28);text-decoration:underline;background:transparent;">영상보기</a>
       </div>`
     }).join('')
 
-    const naverMapUrl = `https://map.naver.com/v5/search/${encodeURIComponent((restaurant.name || '') + ' ' + (restaurant.address || ''))}`
+    const naverMapUrl = restaurant.naver_place_id
+      ? `https://map.naver.com/v5/entry/place/${restaurant.naver_place_id}`
+      : `https://map.naver.com/v5/search/${encodeURIComponent(restaurant.name || '')}`
 
-    return `<div style="max-width:280px;padding:16px;font-family:'Plus Jakarta Sans','Pretendard Variable',sans-serif;background:#ffffff;border-radius:12px;box-shadow:0 4px 24px rgba(78,33,30,0.12);">
+    return `<div style="max-width:280px;padding:16px;font-family:'Pretendard Variable',-apple-system,sans-serif;background:#FAF7F0;border-radius:12px;border:1px solid #EDE8DC;box-shadow:0 4px 24px rgba(0,0,0,0.1);">
       ${thumbnailHtml}
-      <h3 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:15px;font-weight:700;color:#4e211e;margin:0;">${restaurant.name}</h3>
-      <p style="font-size:12px;color:#834c48;margin:4px 0 8px;">${restaurant.category}${restaurant.region ? ' · ' + restaurant.region : ''}</p>
+      <h3 style="font-size:15px;font-weight:800;color:#221E15;margin:0;letter-spacing:-0.02em;">${restaurant.name}</h3>
+      <p style="font-size:12px;color:#9A8E78;margin:4px 0 8px;">${restaurant.category}${restaurant.region ? ' · ' + restaurant.region : ''}</p>
       ${videoItems}
       <div style="display:flex;gap:6px;margin-top:12px;">
-        <a href="/restaurant/${restaurant.id}" style="font-size:11px;padding:6px 12px;background:linear-gradient(135deg,#a63300,#ff7949);color:white;border-radius:8px;text-decoration:none;font-weight:600;">상세보기</a>
-        <a href="${naverMapUrl}" target="_blank" style="font-size:11px;padding:6px 12px;background:#ffedeb;color:#a63300;border-radius:8px;text-decoration:none;font-weight:600;">네이버지도</a>
+        <a href="${naverMapUrl}" target="_blank" style="font-size:11px;padding:6px 12px;background:oklch(0.68 0.18 28);color:white;border-radius:8px;text-decoration:none;font-weight:700;">길찾기</a>
       </div>
     </div>`
   }, [])
@@ -209,7 +210,7 @@ export default function NaverMap({
       if (group.length === 1) {
         const restaurant = group[0]
         const mainVideo = restaurant.videos?.[0]
-        const color = mainVideo ? getChannelColor(mainVideo.channel_id) : MARKER_COLORS[0]
+        const color = mainVideo ? getChannelColor(mainVideo.channel_id) : channelColor(18)
 
         const marker = new naver.maps.Marker({
           position: new naver.maps.LatLng(restaurant.lat!, restaurant.lng!),
@@ -241,7 +242,7 @@ export default function NaverMap({
           position: new naver.maps.LatLng(avgLat, avgLng),
           map,
           icon: {
-            content: `<div style="cursor:pointer;width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#FF6B35,#FF8C5A);color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;box-shadow:0 3px 12px rgba(255,107,53,0.4);border:2.5px solid white;">${count}</div>`,
+            content: `<div style="cursor:pointer;width:44px;height:44px;border-radius:50%;background:oklch(0.68 0.18 28);color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;font-family:'Pretendard Variable',sans-serif;box-shadow:0 3px 12px rgba(0,0,0,0.2);border:2.5px solid white;">${count}</div>`,
             size: new naver.maps.Size(44, 44),
             anchor: new naver.maps.Point(22, 22),
           },
@@ -309,7 +310,7 @@ export default function NaverMap({
   return (
     <div ref={mapElRef} className="h-full w-full">
       {!sdkLoaded && (
-        <div className="flex h-full items-center justify-center bg-surface-low text-sm text-on-surface-variant">
+        <div className="flex h-full items-center justify-center bg-surface-low text-sm text-ink-muted">
           지도를 불러오는 중...
         </div>
       )}
