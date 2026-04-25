@@ -44,6 +44,7 @@ export default function SearchBar({
   const [activeIndex, setActiveIndex] = useState(-1)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const searchCacheRef = useRef<Map<string, ResultItem[]>>(new Map())
 
   const search = useCallback(async (q: string) => {
     if (q.length < 2) {
@@ -51,6 +52,8 @@ export default function SearchBar({
       setOpen(false)
       return
     }
+    const cached = searchCacheRef.current.get(q)
+    if (cached) { setResults(cached); setOpen(cached.length > 0); setActiveIndex(-1); return }
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
       if (!res.ok) { setResults([]); return }
@@ -60,6 +63,8 @@ export default function SearchBar({
         ...data.restaurants.map((r) => ({ type: 'restaurant' as const, id: r.id, label: r.name, sub: `${r.category} · ${r.address || ''}` })),
         ...data.regions.map((r) => ({ type: 'region' as const, id: r, label: r, sub: '지역' })),
       ]
+      if (searchCacheRef.current.size > 100) searchCacheRef.current.clear()
+      searchCacheRef.current.set(q, items)
       setResults(items)
       setOpen(items.length > 0)
       setActiveIndex(-1)

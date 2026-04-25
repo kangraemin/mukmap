@@ -178,21 +178,6 @@ export default function Home() {
     setCategories([])
   }, [])
 
-  // Mobile sheet snap effect on mount
-  useEffect(() => {
-    const vh = window.innerHeight
-    snapOffsets.current = {
-      full: 0,
-      half: vh * 0.9 - vh * 0.5,
-      collapsed: vh * 0.9 - 120,
-    }
-    currentSnapOffset.current = snapOffsets.current.collapsed
-    if (sheetRef.current) {
-      sheetRef.current.style.transition = 'none'
-      sheetRef.current.style.transform = `translateY(${snapOffsets.current.collapsed}px)`
-    }
-  }, [])
-
   const goToState = useCallback((state: SheetState) => {
     const offset = snapOffsets.current[state]
     currentSnapOffset.current = offset
@@ -203,12 +188,58 @@ export default function Home() {
     setSheetState(state)
   }, [])
 
-  const snapBack = useCallback(() => {
-    if (sheetRef.current) {
-      sheetRef.current.style.transition = 'transform 300ms ease-out'
-      sheetRef.current.style.transform = `translateY(${currentSnapOffset.current}px)`
+  // 초기화 + native touch listeners (touchmove: passive:false → e.preventDefault() 가능)
+  useEffect(() => {
+    const sheet = sheetRef.current
+    if (!sheet) return
+
+    const vh = window.innerHeight
+    snapOffsets.current = { full: 0, half: vh * 0.9 - vh * 0.5, collapsed: vh * 0.9 - 120 }
+    currentSnapOffset.current = snapOffsets.current.collapsed
+    sheet.style.transition = 'none'
+    sheet.style.transform = `translateY(${snapOffsets.current.collapsed}px)`
+
+    const onStart = (e: TouchEvent) => {
+      touchStartY.current = e.touches[0].clientY
+      isDragging.current = true
+      sheet.style.transition = 'none'
     }
-  }, [])
+
+    const onMove = (e: TouchEvent) => {
+      if (!isDragging.current) return
+      const scrollTop = contentRef.current?.scrollTop ?? 0
+      if (scrollTop > 0) return
+      e.preventDefault()
+      const deltaY = e.touches[0].clientY - touchStartY.current
+      const newOffset = Math.max(0, Math.min(currentSnapOffset.current + deltaY, snapOffsets.current.collapsed))
+      sheet.style.transform = `translateY(${newOffset}px)`
+    }
+
+    const onEnd = () => {
+      if (!isDragging.current) return
+      isDragging.current = false
+      const match = sheet.style.transform.match(/translateY\((-?[\d.]+)px\)/)
+      const currentY = match ? parseFloat(match[1]) : currentSnapOffset.current
+      const offsets = snapOffsets.current
+      const nearest = ([
+        ['full', offsets.full],
+        ['half', offsets.half],
+        ['collapsed', offsets.collapsed],
+      ] as [SheetState, number][])
+        .sort((a, b) => Math.abs(currentY - a[1]) - Math.abs(currentY - b[1]))[0][0]
+      goToState(nearest)
+    }
+
+    sheet.addEventListener('touchstart', onStart, { passive: true })
+    sheet.addEventListener('touchmove', onMove, { passive: false })
+    sheet.addEventListener('touchend', onEnd, { passive: true })
+
+    return () => {
+      sheet.removeEventListener('touchstart', onStart)
+      sheet.removeEventListener('touchmove', onMove)
+      sheet.removeEventListener('touchend', onEnd)
+    }
+  }, [goToState])
 
   const handleMarkerClick = useCallback((id: number) => {
     setFocusedRestaurantId(id)
@@ -232,46 +263,6 @@ export default function Home() {
   const handleSelectRegion = useCallback((name: string) => {
     setRegion(name)
   }, [])
-
-  // Mobile sheet touch handlers
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartY.current = e.touches[0].clientY
-    isDragging.current = true
-    if (sheetRef.current) sheetRef.current.style.transition = 'none'
-  }
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isDragging.current || !sheetRef.current) return
-    const deltaY = e.touches[0].clientY - touchStartY.current
-    const maxOffset = snapOffsets.current.collapsed
-    const newOffset = Math.max(0, Math.min(currentSnapOffset.current + deltaY, maxOffset))
-    sheetRef.current.style.transform = `translateY(${newOffset}px)`
-  }
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    isDragging.current = false
-    const diff = touchStartY.current - e.changedTouches[0].clientY
-    if (diff > 50) {
-      setSheetState((s) => {
-        const next: SheetState = s === 'collapsed' ? 'half' : s === 'half' ? 'full' : s
-        if (next !== s) { goToState(next) } else { snapBack() }
-        return next
-      })
-    } else if (diff < -50) {
-      const scrollTop = contentRef.current?.scrollTop ?? 0
-      if (scrollTop === 0) {
-        setSheetState((s) => {
-          const next: SheetState = s === 'full' ? 'half' : s === 'half' ? 'collapsed' : s
-          if (next !== s) { goToState(next) } else { snapBack() }
-          return next
-        })
-      } else {
-        snapBack()
-      }
-    } else {
-      snapBack()
-    }
-  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-cream">
@@ -401,16 +392,10 @@ export default function Home() {
           ref={sheetRef}
           className="fixed bottom-0 left-0 right-0 z-30 rounded-t-2xl bg-cream shadow-[0_-4px_20px_rgba(0,0,0,0.1)] lg:hidden h-[90vh]"
           data-testid="bottom-sheet"
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
+          style={{ transform: 'translateY(calc(90vh - 120px))' }}
         >
           {/* Handle — 스와이프 전용 */}
-          <div
-            className="flex justify-center py-3 touch-none cursor-grab"
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
-          >
+          <div className="flex justify-center py-3 touch-none cursor-grab">
             <div className="h-1 w-10 rounded-full bg-border" />
           </div>
 
