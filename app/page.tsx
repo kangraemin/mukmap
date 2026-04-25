@@ -64,6 +64,9 @@ export default function Home() {
   const [sortBy, setSortBy] = useState<'rating' | 'latest'>('rating')
   const [mobileView, setMobileView] = useState<'list' | 'detail'>('list')
 
+  // Client-side cache for restaurant API results
+  const restaurantCache = useRef<Map<string, RestaurantWithVideos[]>>(new Map())
+
   // Mobile bottom sheet
   const [sheetState, setSheetState] = useState<SheetState>('collapsed')
   const touchStartY = useRef(0)
@@ -102,9 +105,19 @@ export default function Home() {
     setOnboarded(true)
   }, [])
 
-  // Fetch restaurants when bounds/filters change
+  // Fetch restaurants when bounds/filters change (with client-side cache)
   useEffect(() => {
     if (!bounds) return
+
+    const boundsKey = [bounds.sw_lat, bounds.sw_lng, bounds.ne_lat, bounds.ne_lng]
+      .map(n => n.toFixed(3)).join(',')
+    const cacheKey = `${boundsKey}|${[...selectedChannels].sort().join(',')}|${region}|${[...categories].sort().join(',')}`
+
+    const cached = restaurantCache.current.get(cacheKey)
+    if (cached) {
+      setRestaurants(cached)
+      return
+    }
 
     const params = new URLSearchParams({
       sw_lat: String(bounds.sw_lat),
@@ -125,7 +138,9 @@ export default function Home() {
       .then((r) => r.json())
       .then((data) => {
         const newList = data.restaurants || []
-        setRestaurants((prev) => {
+        if (restaurantCache.current.size > 50) restaurantCache.current.clear()
+        restaurantCache.current.set(cacheKey, newList)
+        setRestaurants(prev => {
           if (prev.length === newList.length && prev.length > 0 && prev[0]?.id === newList[0]?.id) return prev
           return newList
         })
