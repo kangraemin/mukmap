@@ -8,8 +8,9 @@ import SearchBar from '@/components/SearchBar'
 import RestaurantCard from '@/components/RestaurantCard'
 import EmptyState from '@/components/EmptyState'
 import DetailPanel from '@/components/DetailPanel'
+import Onboarding from '@/components/Onboarding'
 import Toast from '@/components/Toast'
-import type { RestaurantWithVideos } from '@/lib/types'
+import type { Channel, RestaurantWithVideos } from '@/lib/types'
 
 interface Bounds {
   sw_lat: number
@@ -19,6 +20,22 @@ interface Bounds {
 }
 
 type SheetState = 'collapsed' | 'half' | 'full'
+
+const RATING_WEIGHT: Record<string, number> = {
+  '강력추천': 5, '추천': 4, '보통': 3, '비추': 2, '언급없음': 1,
+}
+
+function ratingScore(r: RestaurantWithVideos) {
+  return r.videos.reduce((s, v) => s + (RATING_WEIGHT[v.rating ?? ''] ?? 0), 0)
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" fill="none">
+      <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
 
 function PinIcon() {
   return (
@@ -30,6 +47,11 @@ function PinIcon() {
 }
 
 export default function Home() {
+  const [onboarded, setOnboarded] = useState(() =>
+    typeof window !== 'undefined' && !!localStorage.getItem('mukmap_onboarded')
+  )
+  const [allChannels, setAllChannels] = useState<Channel[]>([])
+
   const [focusedRestaurantId, setFocusedRestaurantId] = useState<number | null>(null)
   const [bounds, setBounds] = useState<Bounds | null>(null)
   const [restaurants, setRestaurants] = useState<RestaurantWithVideos[]>([])
@@ -39,6 +61,8 @@ export default function Home() {
   const [toast, setToast] = useState('')
   const [fitToMarkers, setFitToMarkers] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [sortBy, setSortBy] = useState<'rating' | 'latest'>('rating')
+  const [mobileView, setMobileView] = useState<'list' | 'detail'>('list')
 
   // Mobile bottom sheet
   const [sheetState, setSheetState] = useState<SheetState>('collapsed')
@@ -50,6 +74,33 @@ export default function Home() {
     () => restaurants.find((r) => r.id === focusedRestaurantId) ?? null,
     [restaurants, focusedRestaurantId]
   )
+
+  // Sorted restaurants
+  const sorted = useMemo(() => {
+    if (sortBy === 'rating') {
+      return [...restaurants].sort((a, b) => ratingScore(b) - ratingScore(a))
+    }
+    return [...restaurants].sort((a, b) => {
+      const ta = new Date(a.videos[0]?.published_at ?? 0).getTime()
+      const tb = new Date(b.videos[0]?.published_at ?? 0).getTime()
+      return tb - ta
+    })
+  }, [restaurants, sortBy])
+
+  // Fetch all channels for onboarding
+  useEffect(() => {
+    if (onboarded) return
+    fetch('/api/channels')
+      .then((r) => r.json())
+      .then((data) => setAllChannels(data.channels || []))
+      .catch(() => {})
+  }, [onboarded])
+
+  const handleOnboardingComplete = useCallback((ids: string[]) => {
+    localStorage.setItem('mukmap_onboarded', '1')
+    if (ids.length > 0) setSelectedChannels(ids)
+    setOnboarded(true)
+  }, [])
 
   // Fetch restaurants when bounds/filters change
   useEffect(() => {
@@ -111,6 +162,8 @@ export default function Home() {
 
   const handleMarkerClick = useCallback((id: number) => {
     setFocusedRestaurantId(id)
+    setMobileView('detail')
+    setSheetState('full')
   }, [])
 
   const handleSelectRestaurant = useCallback((id: number) => {
@@ -198,21 +251,30 @@ export default function Home() {
 
         <div className="border-t border-border" />
 
-        {/* Count */}
-        <div className="flex items-baseline gap-1 px-4 py-3">
-          <span className="text-[17px] font-extrabold tracking-tight text-ink">
-            {loading ? '...' : restaurants.length}
-          </span>
-          <span className="text-xs text-ink-tertiary">곳의 맛집</span>
+        {/* Count + Sort toggle */}
+        <div className="flex items-baseline justify-between px-4 py-3">
+          <div>
+            <span className="text-[17px] font-extrabold tracking-tight text-ink">
+              {loading ? '...' : restaurants.length}
+            </span>
+            <span className="ml-1 text-[12px] text-ink-tertiary">곳의 맛집</span>
+          </div>
+          <button
+            onClick={() => setSortBy(s => s === 'rating' ? 'latest' : 'rating')}
+            className="flex items-center gap-1 text-[11.5px] text-ink-muted"
+          >
+            {sortBy === 'rating' ? '평점순' : '최신순'}
+            <ChevronDownIcon />
+          </button>
         </div>
 
         {/* Restaurant list */}
         <div className="flex-1 overflow-y-auto px-3 pb-4">
           <div className="space-y-2">
-            {restaurants.length === 0 && !loading && (
+            {sorted.length === 0 && !loading && (
               <EmptyState onReset={handleReset} />
             )}
-            {restaurants.map((r, idx) => (
+            {sorted.map((r, idx) => (
               <RestaurantCard
                 key={r.id}
                 name={r.name}
@@ -224,6 +286,7 @@ export default function Home() {
                 channelThumbnail={r.videos?.[0]?.channel_thumbnail}
                 channelId={r.videos?.[0]?.channel_id}
                 channelIndex={idx}
+                channelThumbnails={r.videos.map(v => v.channel_thumbnail ?? null)}
                 summary={r.videos?.[0]?.summary}
                 isSelected={r.id === focusedRestaurantId}
                 onClick={() => handleMarkerClick(r.id)}
@@ -246,7 +309,7 @@ export default function Home() {
 
         {/* Desktop: slide-in Detail Panel */}
         {focusedRestaurantId && focusedRestaurant && (
-          <div className="absolute inset-y-0 right-0 z-25 w-[380px] animate-slide-in-r shadow-[-8px_0_28px_rgba(0,0,0,0.08)]">
+          <div className="absolute inset-y-0 right-0 z-25 hidden w-[380px] animate-slide-in-r shadow-[-8px_0_28px_rgba(0,0,0,0.08)] lg:block">
             <DetailPanel
               restaurant={focusedRestaurant}
               onClose={() => setFocusedRestaurantId(null)}
@@ -276,60 +339,94 @@ export default function Home() {
           </div>
 
           <div className="overflow-y-auto px-4" style={{ maxHeight: 'calc(100% - 24px)' }}>
-            {/* Channel chips */}
-            <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-              <ChannelChips
-                selectedChannels={selectedChannels}
-                onToggle={handleChannelToggle}
+            {mobileView === 'detail' && focusedRestaurant ? (
+              <DetailPanel
+                restaurant={focusedRestaurant}
+                mobile
+                onClose={() => {
+                  setFocusedRestaurantId(null)
+                  setMobileView('list')
+                  setSheetState('half')
+                }}
               />
-            </div>
+            ) : (
+              <div>
+                {/* Channel chips */}
+                <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+                  <ChannelChips
+                    selectedChannels={selectedChannels}
+                    onToggle={handleChannelToggle}
+                  />
+                </div>
 
-            {/* Category chips */}
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              {['한식','일식','중식','양식','카페/디저트','분식','고기/구이','해산물','기타'].map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => handleCategoryToggle(cat)}
-                  className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all ${
-                    categories.includes(cat)
-                      ? 'border-ink-body bg-ink-body text-white'
-                      : 'border-border bg-white text-ink-section'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
+                {/* Category chips */}
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  {['한식','일식','중식','양식','카페/디저트','분식','고기/구이','해산물','기타'].map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => handleCategoryToggle(cat)}
+                      className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all ${
+                        categories.includes(cat)
+                          ? 'border-ink-body bg-ink-body text-white'
+                          : 'border-border bg-white text-ink-section'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
 
-            {/* Restaurant list */}
-            <p className="mb-2 text-xs text-ink-muted">
-              {loading ? '검색 중...' : `총 ${restaurants.length}곳`}
-            </p>
-            <div className="space-y-2 pb-4">
-              {restaurants.length === 0 && !loading && <EmptyState onReset={handleReset} />}
-              {restaurants.slice(0, 20).map((r, idx) => (
-                <RestaurantCard
-                  key={r.id}
-                  name={r.name}
-                  category={r.category}
-                  region={r.region}
-                  thumbnailUrl={r.videos?.[0]?.thumbnail_url}
-                  rating={r.videos?.[0]?.rating}
-                  channelName={r.videos?.[0]?.channel_name}
-                  channelThumbnail={r.videos?.[0]?.channel_thumbnail}
-                  channelId={r.videos?.[0]?.channel_id}
-                  channelIndex={idx}
-                  summary={r.videos?.[0]?.summary}
-                  isSelected={r.id === focusedRestaurantId}
-                  onClick={() => handleMarkerClick(r.id)}
-                />
-              ))}
-            </div>
+                {/* Count + Sort toggle */}
+                <div className="flex items-baseline justify-between mb-2">
+                  <p className="text-xs text-ink-muted">
+                    {loading ? '검색 중...' : `총 ${sorted.length}곳`}
+                  </p>
+                  <button
+                    onClick={() => setSortBy(s => s === 'rating' ? 'latest' : 'rating')}
+                    className="flex items-center gap-1 text-[11.5px] text-ink-muted"
+                  >
+                    {sortBy === 'rating' ? '평점순' : '최신순'}
+                    <ChevronDownIcon />
+                  </button>
+                </div>
+
+                {/* Restaurant list */}
+                <div className="space-y-2 pb-4">
+                  {sorted.length === 0 && !loading && <EmptyState onReset={handleReset} />}
+                  {sorted.slice(0, 20).map((r, idx) => (
+                    <RestaurantCard
+                      key={r.id}
+                      name={r.name}
+                      category={r.category}
+                      region={r.region}
+                      thumbnailUrl={r.videos?.[0]?.thumbnail_url}
+                      rating={r.videos?.[0]?.rating}
+                      channelName={r.videos?.[0]?.channel_name}
+                      channelThumbnail={r.videos?.[0]?.channel_thumbnail}
+                      channelId={r.videos?.[0]?.channel_id}
+                      channelIndex={idx}
+                      channelThumbnails={r.videos.map(v => v.channel_thumbnail ?? null)}
+                      summary={r.videos?.[0]?.summary}
+                      isSelected={r.id === focusedRestaurantId}
+                      onClick={() => handleMarkerClick(r.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {toast && <Toast message={toast} onClose={() => setToast('')} />}
+
+      {!onboarded && (
+        <Onboarding
+          channels={allChannels}
+          onComplete={handleOnboardingComplete}
+          restaurantCount={restaurants.length}
+        />
+      )}
     </div>
   )
 }

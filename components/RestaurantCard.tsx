@@ -13,6 +13,7 @@ interface RestaurantCardProps {
   channelThumbnail?: string | null
   channelId?: string
   channelIndex?: number
+  channelThumbnails?: (string | null)[]
   summary?: string | null
   isSelected?: boolean
   onClick?: () => void
@@ -75,6 +76,22 @@ function ChannelAvatar({ channelId, channelIndex = 0, thumbnail, size = 18 }: Ch
   )
 }
 
+function AvatarStack({ thumbnails }: { thumbnails: (string | null)[] }) {
+  return (
+    <div className="flex items-center">
+      {thumbnails.slice(0, 3).map((thumb, i) => (
+        <div
+          key={i}
+          style={{ marginLeft: i === 0 ? 0 : -6, zIndex: thumbnails.length - i }}
+          className="relative h-[18px] w-[18px] flex-shrink-0 overflow-hidden rounded-full border border-white bg-surface-low"
+        >
+          {thumb && <Image src={thumb} alt="" fill className="object-cover" sizes="18px" />}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function PlaceholderThumb({ category }: { category: string }) {
   const emoji: Record<string, string> = {
     '한식': '🍚', '일식': '🍣', '중식': '🥢', '양식': '🍝',
@@ -98,6 +115,7 @@ export default function RestaurantCard({
   channelThumbnail,
   channelId,
   channelIndex = 0,
+  channelThumbnails,
   summary,
   isSelected,
   onClick,
@@ -138,14 +156,23 @@ export default function RestaurantCard({
 
         {/* channel avatar + name */}
         <div className="mt-auto flex items-center gap-1.5">
-          <ChannelAvatar
-            channelId={channelId}
-            channelIndex={channelIndex}
-            thumbnail={channelThumbnail}
-            size={18}
-          />
-          {channelName && (
-            <span className="text-[11px] text-ink-muted">{channelName}</span>
+          {channelThumbnails && channelThumbnails.length > 1 ? (
+            <>
+              <AvatarStack thumbnails={channelThumbnails} />
+              <span className="text-[11px] text-ink-muted">{channelName} 외 {channelThumbnails.length - 1}명</span>
+            </>
+          ) : (
+            <>
+              <ChannelAvatar
+                channelId={channelId}
+                channelIndex={channelIndex}
+                thumbnail={channelThumbnail}
+                size={18}
+              />
+              {channelName && (
+                <span className="text-[11px] text-ink-muted">{channelName}</span>
+              )}
+            </>
           )}
         </div>
       </div>

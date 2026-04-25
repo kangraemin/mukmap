@@ -6,6 +6,7 @@ import type { RestaurantWithVideos } from '@/lib/types'
 interface DetailPanelProps {
   restaurant: RestaurantWithVideos
   onClose: () => void
+  mobile?: boolean
 }
 
 const RATING_WEIGHT: Record<string, number> = {
@@ -44,6 +45,14 @@ function CloseIcon() {
   )
 }
 
+function BackArrowIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none">
+      <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
 function PinIcon() {
   return (
     <svg viewBox="0 0 16 16" width="12" height="12" fill="none">
@@ -69,11 +78,16 @@ function PlayIcon() {
   )
 }
 
-export default function DetailPanel({ restaurant, onClose }: DetailPanelProps) {
+export default function DetailPanel({ restaurant, onClose, mobile }: DetailPanelProps) {
   const visits = [...restaurant.videos].sort(
     (a, b) => (RATING_WEIGHT[b.rating ?? ''] ?? 0) - (RATING_WEIGHT[a.rating ?? ''] ?? 0)
   )
   const top = visits[0]
+
+  const totalViews = visits.reduce((s, v) => s + (v.view_count ?? 0), 0)
+  const viewsLabel = totalViews >= 10000
+    ? `${Math.round(totalViews / 10000)}만+`
+    : totalViews > 0 ? totalViews.toLocaleString() : '-'
 
   const naverUrl = restaurant.naver_place_id
     ? `https://map.naver.com/v5/entry/place/${restaurant.naver_place_id}`
@@ -103,7 +117,7 @@ export default function DetailPanel({ restaurant, onClose }: DetailPanelProps) {
           onClick={onClose}
           className="absolute left-3.5 top-3.5 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-ink-body shadow-md transition-opacity hover:opacity-80"
         >
-          <CloseIcon />
+          {mobile ? <BackArrowIcon /> : <CloseIcon />}
         </button>
       </div>
 
@@ -133,8 +147,8 @@ export default function DetailPanel({ restaurant, onClose }: DetailPanelProps) {
           </div>
           <div className="w-px bg-border" />
           <div className="flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-ink-muted">영상 수</p>
-            <p className="mt-1.5 text-lg font-extrabold text-ink-body">{visits.length}편</p>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-ink-muted">총 조회수</p>
+            <p className="mt-1.5 text-lg font-extrabold text-ink-body">{viewsLabel}</p>
           </div>
         </div>
 
