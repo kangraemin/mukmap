@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react'
 import Image from 'next/image'
 import { getChannelHue, channelColor, channelTint } from '@/lib/constants'
 
@@ -105,7 +106,7 @@ function PlaceholderThumb({ category }: { category: string }) {
   )
 }
 
-export default function RestaurantCard({
+function RestaurantCard({
   name,
   category,
   region,
@@ -179,3 +180,5 @@ export default function RestaurantCard({
     </button>
   )
 }
+
+export default React.memo(RestaurantCard)

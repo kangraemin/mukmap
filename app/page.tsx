@@ -90,14 +90,13 @@ export default function Home() {
     })
   }, [restaurants, sortBy])
 
-  // Fetch all channels for onboarding
+  // Fetch all channels once on mount (shared by onboarding + ChannelChips)
   useEffect(() => {
-    if (onboarded) return
     fetch('/api/channels')
       .then((r) => r.json())
       .then((data) => setAllChannels(data.channels || []))
       .catch(() => {})
-  }, [onboarded])
+  }, [])
 
   const handleOnboardingComplete = useCallback((ids: string[]) => {
     localStorage.setItem('mukmap_onboarded', '1')
@@ -373,6 +372,7 @@ export default function Home() {
                   <ChannelChips
                     selectedChannels={selectedChannels}
                     onToggle={handleChannelToggle}
+                    channels={allChannels}
                   />
                 </div>
 
@@ -451,19 +451,12 @@ export default function Home() {
 function ChannelChips({
   selectedChannels,
   onToggle,
+  channels,
 }: {
   selectedChannels: string[]
   onToggle: (id: string) => void
+  channels: { id: string; name: string }[]
 }) {
-  const [channels, setChannels] = useState<{ id: string; name: string }[]>([])
-
-  useEffect(() => {
-    fetch('/api/channels')
-      .then((r) => r.json())
-      .then((data) => setChannels(data.channels || []))
-      .catch(() => {})
-  }, [])
-
   return (
     <>
       {channels.map((ch) => (
