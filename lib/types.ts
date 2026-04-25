@@ -33,6 +33,7 @@ export interface Video {
   timestamp_seconds: number | null
   published_at: string | null
   created_at: string
+  view_count: number | null
 }
 
 export interface RestaurantWithVideos extends Restaurant {

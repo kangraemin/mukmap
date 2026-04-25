@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
           is_ad,
           timestamp_seconds,
           published_at,
+          view_count,
           channels (
             name,
             thumbnail_url
@@ -92,6 +93,7 @@ export async function GET(request: NextRequest) {
           is_ad: v.is_ad,
           timestamp_seconds: v.timestamp_seconds,
           published_at: v.published_at,
+          view_count: v.view_count as number | null,
           channel_name: channel?.name || '',
           channel_thumbnail: channel?.thumbnail_url || null,
         }
