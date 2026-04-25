@@ -34,7 +34,7 @@ async function simulateTouchDrag(page: Page, startY: number, deltaY: number) {
     )
   }, [startY, deltaY] as [number, number])
   // 애니메이션 대기
-  await page.waitForTimeout(400)
+  await page.waitForTimeout(500)
 }
 
 test.describe('BottomSheet 드래그 동작', () => {
@@ -50,30 +50,30 @@ test.describe('BottomSheet 드래그 동작', () => {
     expect(translateY).toBeGreaterThan(0)
   })
 
-  test('위로 60px 스와이프 → half 전환 (translateY 감소)', async ({ page }) => {
+  test('위로 200px 스와이프 → half 전환 (translateY 감소)', async ({ page }) => {
     const initialY = await getTranslateY(page)
     const centerY = 700
-    await simulateTouchDrag(page, centerY, -60)
+    await simulateTouchDrag(page, centerY, -200)
     const afterY = await getTranslateY(page)
     expect(afterY).toBeLessThan(initialY)
   })
 
-  test('half에서 위로 60px → full 전환 (translateY ≈ 0)', async ({ page }) => {
+  test('half에서 위로 200px → full 전환 (translateY ≈ 0)', async ({ page }) => {
     const centerY = 700
     // collapsed → half
-    await simulateTouchDrag(page, centerY, -60)
+    await simulateTouchDrag(page, centerY, -200)
     // half → full
-    await simulateTouchDrag(page, centerY, -60)
+    await simulateTouchDrag(page, centerY, -200)
     const afterY = await getTranslateY(page)
     expect(afterY).toBeLessThanOrEqual(10) // ≈ 0
   })
 
-  test('full에서 아래로 60px → half 전환 (translateY 증가)', async ({ page }) => {
+  test('full에서 아래로 200px → half 전환 (translateY 증가)', async ({ page }) => {
     const centerY = 700
-    await simulateTouchDrag(page, centerY, -60) // → half
-    await simulateTouchDrag(page, centerY, -60) // → full
+    await simulateTouchDrag(page, centerY, -200) // → half
+    await simulateTouchDrag(page, centerY, -200) // → full
     const fullY = await getTranslateY(page)
-    await simulateTouchDrag(page, centerY, 60) // → half
+    await simulateTouchDrag(page, centerY, 200) // → half
     const afterY = await getTranslateY(page)
     expect(afterY).toBeGreaterThan(fullY)
   })
