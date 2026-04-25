@@ -78,10 +78,6 @@ export default function Onboarding({ channels, onComplete, restaurantCount = 0 }
     }
   }
 
-  const handleSkip = () => {
-    onComplete([])
-  }
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
