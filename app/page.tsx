@@ -68,10 +68,13 @@ export default function Home() {
   const restaurantCache = useRef<Map<string, RestaurantWithVideos[]>>(new Map())
 
   // Mobile bottom sheet
-  const [sheetState, setSheetState] = useState<SheetState>('collapsed')
+  const [_sheetState, setSheetState] = useState<SheetState>('collapsed')
   const touchStartY = useRef(0)
   const sheetRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  const snapOffsets = useRef<Record<SheetState, number>>({ full: 0, half: 0, collapsed: 0 })
+  const currentSnapOffset = useRef(0)
+  const isDragging = useRef(false)
 
   // Derive focused restaurant from list
   const focusedRestaurant = useMemo(
@@ -175,11 +178,43 @@ export default function Home() {
     setCategories([])
   }, [])
 
+  // Mobile sheet snap effect on mount
+  useEffect(() => {
+    const vh = window.innerHeight
+    snapOffsets.current = {
+      full: 0,
+      half: vh * 0.9 - vh * 0.5,
+      collapsed: vh * 0.9 - 120,
+    }
+    currentSnapOffset.current = snapOffsets.current.collapsed
+    if (sheetRef.current) {
+      sheetRef.current.style.transition = 'none'
+      sheetRef.current.style.transform = `translateY(${snapOffsets.current.collapsed}px)`
+    }
+  }, [])
+
+  const goToState = useCallback((state: SheetState) => {
+    const offset = snapOffsets.current[state]
+    currentSnapOffset.current = offset
+    if (sheetRef.current) {
+      sheetRef.current.style.transition = 'transform 300ms ease-out'
+      sheetRef.current.style.transform = `translateY(${offset}px)`
+    }
+    setSheetState(state)
+  }, [])
+
+  const snapBack = useCallback(() => {
+    if (sheetRef.current) {
+      sheetRef.current.style.transition = 'transform 300ms ease-out'
+      sheetRef.current.style.transform = `translateY(${currentSnapOffset.current}px)`
+    }
+  }, [])
+
   const handleMarkerClick = useCallback((id: number) => {
     setFocusedRestaurantId(id)
     setMobileView('detail')
-    setSheetState('full')
-  }, [])
+    goToState('full')
+  }, [goToState])
 
   const handleSelectRestaurant = useCallback((id: number) => {
     setFocusedRestaurantId(id)
@@ -201,24 +236,41 @@ export default function Home() {
   // Mobile sheet touch handlers
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY
+    isDragging.current = true
+    if (sheetRef.current) sheetRef.current.style.transition = 'none'
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging.current || !sheetRef.current) return
+    const deltaY = e.touches[0].clientY - touchStartY.current
+    const maxOffset = snapOffsets.current.collapsed
+    const newOffset = Math.max(0, Math.min(currentSnapOffset.current + deltaY, maxOffset))
+    sheetRef.current.style.transform = `translateY(${newOffset}px)`
   }
 
   const handleTouchEnd = (e: React.TouchEvent) => {
+    isDragging.current = false
     const diff = touchStartY.current - e.changedTouches[0].clientY
     if (diff > 50) {
-      setSheetState((s) => (s === 'collapsed' ? 'half' : s === 'half' ? 'full' : s))
+      setSheetState((s) => {
+        const next: SheetState = s === 'collapsed' ? 'half' : s === 'half' ? 'full' : s
+        if (next !== s) { goToState(next) } else { snapBack() }
+        return next
+      })
     } else if (diff < -50) {
       const scrollTop = contentRef.current?.scrollTop ?? 0
       if (scrollTop === 0) {
-        setSheetState((s) => (s === 'full' ? 'half' : s === 'half' ? 'collapsed' : s))
+        setSheetState((s) => {
+          const next: SheetState = s === 'full' ? 'half' : s === 'half' ? 'collapsed' : s
+          if (next !== s) { goToState(next) } else { snapBack() }
+          return next
+        })
+      } else {
+        snapBack()
       }
+    } else {
+      snapBack()
     }
-  }
-
-  const sheetHeight: Record<SheetState, string> = {
-    collapsed: 'h-[120px]',
-    half: 'h-[50vh]',
-    full: 'h-[90vh]',
   }
 
   return (
@@ -347,8 +399,10 @@ export default function Home() {
         {/* Mobile bottom sheet */}
         <div
           ref={sheetRef}
-          className={`fixed bottom-0 left-0 right-0 z-30 rounded-t-2xl bg-cream shadow-[0_-4px_20px_rgba(0,0,0,0.1)] transition-all duration-300 lg:hidden ${sheetHeight[sheetState]}`}
+          className="fixed bottom-0 left-0 right-0 z-30 rounded-t-2xl bg-cream shadow-[0_-4px_20px_rgba(0,0,0,0.1)] lg:hidden h-[90vh]"
+          data-testid="bottom-sheet"
           onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
           {/* Handle — 스와이프 전용 */}
@@ -368,7 +422,7 @@ export default function Home() {
                 onClose={() => {
                   setFocusedRestaurantId(null)
                   setMobileView('list')
-                  setSheetState('half')
+                  goToState('half')
                 }}
               />
             ) : (
