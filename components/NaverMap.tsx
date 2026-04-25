@@ -227,7 +227,11 @@ export default function NaverMap({
         })
 
         naver.maps.Event.addListener(marker, 'click', () => {
-          map.morph(new naver.maps.LatLng(avgLat, avgLng), Math.min(zoom + 3, 16), { duration: 500 })
+          const lats = clusterItems.map(r => r.lat!)
+          const lngs = clusterItems.map(r => r.lng!)
+          const sw = new naver.maps.LatLng(Math.min(...lats), Math.min(...lngs))
+          const ne = new naver.maps.LatLng(Math.max(...lats), Math.max(...lngs))
+          map.fitBounds(new naver.maps.LatLngBounds(sw, ne), 80)
         })
         newMarkers.push(marker)
       }

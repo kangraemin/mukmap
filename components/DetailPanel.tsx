@@ -142,7 +142,6 @@ export default function DetailPanel({ restaurant, onClose, mobile }: DetailPanel
             <p className="text-[11px] font-bold uppercase tracking-widest text-ink-muted">유튜버 종합</p>
             <div className="mt-1.5 flex items-center gap-2">
               {top?.rating && <RatingChip rating={top.rating} />}
-              <span className="text-[13px] font-semibold text-ink-section">{visits.length}명 방문</span>
             </div>
           </div>
           <div className="w-px bg-border" />
