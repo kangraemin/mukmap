@@ -23,3 +23,19 @@ export const INITIAL_CHANNELS = [
   { id: 'UCA6KBBX8cLwYZNepxlE_7SA', name: '히밥' },
   { id: 'UCyn-K7rZLXjGl7VXGweIlcA', name: '백종원' },
 ] as const
+
+export const CHANNEL_HUE_MAP: Record<string, number> = {
+  'UCfpaSruWW3S4dibonKXENjA': 18,  // 쯔양
+  'UCl23-Cci_SMqyGXE1T_LYUg': 32,  // 성시경
+  'UCyn-K7rZLXjGl7VXGweIlcA': 95,  // 백종원
+  'UCA6KBBX8cLwYZNepxlE_7SA': 42,  // 히밥
+  'UCehQiKylaW68H_OtRS36wGQ': 200, // 둘시네아
+}
+
+export function getChannelHue(channelId: string, index = 0): number {
+  return CHANNEL_HUE_MAP[channelId] ?? [18, 32, 95, 42, 200, 358, 140, 60, 220, 280][index % 10]
+}
+
+export function channelColor(hue: number) { return `oklch(0.62 0.16 ${hue})` }
+export function channelTint(hue: number)  { return `oklch(0.96 0.02 ${hue})` }
+export function channelDeep(hue: number)  { return `oklch(0.42 0.12 ${hue})` }

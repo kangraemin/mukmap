@@ -3,12 +3,17 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #1a1a2e;
+  --background: #FAF7F0;
+  --foreground: #221E15;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
   font-family: 'Pretendard Variable', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  letter-spacing: -0.02em;
 }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
