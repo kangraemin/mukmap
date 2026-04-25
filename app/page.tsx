@@ -329,12 +329,14 @@ export default function Home() {
         {/* Mobile bottom sheet */}
         <div
           ref={sheetRef}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
           className={`fixed bottom-0 left-0 right-0 z-30 rounded-t-2xl bg-cream shadow-[0_-4px_20px_rgba(0,0,0,0.1)] transition-all duration-300 lg:hidden ${sheetHeight[sheetState]}`}
         >
-          {/* Handle */}
-          <div className="flex justify-center py-2">
+          {/* Handle — 스와이프 전용 */}
+          <div
+            className="flex justify-center py-3 touch-none cursor-grab"
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+          >
             <div className="h-1 w-10 rounded-full bg-border" />
           </div>
 
