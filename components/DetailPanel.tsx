@@ -98,13 +98,20 @@ export default function DetailPanel({ restaurant, onClose, mobile }: DetailPanel
       {/* Hero */}
       <div className="relative h-[240px] flex-shrink-0 bg-surface-low">
         {top?.thumbnail_url ? (
-          <Image
-            src={top.thumbnail_url}
-            alt={restaurant.name}
-            fill
-            className="object-cover"
-            sizes="380px"
-          />
+          <a
+            href={`https://www.youtube.com/watch?v=${top.video_id}${top.timestamp_seconds ? `&t=${top.timestamp_seconds}s` : ''}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute inset-0 cursor-pointer"
+          >
+            <Image
+              src={top.thumbnail_url}
+              alt={restaurant.name}
+              fill
+              className="object-cover"
+              sizes="380px"
+            />
+          </a>
         ) : (
           <div
             className="absolute inset-0 flex items-center justify-center"

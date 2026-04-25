@@ -66,8 +66,7 @@ export default function NaverMap({
     const map = new naver.maps.Map(mapElRef.current, {
       center: new naver.maps.LatLng(DEFAULT_CENTER.lat, DEFAULT_CENTER.lng),
       zoom: DEFAULT_ZOOM,
-      zoomControl: true,
-      zoomControlOptions: { position: naver.maps.Position.TOP_RIGHT },
+      zoomControl: false,
     })
     mapRef.current = map
 

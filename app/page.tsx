@@ -71,6 +71,7 @@ export default function Home() {
   const [sheetState, setSheetState] = useState<SheetState>('collapsed')
   const touchStartY = useRef(0)
   const sheetRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
 
   // Derive focused restaurant from list
   const focusedRestaurant = useMemo(
@@ -207,7 +208,10 @@ export default function Home() {
     if (diff > 50) {
       setSheetState((s) => (s === 'collapsed' ? 'half' : s === 'half' ? 'full' : s))
     } else if (diff < -50) {
-      setSheetState((s) => (s === 'full' ? 'half' : s === 'half' ? 'collapsed' : s))
+      const scrollTop = contentRef.current?.scrollTop ?? 0
+      if (scrollTop === 0) {
+        setSheetState((s) => (s === 'full' ? 'half' : s === 'half' ? 'collapsed' : s))
+      }
     }
   }
 
@@ -344,6 +348,8 @@ export default function Home() {
         <div
           ref={sheetRef}
           className={`fixed bottom-0 left-0 right-0 z-30 rounded-t-2xl bg-cream shadow-[0_-4px_20px_rgba(0,0,0,0.1)] transition-all duration-300 lg:hidden ${sheetHeight[sheetState]}`}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
         >
           {/* Handle — 스와이프 전용 */}
           <div
@@ -354,7 +360,7 @@ export default function Home() {
             <div className="h-1 w-10 rounded-full bg-border" />
           </div>
 
-          <div className="overflow-y-auto px-4" style={{ maxHeight: 'calc(100% - 24px)' }}>
+          <div ref={contentRef} className="overflow-y-auto px-4" style={{ maxHeight: 'calc(100% - 24px)' }}>
             {mobileView === 'detail' && focusedRestaurant ? (
               <DetailPanel
                 restaurant={focusedRestaurant}
