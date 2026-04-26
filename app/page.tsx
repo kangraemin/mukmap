@@ -216,7 +216,7 @@ export default function Home() {
       }
       return memo
     },
-    { target: handleRef, pointer: { touch: true }, axis: 'y', filterTaps: true, preventScroll: false }
+    { target: handleRef, axis: 'y', filterTaps: true }
   )
 
   // Content: 조건부 setPointerCapture

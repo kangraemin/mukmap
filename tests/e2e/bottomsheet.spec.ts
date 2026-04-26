@@ -8,8 +8,8 @@ async function getTranslateY(page: Page): Promise<number> {
   })
 }
 
-// @use-gesture/react는 touch device에서 TouchEvents를 사용 — synthetic TouchEvent dispatch
-async function simulateTouchDrag(page: Page, deltaY: number) {
+// @use-gesture/react Pointer Events 모드 — buttons:1 필수 (drag 인식 조건)
+async function simulateDrag(page: Page, deltaY: number) {
   const box = await page.locator('[data-testid="sheet-handle"]').boundingBox()
   if (!box) return
   const cx = box.x + box.width / 2
@@ -18,10 +18,9 @@ async function simulateTouchDrag(page: Page, deltaY: number) {
   await page.evaluate(([sx, sy, dy]: number[]) => {
     const el = document.querySelector('[data-testid="sheet-handle"]') as HTMLElement
     if (!el) return
-    const mkTouch = (y: number) => new Touch({ identifier: 1, target: el, clientX: sx, clientY: y, pageX: sx, pageY: y })
-    el.dispatchEvent(new TouchEvent('touchstart', { touches: [mkTouch(sy)], targetTouches: [mkTouch(sy)], changedTouches: [mkTouch(sy)], bubbles: true, cancelable: true }))
-    el.dispatchEvent(new TouchEvent('touchmove', { touches: [mkTouch(sy + dy)], targetTouches: [mkTouch(sy + dy)], changedTouches: [mkTouch(sy + dy)], bubbles: true, cancelable: true }))
-    el.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [mkTouch(sy + dy)], bubbles: true, cancelable: true }))
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, buttons: 1, clientX: sx, clientY: sy, pointerType: 'touch' }))
+    el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, buttons: 1, clientX: sx, clientY: sy + dy, pointerType: 'touch' }))
+    el.dispatchEvent(new PointerEvent('pointerup',   { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, buttons: 0, clientX: sx, clientY: sy + dy, pointerType: 'touch' }))
   }, [cx, cy, deltaY] as number[])
   await page.waitForTimeout(500)
 }
@@ -40,23 +39,23 @@ test.describe('BottomSheet', () => {
 
   test('swipe up expands to half', async ({ page }) => {
     const initialY = await getTranslateY(page)
-    await simulateTouchDrag(page, -200)
+    await simulateDrag(page, -200)
     const afterY = await getTranslateY(page)
     expect(afterY).toBeLessThan(initialY)
   })
 
   test('swipe up again expands to full', async ({ page }) => {
-    await simulateTouchDrag(page, -200) // collapsed → half
-    await simulateTouchDrag(page, -200) // half → full
+    await simulateDrag(page, -200) // collapsed → half
+    await simulateDrag(page, -200) // half → full
     const afterY = await getTranslateY(page)
     expect(afterY).toBeLessThanOrEqual(10) // ≈ 0
   })
 
   test('swipe down from full collapses to half', async ({ page }) => {
-    await simulateTouchDrag(page, -200) // → half
-    await simulateTouchDrag(page, -200) // → full
+    await simulateDrag(page, -200) // → half
+    await simulateDrag(page, -200) // → full
     const fullY = await getTranslateY(page)
-    await simulateTouchDrag(page, 200)  // → half
+    await simulateDrag(page, 200)  // → half
     const afterY = await getTranslateY(page)
     expect(afterY).toBeGreaterThan(fullY)
   })
@@ -71,9 +70,8 @@ test.describe('BottomSheet', () => {
     await page.evaluate(([sx, sy]: number[]) => {
       const el = document.querySelector('[data-testid="sheet-handle"]') as HTMLElement
       if (!el) return
-      const mkTouch = (y: number) => new Touch({ identifier: 1, target: el, clientX: sx, clientY: y, pageX: sx, pageY: y })
-      el.dispatchEvent(new TouchEvent('touchstart', { touches: [mkTouch(sy)], targetTouches: [mkTouch(sy)], changedTouches: [mkTouch(sy)], bubbles: true, cancelable: true }))
-      el.dispatchEvent(new TouchEvent('touchmove', { touches: [mkTouch(sy - 30)], targetTouches: [mkTouch(sy - 30)], changedTouches: [mkTouch(sy - 30)], bubbles: true, cancelable: true }))
+      el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, buttons: 1, clientX: sx, clientY: sy, pointerType: 'touch' }))
+      el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, buttons: 1, clientX: sx, clientY: sy - 30, pointerType: 'touch' }))
     }, [cx, cy] as number[])
 
     const duringDragY = await getTranslateY(page)
@@ -82,7 +80,7 @@ test.describe('BottomSheet', () => {
 
   test('snap back on small drag', async ({ page }) => {
     const initialY = await getTranslateY(page)
-    await simulateTouchDrag(page, -20) // 20px < 아무 snap 경계 미달
+    await simulateDrag(page, -20) // 20px < 아무 snap 경계 미달
     const afterY = await getTranslateY(page)
     expect(afterY).toBeCloseTo(initialY, -1) // ±10px 허용
   })
