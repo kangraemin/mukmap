@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useDrag } from '@use-gesture/react'
 import NaverMap from '@/components/NaverMap'
 import ChannelFilter from '@/components/ChannelFilter'
 import RegionCategoryFilter from '@/components/RegionCategoryFilter'
@@ -69,13 +70,11 @@ export default function Home() {
 
   // Mobile bottom sheet
   const [_sheetState, setSheetState] = useState<SheetState>('collapsed')
-  const touchStartY = useRef(0)
   const sheetRef = useRef<HTMLDivElement>(null)
   const handleRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const snapOffsets = useRef<Record<SheetState, number>>({ full: 0, half: 0, collapsed: 0 })
   const currentSnapOffset = useRef(0)
-  const isDragging = useRef(false)
 
   // Derive focused restaurant from list
   const focusedRestaurant = useMemo(
@@ -189,79 +188,86 @@ export default function Home() {
     setSheetState(state)
   }, [])
 
-  // 초기화 + native touch listeners (touchmove: passive:false → e.preventDefault() 가능)
+  // snap offset 초기화
   useEffect(() => {
     const sheet = sheetRef.current
-    const handle = handleRef.current
-    const content = contentRef.current
-    if (!sheet || !handle) return
-
+    if (!sheet) return
     const vh = window.innerHeight
     snapOffsets.current = { full: 0, half: vh * 0.9 - vh * 0.5, collapsed: vh * 0.9 - 120 }
     currentSnapOffset.current = snapOffsets.current.collapsed
     sheet.style.transition = 'none'
     sheet.style.transform = `translateY(${snapOffsets.current.collapsed}px)`
+  }, [])
 
-    const onStart = (e: TouchEvent) => {
-      touchStartY.current = e.touches[0].clientY
-      isDragging.current = true
+  const nearestSnap = useCallback((y: number): SheetState =>
+    (['full', 'half', 'collapsed'] as SheetState[])
+      .sort((a, b) => Math.abs(y - snapOffsets.current[a]) - Math.abs(y - snapOffsets.current[b]))[0]
+  , [])
+
+  // Handle: @use-gesture/react — setPointerCapture 내장, 브라우저 스크롤 파이프라인 우회
+  useDrag(
+    ({ movement: [, my], last, memo = currentSnapOffset.current }) => {
+      const newY = Math.max(0, Math.min((memo as number) + my, snapOffsets.current.collapsed))
+      if (last) {
+        goToState(nearestSnap(newY))
+      } else if (sheetRef.current) {
+        sheetRef.current.style.transition = 'none'
+        sheetRef.current.style.transform = `translateY(${newY}px)`
+      }
+      return memo
+    },
+    { target: handleRef, pointer: { touch: true }, axis: 'y', filterTaps: true, preventScroll: false }
+  )
+
+  // Content: 조건부 setPointerCapture
+  // scrollTop===0 + 아래 드래그 확인 후에만 capture → 그 전에는 브라우저 스크롤 처리
+  useEffect(() => {
+    const content = contentRef.current
+    const sheet = sheetRef.current
+    if (!content || !sheet) return
+
+    let startY = 0
+    let startOffset = 0
+    let captured = false
+
+    const onPointerDown = (e: PointerEvent) => {
+      startY = e.clientY
+      startOffset = currentSnapOffset.current
+      captured = false
+    }
+
+    const onPointerMove = (e: PointerEvent) => {
+      const deltaY = e.clientY - startY
+      if (!captured && content.scrollTop === 0 && deltaY > 0) {
+        content.setPointerCapture(e.pointerId)
+        captured = true
+      }
+      if (!captured) return
+      const newY = Math.max(0, Math.min(startOffset + deltaY, snapOffsets.current.collapsed))
       sheet.style.transition = 'none'
+      sheet.style.transform = `translateY(${newY}px)`
     }
 
-    const onHandleMove = (e: TouchEvent) => {
-      if (!isDragging.current) return
-      e.preventDefault()
-      const deltaY = e.touches[0].clientY - touchStartY.current
-      const newOffset = Math.max(0, Math.min(currentSnapOffset.current + deltaY, snapOffsets.current.collapsed))
-      sheet.style.transform = `translateY(${newOffset}px)`
-    }
-
-    const onContentMove = (e: TouchEvent) => {
-      if (!isDragging.current) return
-      const scrollTop = content?.scrollTop ?? 0
-      const deltaY = e.touches[0].clientY - touchStartY.current
-      if (scrollTop > 0 || deltaY <= 0) return
-      e.preventDefault()
-      const newOffset = Math.max(0, Math.min(currentSnapOffset.current + deltaY, snapOffsets.current.collapsed))
-      sheet.style.transform = `translateY(${newOffset}px)`
-    }
-
-    const onEnd = () => {
-      if (!isDragging.current) return
-      isDragging.current = false
+    const onPointerUp = () => {
+      if (!captured) return
+      captured = false
       const match = sheet.style.transform.match(/translateY\((-?[\d.]+)px\)/)
       const currentY = match ? parseFloat(match[1]) : currentSnapOffset.current
-      const offsets = snapOffsets.current
-      const nearest = ([
-        ['full', offsets.full],
-        ['half', offsets.half],
-        ['collapsed', offsets.collapsed],
-      ] as [SheetState, number][])
-        .sort((a, b) => Math.abs(currentY - a[1]) - Math.abs(currentY - b[1]))[0][0]
-      goToState(nearest)
+      goToState(nearestSnap(currentY))
     }
 
-    handle.addEventListener('touchstart', onStart, { passive: false })
-    handle.addEventListener('touchmove', onHandleMove, { passive: false })
-    handle.addEventListener('touchend', onEnd, { passive: true })
-
-    if (content) {
-      content.addEventListener('touchstart', onStart, { passive: true })
-      content.addEventListener('touchmove', onContentMove, { passive: false })
-      content.addEventListener('touchend', onEnd, { passive: true })
-    }
+    content.addEventListener('pointerdown', onPointerDown)
+    content.addEventListener('pointermove', onPointerMove, { passive: false })
+    content.addEventListener('pointerup', onPointerUp)
+    content.addEventListener('pointercancel', onPointerUp)
 
     return () => {
-      handle.removeEventListener('touchstart', onStart)
-      handle.removeEventListener('touchmove', onHandleMove)
-      handle.removeEventListener('touchend', onEnd)
-      if (content) {
-        content.removeEventListener('touchstart', onStart)
-        content.removeEventListener('touchmove', onContentMove)
-        content.removeEventListener('touchend', onEnd)
-      }
+      content.removeEventListener('pointerdown', onPointerDown)
+      content.removeEventListener('pointermove', onPointerMove)
+      content.removeEventListener('pointerup', onPointerUp)
+      content.removeEventListener('pointercancel', onPointerUp)
     }
-  }, [goToState])
+  }, [goToState, nearestSnap])
 
   const handleMarkerClick = useCallback((id: number) => {
     setFocusedRestaurantId(id)
