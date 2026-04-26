@@ -10,7 +10,7 @@ async function getTranslateY(page: Page): Promise<number> {
 
 async function simulateTouchDrag(page: Page, startY: number, deltaY: number) {
   await page.evaluate(([sy, dy]: [number, number]) => {
-    const el = document.querySelector('[data-testid="bottom-sheet"]') as HTMLElement
+    const el = document.querySelector('[data-testid="sheet-handle"]') as HTMLElement
     if (!el) return
     const cx = window.innerWidth / 2
     const mkTouch = (y: number) =>
@@ -82,7 +82,7 @@ test.describe('BottomSheet 드래그 동작', () => {
     const initialY = await getTranslateY(page)
     // touchstart + touchmove만 (touchend 없이)
     await page.evaluate((initial: number) => {
-      const el = document.querySelector('[data-testid="bottom-sheet"]') as HTMLElement
+      const el = document.querySelector('[data-testid="sheet-handle"]') as HTMLElement
       if (!el) return
       const cx = window.innerWidth / 2
       const startY = 700

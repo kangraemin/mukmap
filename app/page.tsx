@@ -71,6 +71,7 @@ export default function Home() {
   const [_sheetState, setSheetState] = useState<SheetState>('collapsed')
   const touchStartY = useRef(0)
   const sheetRef = useRef<HTMLDivElement>(null)
+  const handleRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const snapOffsets = useRef<Record<SheetState, number>>({ full: 0, half: 0, collapsed: 0 })
   const currentSnapOffset = useRef(0)
@@ -191,7 +192,9 @@ export default function Home() {
   // 초기화 + native touch listeners (touchmove: passive:false → e.preventDefault() 가능)
   useEffect(() => {
     const sheet = sheetRef.current
-    if (!sheet) return
+    const handle = handleRef.current
+    const content = contentRef.current
+    if (!sheet || !handle) return
 
     const vh = window.innerHeight
     snapOffsets.current = { full: 0, half: vh * 0.9 - vh * 0.5, collapsed: vh * 0.9 - 120 }
@@ -205,12 +208,20 @@ export default function Home() {
       sheet.style.transition = 'none'
     }
 
-    const onMove = (e: TouchEvent) => {
+    const onHandleMove = (e: TouchEvent) => {
       if (!isDragging.current) return
-      const scrollTop = contentRef.current?.scrollTop ?? 0
-      if (scrollTop > 0) return
       e.preventDefault()
       const deltaY = e.touches[0].clientY - touchStartY.current
+      const newOffset = Math.max(0, Math.min(currentSnapOffset.current + deltaY, snapOffsets.current.collapsed))
+      sheet.style.transform = `translateY(${newOffset}px)`
+    }
+
+    const onContentMove = (e: TouchEvent) => {
+      if (!isDragging.current) return
+      const scrollTop = content?.scrollTop ?? 0
+      const deltaY = e.touches[0].clientY - touchStartY.current
+      if (scrollTop > 0 || deltaY <= 0) return
+      e.preventDefault()
       const newOffset = Math.max(0, Math.min(currentSnapOffset.current + deltaY, snapOffsets.current.collapsed))
       sheet.style.transform = `translateY(${newOffset}px)`
     }
@@ -230,14 +241,25 @@ export default function Home() {
       goToState(nearest)
     }
 
-    sheet.addEventListener('touchstart', onStart, { passive: true })
-    sheet.addEventListener('touchmove', onMove, { passive: false })
-    sheet.addEventListener('touchend', onEnd, { passive: true })
+    handle.addEventListener('touchstart', onStart, { passive: false })
+    handle.addEventListener('touchmove', onHandleMove, { passive: false })
+    handle.addEventListener('touchend', onEnd, { passive: true })
+
+    if (content) {
+      content.addEventListener('touchstart', onStart, { passive: true })
+      content.addEventListener('touchmove', onContentMove, { passive: false })
+      content.addEventListener('touchend', onEnd, { passive: true })
+    }
 
     return () => {
-      sheet.removeEventListener('touchstart', onStart)
-      sheet.removeEventListener('touchmove', onMove)
-      sheet.removeEventListener('touchend', onEnd)
+      handle.removeEventListener('touchstart', onStart)
+      handle.removeEventListener('touchmove', onHandleMove)
+      handle.removeEventListener('touchend', onEnd)
+      if (content) {
+        content.removeEventListener('touchstart', onStart)
+        content.removeEventListener('touchmove', onContentMove)
+        content.removeEventListener('touchend', onEnd)
+      }
     }
   }, [goToState])
 
@@ -395,7 +417,7 @@ export default function Home() {
           style={{ transform: 'translateY(calc(90vh - 120px))' }}
         >
           {/* Handle — 스와이프 전용 */}
-          <div className="flex justify-center py-3 touch-none cursor-grab">
+          <div ref={handleRef} data-testid="sheet-handle" className="flex justify-center py-3 touch-none cursor-grab">
             <div className="h-1 w-10 rounded-full bg-border" />
           </div>
 
