@@ -21,7 +21,7 @@ export default function Toast({ message, onClose, duration = 3000 }: ToastProps)
 
   return (
     <div
-      className={`fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-on-surface px-4 py-2.5 text-sm text-surface shadow-lg transition-opacity duration-300 ${
+      className={`fixed bottom-28 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-on-surface px-4 py-2.5 text-sm text-surface shadow-lg transition-opacity duration-300 ${
         visible ? 'opacity-100' : 'opacity-0'
       }`}
     >

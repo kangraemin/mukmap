@@ -86,8 +86,13 @@ export default function Home() {
       return [...restaurants].sort((a, b) => ratingScore(b) - ratingScore(a))
     }
     return [...restaurants].sort((a, b) => {
-      const ta = new Date(a.videos[0]?.published_at ?? 0).getTime()
-      const tb = new Date(b.videos[0]?.published_at ?? 0).getTime()
+      const parseTs = (dateStr: string | undefined | null) => {
+        if (!dateStr) return -Infinity
+        const t = new Date(dateStr).getTime()
+        return isFinite(t) ? t : -Infinity
+      }
+      const ta = parseTs(a.videos[0]?.published_at)
+      const tb = parseTs(b.videos[0]?.published_at)
       return tb - ta
     })
   }, [restaurants, sortBy])
@@ -138,8 +143,9 @@ export default function Home() {
     if (region) params.set('region', region)
     if (categories.length > 0) params.set('category', categories.join(','))
 
+    const controller = new AbortController()
     setLoading(true)
-    fetch(`/api/restaurants?${params}`)
+    fetch(`/api/restaurants?${params}`, { signal: controller.signal })
       .then((r) => r.json())
       .then((data) => {
         const newList = data.restaurants || []
@@ -150,8 +156,10 @@ export default function Home() {
           return newList
         })
       })
-      .catch(() => setRestaurants([]))
+      .catch((e: unknown) => { if ((e as Error).name !== 'AbortError') setRestaurants([]) })
       .finally(() => setLoading(false))
+
+    return () => controller.abort()
   }, [bounds, selectedChannels, region, categories])
 
   const handleBoundsChange = useCallback((b: Bounds) => {
@@ -243,6 +251,7 @@ export default function Home() {
     let startY = 0
     let startOffset = 0
     let captured = false
+    let currentDragY = 0
 
     const onPointerDown = (e: PointerEvent) => {
       startY = e.clientY
@@ -258,6 +267,7 @@ export default function Home() {
       }
       if (!captured) return
       const newY = Math.max(0, Math.min(startOffset + deltaY, snapOffsets.current.collapsed))
+      currentDragY = newY
       sheet.style.transition = 'none'
       sheet.style.transform = `translateY(${newY}px)`
     }
@@ -265,9 +275,7 @@ export default function Home() {
     const onPointerUp = () => {
       if (!captured) return
       captured = false
-      const match = sheet.style.transform.match(/translateY\((-?[\d.]+)px\)/)
-      const currentY = match ? parseFloat(match[1]) : currentSnapOffset.current
-      goToState(nearestSnap(currentY))
+      goToState(nearestSnap(currentDragY))
     }
 
     content.addEventListener('pointerdown', onPointerDown)

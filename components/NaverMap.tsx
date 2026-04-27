@@ -33,6 +33,7 @@ export default function NaverMap({
   const mapElRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<naver.maps.Map | null>(null)
   const markersRef = useRef<naver.maps.Marker[]>([])
+  const markerListenersRef = useRef<unknown[]>([])
   // clusterRef removed — using grid-based clustering
   const [sdkLoaded, setSdkLoaded] = useState(false)
   const [sdkError, setSdkError] = useState(false)
@@ -123,6 +124,8 @@ export default function NaverMap({
     if (!map || !sdkLoaded) return
 
     // Clear old markers
+    markerListenersRef.current.forEach(l => naver.maps.Event.removeListener(l))
+    markerListenersRef.current = []
     markersRef.current.forEach((m) => m.setMap(null))
     markersRef.current = []
     restaurantMarkerMapRef.current.clear()
@@ -184,9 +187,11 @@ export default function NaverMap({
         })
 
         restaurantMarkerMapRef.current.set(restaurant.id, marker)
-        naver.maps.Event.addListener(marker, 'click', () => {
-          onMarkerClick(restaurant.id)
-        })
+        markerListenersRef.current.push(
+          naver.maps.Event.addListener(marker, 'click', () => {
+            onMarkerClick(restaurant.id)
+          })
+        )
         newMarkers.push(marker)
       } else {
         const avgLat = clusterItems.reduce((s: number, r: { lat: number | null }) => s + r.lat!, 0) / clusterItems.length
@@ -241,13 +246,15 @@ export default function NaverMap({
           },
         })
 
-        naver.maps.Event.addListener(marker, 'click', () => {
-          const lats = clusterItems.map(r => r.lat!)
-          const lngs = clusterItems.map(r => r.lng!)
-          const sw = new naver.maps.LatLng(Math.min(...lats), Math.min(...lngs))
-          const ne = new naver.maps.LatLng(Math.max(...lats), Math.max(...lngs))
-          map.fitBounds(new naver.maps.LatLngBounds(sw, ne), 80)
-        })
+        markerListenersRef.current.push(
+          naver.maps.Event.addListener(marker, 'click', () => {
+            const lats = clusterItems.map(r => r.lat!)
+            const lngs = clusterItems.map(r => r.lng!)
+            const sw = new naver.maps.LatLng(Math.min(...lats), Math.min(...lngs))
+            const ne = new naver.maps.LatLng(Math.max(...lats), Math.max(...lngs))
+            map.fitBounds(new naver.maps.LatLngBounds(sw, ne), 80)
+          })
+        )
         newMarkers.push(marker)
       }
     })

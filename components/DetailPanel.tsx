@@ -86,7 +86,7 @@ export default function DetailPanel({ restaurant, onClose, mobile }: DetailPanel
 
   const totalViews = visits.reduce((s, v) => s + (v.view_count ?? 0), 0)
   const viewsLabel = totalViews >= 10000
-    ? `${Math.round(totalViews / 10000)}만+`
+    ? `${Math.floor(totalViews / 10000)}만+`
     : totalViews > 0 ? totalViews.toLocaleString() : '-'
 
   const naverUrl = restaurant.naver_place_id
@@ -205,7 +205,7 @@ export default function DetailPanel({ restaurant, onClose, mobile }: DetailPanel
                       </div>
                     ) : (
                       <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-surface-high text-[9px] font-bold text-ink-tertiary">
-                        {v.channel_name[0]}
+                        {v.channel_name?.[0] ?? '?'}
                       </div>
                     )}
                     <span className="text-[12.5px] font-semibold text-ink-body">{v.channel_name}</span>

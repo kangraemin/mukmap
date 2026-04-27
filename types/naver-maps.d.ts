@@ -81,7 +81,7 @@ declare namespace naver.maps {
   }
 
   class Event {
-    static addListener(target: object, event: string, handler: (...args: unknown[]) => void): void
+    static addListener(target: object, event: string, handler: (...args: unknown[]) => void): unknown
     static removeListener(listener: unknown): void
   }
 
