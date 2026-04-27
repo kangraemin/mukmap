@@ -18,6 +18,7 @@ interface NaverMapProps {
   selectedChannels: string[]
   fitToMarkers?: boolean
   focusedRestaurantId?: number | null
+  onFitComplete?: () => void
 }
 
 export default function NaverMap({
@@ -27,12 +28,14 @@ export default function NaverMap({
   selectedChannels,
   fitToMarkers,
   focusedRestaurantId,
+  onFitComplete,
 }: NaverMapProps) {
   const mapElRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<naver.maps.Map | null>(null)
   const markersRef = useRef<naver.maps.Marker[]>([])
   // clusterRef removed — using grid-based clustering
   const [sdkLoaded, setSdkLoaded] = useState(false)
+  const [sdkError, setSdkError] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const restaurantMarkerMapRef = useRef<Map<number, naver.maps.Marker>>(new Map())
 
@@ -50,13 +53,22 @@ export default function NaverMap({
       script.async = true
       document.head.appendChild(script)
     }
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
     const poll = setInterval(() => {
       if ((window as Window & { naver?: { maps?: unknown } }).naver?.maps) {
         clearInterval(poll)
+        if (timeoutId) clearTimeout(timeoutId)
         setSdkLoaded(true)
       }
     }, 100)
-    return () => clearInterval(poll)
+    timeoutId = setTimeout(() => {
+      clearInterval(poll)
+      setSdkError(true)
+    }, 10000)
+    return () => {
+      clearInterval(poll)
+      if (timeoutId) clearTimeout(timeoutId)
+    }
   }, [])
 
   // Init map
@@ -92,6 +104,10 @@ export default function NaverMap({
         })
       }, 500)
     })
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
   }, [sdkLoaded, onBoundsChange])
 
   // Channel color map
@@ -278,13 +294,25 @@ export default function NaverMap({
       )
     )
     map.fitBounds(bounds, 60)
-  }, [fitToMarkers, restaurants])
+    onFitComplete?.()
+  }, [fitToMarkers, restaurants, onFitComplete])
 
   return (
     <div ref={mapElRef} className="h-full w-full">
-      {!sdkLoaded && (
+      {!sdkLoaded && !sdkError && (
         <div className="flex h-full items-center justify-center bg-surface-low text-sm text-ink-muted">
           지도를 불러오는 중...
+        </div>
+      )}
+      {sdkError && (
+        <div className="flex h-full flex-col items-center justify-center gap-2 bg-surface-low text-sm text-ink-muted">
+          <span>지도를 불러오지 못했습니다</span>
+          <button
+            onClick={() => window.location.reload()}
+            className="text-primary underline"
+          >
+            다시 시도
+          </button>
         </div>
       )}
     </div>

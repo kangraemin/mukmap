@@ -48,9 +48,7 @@ function PinIcon() {
 }
 
 export default function Home() {
-  const [onboarded, setOnboarded] = useState(() =>
-    typeof window !== 'undefined' && !!localStorage.getItem('mukmap_onboarded')
-  )
+  const [onboarded, setOnboarded] = useState(false)
   const [allChannels, setAllChannels] = useState<Channel[]>([])
 
   const [focusedRestaurantId, setFocusedRestaurantId] = useState<number | null>(null)
@@ -100,6 +98,10 @@ export default function Home() {
       .then((r) => r.json())
       .then((data) => setAllChannels(data.channels || []))
       .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    setOnboarded(!!localStorage.getItem('mukmap_onboarded'))
   }, [])
 
   const handleOnboardingComplete = useCallback((ids: string[]) => {
@@ -158,6 +160,10 @@ export default function Home() {
   }, [])
 
   const handleChannelToggle = useCallback((channelId: string) => {
+    if (!selectedChannels.includes(channelId) && selectedChannels.length >= 5) {
+      setToast('유튜버는 최대 5명까지 선택 가능합니다')
+      return
+    }
     setSelectedChannels((prev) => {
       const next = prev.includes(channelId)
         ? prev.filter((id) => id !== channelId)
@@ -165,7 +171,7 @@ export default function Home() {
       if (next.length > prev.length) setFitToMarkers(true)
       return next
     })
-  }, [])
+  }, [selectedChannels])
 
   const handleCategoryToggle = useCallback((cat: string) => {
     setCategories((prev) =>
@@ -176,6 +182,7 @@ export default function Home() {
   const handleReset = useCallback(() => {
     setRegion('')
     setCategories([])
+    setSelectedChannels([])
   }, [])
 
   const goToState = useCallback((state: SheetState) => {
@@ -192,11 +199,18 @@ export default function Home() {
   useEffect(() => {
     const sheet = sheetRef.current
     if (!sheet) return
-    const vh = window.innerHeight
-    snapOffsets.current = { full: 0, half: vh * 0.9 - vh * 0.5, collapsed: vh * 0.9 - 120 }
-    currentSnapOffset.current = snapOffsets.current.collapsed
-    sheet.style.transition = 'none'
-    sheet.style.transform = `translateY(${snapOffsets.current.collapsed}px)`
+
+    const recalculate = () => {
+      const vh = window.innerHeight
+      snapOffsets.current = { full: 0, half: vh * 0.9 - vh * 0.5, collapsed: vh * 0.9 - 120 }
+      currentSnapOffset.current = snapOffsets.current.collapsed
+      sheet.style.transition = 'none'
+      sheet.style.transform = `translateY(${snapOffsets.current.collapsed}px)`
+    }
+
+    recalculate()
+    window.addEventListener('resize', recalculate)
+    return () => window.removeEventListener('resize', recalculate)
   }, [])
 
   const nearestSnap = useCallback((y: number): SheetState =>
@@ -277,20 +291,25 @@ export default function Home() {
 
   const handleSelectRestaurant = useCallback((id: number) => {
     setFocusedRestaurantId(id)
-  }, [])
+    setMobileView('detail')
+    goToState('full')
+  }, [goToState])
 
   const handleSelectChannel = useCallback((id: string) => {
-    setSelectedChannels((prev) => {
-      if (prev.includes(id)) return prev
-      if (prev.length >= 5) return prev
-      return [...prev, id]
-    })
+    if (selectedChannels.includes(id)) return
+    if (selectedChannels.length >= 5) {
+      setToast('유튜버는 최대 5명까지 선택 가능합니다')
+      return
+    }
+    setSelectedChannels([...selectedChannels, id])
     setFitToMarkers(true)
-  }, [])
+  }, [selectedChannels])
 
   const handleSelectRegion = useCallback((name: string) => {
     setRegion(name)
   }, [])
+
+  const handleToastClose = useCallback(() => setToast(''), [])
 
   return (
     <div className="flex h-screen overflow-hidden bg-cream">
@@ -394,6 +413,7 @@ export default function Home() {
           selectedChannels={selectedChannels}
           fitToMarkers={fitToMarkers}
           focusedRestaurantId={focusedRestaurantId}
+          onFitComplete={() => setFitToMarkers(false)}
         />
 
         {/* Desktop: slide-in Detail Panel */}
@@ -501,6 +521,11 @@ export default function Home() {
                       onClick={() => handleMarkerClick(r.id)}
                     />
                   ))}
+                  {sorted.length > 20 && (
+                    <p className="py-3 text-center text-[11px] text-ink-muted">
+                      +{sorted.length - 20}곳 더 있습니다 · 지도를 확대해 보세요
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -508,7 +533,7 @@ export default function Home() {
         </div>
       </div>
 
-      {toast && <Toast message={toast} onClose={() => setToast('')} />}
+      {toast && <Toast message={toast} onClose={handleToastClose} />}
 
       {!onboarded && (
         <Onboarding

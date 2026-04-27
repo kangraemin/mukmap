@@ -178,9 +178,9 @@ export default function DetailPanel({ restaurant, onClose, mobile }: DetailPanel
             <span className="text-xs text-ink-muted">{visits.length}건</span>
           </div>
           <div className="flex flex-col gap-2">
-            {visits.map((v, i) => (
+            {visits.map((v) => (
               <a
-                key={i}
+                key={v.id}
                 href={`https://www.youtube.com/watch?v=${v.video_id}${v.timestamp_seconds ? `&t=${v.timestamp_seconds}s` : ''}`}
                 target="_blank"
                 rel="noopener noreferrer"

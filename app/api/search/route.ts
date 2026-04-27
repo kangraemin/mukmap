@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
       supabase
         .from('restaurants')
         .select('id, name, address, category')
+        .eq('is_visible', true)
         .or(`name.ilike.%${sanitized}%,address.ilike.%${sanitized}%`)
         .limit(5),
       supabase
