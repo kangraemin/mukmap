@@ -261,11 +261,14 @@ export default function Home() {
 
     const onPointerMove = (e: PointerEvent) => {
       const deltaY = e.clientY - startY
-      if (!captured && content.scrollTop === 0 && deltaY > 0) {
+      // iOS bounce/momentum: scrollTop이 0이 아닌 음수/소수일 수 있음 → <=0 으로 톨러런스
+      if (!captured && content.scrollTop <= 0 && deltaY > 5) {
         content.setPointerCapture(e.pointerId)
         captured = true
       }
       if (!captured) return
+      // 캡처 후엔 native scroll/bounce로 뺏기지 않도록 preventDefault
+      e.preventDefault()
       const newY = Math.max(0, Math.min(startOffset + deltaY, snapOffsets.current.collapsed))
       currentDragY = newY
       sheet.style.transition = 'none'
@@ -455,7 +458,14 @@ export default function Home() {
             <div className="h-1 w-10 rounded-full bg-border" />
           </div>
 
-          <div ref={contentRef} className="overflow-y-auto px-4" style={{ maxHeight: 'calc(100% - 24px)' }}>
+          <div
+            ref={contentRef}
+            className="overflow-y-auto px-4"
+            style={{
+              maxHeight: 'calc(100% - 24px)',
+              touchAction: 'pan-y',
+            }}
+          >
             {mobileView === 'detail' && focusedRestaurant ? (
               <DetailPanel
                 restaurant={focusedRestaurant}
