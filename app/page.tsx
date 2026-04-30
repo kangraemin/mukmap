@@ -226,73 +226,69 @@ export default function Home() {
       .sort((a, b) => Math.abs(y - snapOffsets.current[a]) - Math.abs(y - snapOffsets.current[b]))[0]
   , [])
 
-  // Handle: @use-gesture/react — setPointerCapture 내장, 브라우저 스크롤 파이프라인 우회
+  // Handle: @use-gesture/react — multi-step pointermove 누적 처리, page.mouse + touch 양쪽 수용
   useDrag(
-    ({ movement: [, my], last, memo = currentSnapOffset.current }) => {
-      const newY = Math.max(0, Math.min((memo as number) + my, snapOffsets.current.collapsed))
+    ({ movement: [, my], last, first, memo }) => {
+      const startOffset = first ? currentSnapOffset.current : (memo as number)
+      const newY = Math.max(0, Math.min(startOffset + my, snapOffsets.current.collapsed))
       if (last) {
         goToState(nearestSnap(newY))
       } else if (sheetRef.current) {
         sheetRef.current.style.transition = 'none'
         sheetRef.current.style.transform = `translateY(${newY}px)`
       }
-      return memo
+      return startOffset
     },
-    { target: handleRef, axis: 'y', filterTaps: true }
+    {
+      target: handleRef,
+      axis: 'y',
+      filterTaps: false,
+    }
   )
 
-  // Content: 조건부 setPointerCapture
-  // scrollTop===0 + 아래 드래그 확인 후에만 capture → 그 전에는 브라우저 스크롤 처리
-  useEffect(() => {
-    const content = contentRef.current
-    const sheet = sheetRef.current
-    if (!content || !sheet) return
+  // Content: useDrag로 통일 — multi-step pointermove 누적 + setPointerCapture 라이브러리 위임
+  // first 시 startOffset 무조건 capture, threshold(5px) 후 방향 + scrollTop으로 cancel 결정
+  useDrag(
+    ({ movement: [, my], last, first, memo, event, cancel }) => {
+      const content = contentRef.current
+      if (!content) return memo
 
-    let startY = 0
-    let startOffset = 0
-    let captured = false
-    let currentDragY = 0
-
-    const onPointerDown = (e: PointerEvent) => {
-      startY = e.clientY
-      startOffset = currentSnapOffset.current
-      captured = false
-    }
-
-    const onPointerMove = (e: PointerEvent) => {
-      const deltaY = e.clientY - startY
-      // iOS bounce/momentum: scrollTop이 0이 아닌 음수/소수일 수 있음 → <=0 으로 톨러런스
-      if (!captured && content.scrollTop <= 0 && deltaY > 5) {
-        content.setPointerCapture(e.pointerId)
-        captured = true
+      if (first) {
+        return currentSnapOffset.current
       }
-      if (!captured) return
-      // 캡처 후엔 native scroll/bounce로 뺏기지 않도록 preventDefault
-      e.preventDefault()
-      const newY = Math.max(0, Math.min(startOffset + deltaY, snapOffsets.current.collapsed))
-      currentDragY = newY
-      sheet.style.transition = 'none'
-      sheet.style.transform = `translateY(${newY}px)`
-    }
 
-    const onPointerUp = () => {
-      if (!captured) return
-      captured = false
-      goToState(nearestSnap(currentDragY))
-    }
+      const startOffset = (memo as number | undefined) ?? currentSnapOffset.current
 
-    content.addEventListener('pointerdown', onPointerDown)
-    content.addEventListener('pointermove', onPointerMove, { passive: false })
-    content.addEventListener('pointerup', onPointerUp)
-    content.addEventListener('pointercancel', onPointerUp)
+      // threshold 미만은 아직 결정 보류 (transform 안 건드림)
+      if (Math.abs(my) < 5) return startOffset
 
-    return () => {
-      content.removeEventListener('pointerdown', onPointerDown)
-      content.removeEventListener('pointermove', onPointerMove)
-      content.removeEventListener('pointerup', onPointerUp)
-      content.removeEventListener('pointercancel', onPointerUp)
+      // 아래로 드래그인데 콘텐츠가 스크롤 가능 위치면 native scroll에 양보
+      if (my > 5 && content.scrollTop > 0) {
+        cancel()
+        return startOffset
+      }
+
+      // 시트 활성: native scroll/bounce 차단 시도
+      if (event && 'cancelable' in event && (event as Event).cancelable) {
+        try { (event as Event).preventDefault() } catch {}
+      }
+
+      const newY = Math.max(0, Math.min(startOffset + my, snapOffsets.current.collapsed))
+      if (last) {
+        goToState(nearestSnap(newY))
+      } else if (sheetRef.current) {
+        sheetRef.current.style.transition = 'none'
+        sheetRef.current.style.transform = `translateY(${newY}px)`
+      }
+      return startOffset
+    },
+    {
+      target: contentRef,
+      axis: 'y',
+      filterTaps: false,
+      eventOptions: { passive: false },
     }
-  }, [goToState, nearestSnap])
+  )
 
   const handleMarkerClick = useCallback((id: number) => {
     setFocusedRestaurantId(id)
@@ -460,6 +456,7 @@ export default function Home() {
 
           <div
             ref={contentRef}
+            data-testid="sheet-content"
             className="overflow-y-auto px-4"
             style={{
               maxHeight: 'calc(100% - 24px)',

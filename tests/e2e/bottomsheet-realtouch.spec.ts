@@ -7,23 +7,44 @@ async function getTranslateY(page: Page): Promise<number> {
   })
 }
 
-// Playwright page.mouse 기반 — mobile context(hasTouch:true,isMobile:true)에서
-// touch + pointer event를 함께 emulate함 (실제 브라우저 input pipeline 통과)
+// PointerEvent dispatch 기반 multi-step drag (use-gesture가 touch로 인식)
+// page.mouse가 mobile emulation 환경에서 use-gesture까지 도달하지 못하는 한계를 우회
 async function realTouchDrag(
   page: Page,
   selector: string,
   deltaY: number,
+  steps = 10,
 ) {
   const box = await page.locator(selector).boundingBox()
   if (!box) throw new Error(`no box for ${selector}`)
   const cx = box.x + box.width / 2
   const cy = box.y + box.height / 2
 
-  await page.mouse.move(cx, cy)
-  await page.mouse.down()
-  // 한 번에 큰 deltaY 이동 (steps=10으로 부드럽게 분할)
-  await page.mouse.move(cx, cy + deltaY, { steps: 10 })
-  await page.mouse.up()
+  await page.evaluate(
+    ([sel, sx, sy, dy, n]: [string, number, number, number, number]) => {
+      const el = document.querySelector(sel) as HTMLElement
+      if (!el) throw new Error('no el')
+
+      el.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true, cancelable: true, pointerId: 1, isPrimary: true,
+        button: 0, buttons: 1, clientX: sx, clientY: sy, pointerType: 'touch',
+      }))
+
+      for (let i = 1; i <= n; i++) {
+        const y = sy + (dy * i) / n
+        el.dispatchEvent(new PointerEvent('pointermove', {
+          bubbles: true, cancelable: true, pointerId: 1, isPrimary: true,
+          button: 0, buttons: 1, clientX: sx, clientY: y, pointerType: 'touch',
+        }))
+      }
+
+      el.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true, cancelable: true, pointerId: 1, isPrimary: true,
+        button: 0, buttons: 0, clientX: sx, clientY: sy + dy, pointerType: 'touch',
+      }))
+    },
+    [selector, cx, cy, deltaY, steps] as [string, number, number, number, number]
+  )
   await page.waitForTimeout(500)
 }
 
@@ -43,7 +64,7 @@ test.describe('BottomSheet realtouch (WebKit/iOS)', () => {
     expect(fullY).toBeLessThanOrEqual(10)
 
     // 콘텐츠를 잡고 아래로 → half/collapsed로 가야 함
-    await realTouchDrag(page, '[data-testid="bottom-sheet"]', 250)
+    await realTouchDrag(page, '[data-testid="sheet-content"]', 250)
     const afterY = await getTranslateY(page)
     expect(afterY).toBeGreaterThan(fullY + 100) // 최소 100px는 내려가야 함
   })
@@ -63,7 +84,7 @@ test.describe('BottomSheet realtouch (WebKit/iOS)', () => {
     await realTouchDrag(page, '[data-testid="sheet-handle"]', -200)
     const halfY = await getTranslateY(page)
 
-    await realTouchDrag(page, '[data-testid="bottom-sheet"]', 200)
+    await realTouchDrag(page, '[data-testid="sheet-content"]', 200)
     const afterY = await getTranslateY(page)
     expect(afterY).toBeGreaterThan(halfY + 50)
   })
