@@ -69,7 +69,7 @@ def get_channel_videos(page, channel_id: str, max_videos: int, days_limit: int) 
     """Scroll channel /videos page and collect video entries."""
     url = f"https://www.youtube.com/channel/{channel_id}/videos"
     page.goto(url, wait_until="networkidle", timeout=30000)
-    time.sleep(2)
+    time.sleep(3)
 
     videos = []
     seen_vids: set[str] = set()
@@ -77,41 +77,48 @@ def get_channel_videos(page, channel_id: str, max_videos: int, days_limit: int) 
     cutoff_reached = False
 
     while not cutoff_reached:
-        items = page.query_selector_all("ytd-rich-item-renderer")
-        for item in items:
-            try:
-                a = item.query_selector("a#video-title-link")
-                if not a:
-                    continue
-                href = a.get_attribute("href") or ""
-                vid_match = re.search(r"[?&]v=([\w-]{11})", href)
-                if not vid_match:
-                    continue
-                vid = vid_match.group(1)
-                if vid in seen_vids:
-                    continue
-                seen_vids.add(vid)
+        # JS로 직접 추출 — shadow DOM / 렌더링 타이밍 문제 우회
+        raw_items = page.evaluate("""() => {
+            const items = document.querySelectorAll('ytd-rich-item-renderer');
+            return Array.from(items).map(item => {
+                const a = item.querySelector('a#video-title-link') ||
+                          Array.from(item.querySelectorAll('a')).find(x => x.href && x.href.includes('/watch?v='));
+                const meta = item.querySelector('#metadata-line');
+                return {
+                    href: a ? a.href : '',
+                    title: a ? (a.title || a.textContent || '').trim() : '',
+                    meta: meta ? meta.textContent.trim() : ''
+                };
+            });
+        }""")
 
-                title = (a.get_attribute("title") or a.inner_text()).strip()
-                url_full = f"https://www.youtube.com/watch?v={vid}"
-                meta_el = item.query_selector("#metadata-line")
-                meta = meta_el.inner_text().strip() if meta_el else ""
-
-                if days_limit > 0:
-                    age = parse_age_days(meta)
-                    if age is not None and age > days_limit:
-                        cutoff_reached = True
-                        break
-
-                videos.append({"url": url_full, "vid": vid, "title": title, "meta": meta})
-                if max_videos > 0 and len(videos) >= max_videos:
-                    return videos
-            except Exception:
+        for entry in raw_items:
+            href = entry.get("href", "")
+            vid_match = re.search(r"[?&]v=([\w-]{11})", href)
+            if not vid_match:
                 continue
+            vid = vid_match.group(1)
+            if vid in seen_vids:
+                continue
+            seen_vids.add(vid)
+
+            title = entry.get("title", "").strip()
+            meta = entry.get("meta", "").strip()
+            url_full = f"https://www.youtube.com/watch?v={vid}"
+
+            if days_limit > 0:
+                age = parse_age_days(meta)
+                if age is not None and age > days_limit:
+                    cutoff_reached = True
+                    break
+
+            videos.append({"url": url_full, "vid": vid, "title": title, "meta": meta})
+            if max_videos > 0 and len(videos) >= max_videos:
+                return videos
 
         if cutoff_reached:
             break
-        current_count = len(items)
+        current_count = len(raw_items)
         if current_count == last_count:
             break
         last_count = current_count
@@ -122,48 +129,105 @@ def get_channel_videos(page, channel_id: str, max_videos: int, days_limit: int) 
 
 
 def get_transcript(page, vid: str) -> list[dict] | None:
-    """Open video, click transcript button, extract segments."""
+    """Open video, click transcript button, extract segments.
+
+    Selector strategy (confirmed via live DOM inspection 2026-05):
+    1. button[aria-label="스크립트 표시"]  — description 패널 내 직접 노출 버튼
+    2. "추가 작업" 버튼 클릭 후 메뉴에서 "스크립트 열기" 항목 클릭
+    3. ytd-video-description-transcript-section-renderer 내 첫 번째 button
+    """
     page.goto(f"https://www.youtube.com/watch?v={vid}", wait_until="networkidle", timeout=30000)
-    time.sleep(2)
+    time.sleep(3)
 
-    # Expand description
-    try:
-        expand = page.query_selector("tp-yt-paper-button#expand, ytd-text-inline-expander #expand")
-        if expand:
-            expand.click()
-            time.sleep(0.5)
-    except Exception:
-        pass
-
-    # Click transcript button
-    clicked = False
-    for selector in [
-        "button[aria-label*='스크립트']",
-        "button[aria-label*='transcript']",
-        "button[aria-label*='Transcript']",
+    # Step 1: 설명란 더보기 펼치기 (스크립트 표시 버튼이 숨어있을 수 있음)
+    for expand_sel in [
+        "tp-yt-paper-button#expand",
+        "ytd-text-inline-expander #expand",
+        "#description-inline-expander #expand",
     ]:
         try:
-            btn = page.query_selector(selector)
-            if btn:
-                btn.click()
-                clicked = True
+            el = page.query_selector(expand_sel)
+            if el and el.is_visible():
+                el.click()
+                time.sleep(1)
                 break
         except Exception:
             continue
 
+    # Step 2: "스크립트 표시" 버튼 직접 클릭 (가장 신뢰도 높음)
+    clicked = False
+    direct_selectors = [
+        'button[aria-label="스크립트 표시"]',
+        'button[aria-label="Show transcript"]',
+    ]
+    for sel in direct_selectors:
+        try:
+            btn = page.query_selector(sel)
+            if btn and btn.is_visible():
+                btn.click()
+                clicked = True
+                print(f"    [transcript] clicked via: {sel}")
+                break
+        except Exception:
+            continue
+
+    # Step 3: "추가 작업" 메뉴 → "스크립트 열기"
+    if not clicked:
+        more_selectors = [
+            'button[aria-label="추가 작업"]',
+            'button[aria-label="More actions"]',
+        ]
+        for more_sel in more_selectors:
+            try:
+                more_btns = page.query_selector_all(more_sel)
+                # description 영역에 있는 버튼 우선 (처음 1~2개가 player 영역)
+                target = more_btns[1] if len(more_btns) >= 2 else (more_btns[0] if more_btns else None)
+                if target and target.is_visible():
+                    target.click()
+                    time.sleep(1)
+                    # 메뉴 항목 탐색
+                    for item_sel in [
+                        'ytd-menu-service-item-renderer yt-formatted-string:has-text("스크립트")',
+                        'tp-yt-paper-item:has-text("스크립트")',
+                        'yt-formatted-string:has-text("스크립트 열기")',
+                        'yt-formatted-string:has-text("Open transcript")',
+                    ]:
+                        try:
+                            item = page.query_selector(item_sel)
+                            if item and item.is_visible():
+                                item.click()
+                                clicked = True
+                                print(f"    [transcript] clicked via menu: {item_sel}")
+                                break
+                        except Exception:
+                            continue
+                    if clicked:
+                        break
+                    # 메뉴 못 찾으면 Escape로 닫기
+                    page.keyboard.press("Escape")
+                    time.sleep(0.5)
+            except Exception:
+                continue
+
+    # Step 4: ytd-video-description-transcript-section-renderer 내 버튼 fallback
     if not clicked:
         try:
-            page.click("ytd-video-description-transcript-section-renderer button", timeout=3000)
-            clicked = True
+            btn = page.query_selector("ytd-video-description-transcript-section-renderer button")
+            if btn and btn.is_visible():
+                btn.click()
+                clicked = True
+                print("    [transcript] clicked via transcript-section-renderer")
         except Exception:
             pass
 
     if not clicked:
+        print(f"    [transcript] no transcript button found for {vid}")
         return None
 
     try:
         page.wait_for_selector("ytd-transcript-segment-renderer", timeout=10000)
     except PlaywrightTimeout:
+        print(f"    [transcript] panel did not load for {vid}")
         return None
 
     segments = page.query_selector_all("ytd-transcript-segment-renderer")
