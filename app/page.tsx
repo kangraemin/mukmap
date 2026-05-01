@@ -203,6 +203,17 @@ export default function Home() {
     setSheetState(state)
   }, [])
 
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el) return
+    const onScroll = () => {
+      el.style.touchAction = el.scrollTop > 0 ? 'pan-y' : 'pan-up'
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    el.style.touchAction = 'pan-up'
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
+
   // snap offset 초기화
   useEffect(() => {
     const sheet = sheetRef.current
@@ -228,7 +239,10 @@ export default function Home() {
 
   // Handle: @use-gesture/react — multi-step pointermove 누적 처리, page.mouse + touch 양쪽 수용
   useDrag(
-    ({ movement: [, my], last, first, memo }) => {
+    ({ movement: [, my], last, first, memo, event }) => {
+      if (event && 'cancelable' in event && (event as Event).cancelable) {
+        try { (event as Event).preventDefault() } catch {}
+      }
       const startOffset = first ? currentSnapOffset.current : (memo as number)
       const newY = Math.max(0, Math.min(startOffset + my, snapOffsets.current.collapsed))
       if (last) {
@@ -243,6 +257,7 @@ export default function Home() {
       target: handleRef,
       axis: 'y',
       filterTaps: false,
+      eventOptions: { passive: false },
     }
   )
 
@@ -458,10 +473,7 @@ export default function Home() {
             ref={contentRef}
             data-testid="sheet-content"
             className="overflow-y-auto px-4"
-            style={{
-              maxHeight: 'calc(100% - 24px)',
-              touchAction: 'pan-y',
-            }}
+            style={{ maxHeight: 'calc(100% - 24px)' }}
           >
             {mobileView === 'detail' && focusedRestaurant ? (
               <DetailPanel
