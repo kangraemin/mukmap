@@ -224,9 +224,29 @@ def get_transcript(page, vid: str) -> list[dict] | None:
         print(f"    [transcript] no transcript button found for {vid}")
         return None
 
-    try:
-        page.wait_for_selector("ytd-transcript-segment-renderer", timeout=10000)
-    except PlaywrightTimeout:
+    # 패널 로드 대기 — engagement panel 먼저 확인 후 세그먼트 탐색
+    panel_loaded = False
+    for seg_sel in [
+        "ytd-transcript-segment-renderer",
+        "ytd-transcript-body-renderer ytd-transcript-segment-renderer",
+    ]:
+        try:
+            page.wait_for_selector(seg_sel, timeout=20000)
+            panel_loaded = True
+            break
+        except PlaywrightTimeout:
+            continue
+
+    if not panel_loaded:
+        # engagement panel 자체가 열렸는지 확인
+        try:
+            page.wait_for_selector(
+                "ytd-engagement-panel-section-list-renderer[target-id='engagement-panel-transcript']",
+                timeout=5000
+            )
+            # 패널은 있지만 세그먼트가 없음 — 자막 없는 영상
+        except PlaywrightTimeout:
+            pass
         print(f"    [transcript] panel did not load for {vid}")
         return None
 
@@ -271,9 +291,19 @@ def main():
     skip_existing = not args.no_skip_existing
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=args.headless)
-        page = browser.new_page()
-        page.set_viewport_size({"width": 1280, "height": 800})
+        browser = pw.chromium.launch(
+            headless=args.headless,
+            args=["--disable-blink-features=AutomationControlled"],
+        )
+        context = browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1280, "height": 800},
+        )
+        page = context.new_page()
 
         for ch in channels:
             print(f"\n===== {ch['name']} ({ch['slug']}) =====")
@@ -298,6 +328,7 @@ def main():
 
             print(f"  완료: ok={ok} skip={skip} fail={fail}")
 
+        context.close()
         browser.close()
 
 
