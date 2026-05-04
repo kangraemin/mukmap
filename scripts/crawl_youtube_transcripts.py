@@ -225,46 +225,57 @@ def get_transcript(page, vid: str) -> list[dict] | None:
         print(f"    [transcript] no transcript button found for {vid}")
         return None
 
-    # 패널 로드 대기 — engagement panel 먼저 확인 후 세그먼트 탐색
+    # 패널 로드 대기 — 신 UI(transcript-segment-view-model) 우선, 구 UI fallback
     panel_loaded = False
+    matched_sel = None
     for seg_sel in [
-        "ytd-transcript-segment-renderer",
+        "transcript-segment-view-model",           # 신 YouTube UI
+        "ytd-transcript-segment-renderer",          # 구 YouTube UI
         "ytd-transcript-body-renderer ytd-transcript-segment-renderer",
     ]:
         try:
             page.wait_for_selector(seg_sel, timeout=20000)
             panel_loaded = True
+            matched_sel = seg_sel
             break
         except PlaywrightTimeout:
             continue
 
     if not panel_loaded:
-        # engagement panel 자체가 열렸는지 확인
-        try:
-            page.wait_for_selector(
-                "ytd-engagement-panel-section-list-renderer[target-id='engagement-panel-transcript']",
-                timeout=5000
-            )
-            # 패널은 있지만 세그먼트가 없음 — 자막 없는 영상
-        except PlaywrightTimeout:
-            pass
         print(f"    [transcript] panel did not load for {vid}")
         return None
 
-    segments = page.query_selector_all("ytd-transcript-segment-renderer")
     result = []
-    for seg in segments:
-        try:
-            ts_el = seg.query_selector(".segment-timestamp")
-            text_el = seg.query_selector(".segment-text")
-            if not ts_el or not text_el:
+    if matched_sel == "transcript-segment-view-model":
+        # 신 YouTube UI
+        segments = page.query_selector_all("transcript-segment-view-model")
+        for seg in segments:
+            try:
+                ts_el = seg.query_selector(".ytwTranscriptSegmentViewModelTimestamp")
+                text_el = seg.query_selector("span.ytAttributedStringHost")
+                if not ts_el or not text_el:
+                    continue
+                ts = ts_el.inner_text().strip()
+                text = text_el.inner_text().strip()
+                if text:
+                    result.append({"timestamp": ts, "text": text})
+            except Exception:
                 continue
-            ts = ts_el.inner_text().strip()
-            text = text_el.inner_text().strip()
-            if text:
-                result.append({"timestamp": ts, "text": text})
-        except Exception:
-            continue
+    else:
+        # 구 YouTube UI
+        segments = page.query_selector_all("ytd-transcript-segment-renderer")
+        for seg in segments:
+            try:
+                ts_el = seg.query_selector(".segment-timestamp")
+                text_el = seg.query_selector(".segment-text")
+                if not ts_el or not text_el:
+                    continue
+                ts = ts_el.inner_text().strip()
+                text = text_el.inner_text().strip()
+                if text:
+                    result.append({"timestamp": ts, "text": text})
+            except Exception:
+                continue
     return result or None
 
 
