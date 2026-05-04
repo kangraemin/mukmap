@@ -21,6 +21,7 @@ CHANNELS = [
     {"id": "UCzgpOnor-MzT-1iflZil2GQ", "slug": "jaesunrang",       "name": "재선랑"},
     {"id": "UC-OAmhcFgX9t_OF6fQ-4B1w", "slug": "kimjjamppong",     "name": "김쨈뽕"},
     {"id": "UC-x55HF1-IilhxZOzwJm7JA", "slug": "kimsawon",         "name": "김사원"},
+    {"id": "UCJo6G1u0e_-wS-JQn3T-zEw", "slug": "moneycomics",      "name": "머니코믹스"},
 ]
 
 
