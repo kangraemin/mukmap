@@ -23,7 +23,7 @@ CHANNELS = [
     {"id": "UC-x55HF1-IilhxZOzwJm7JA", "slug": "kimsawon",           "name": "김사원",             "tab": "videos"},
     {"id": "UCJo6G1u0e_-wS-JQn3T-zEw", "slug": "moneycomics",        "name": "머니코믹스(라이브)", "tab": "streams"},
     {"id": "UCJo6G1u0e_-wS-JQn3T-zEw", "slug": "moneycomics_videos", "name": "머니코믹스(영상)",   "tab": "videos"},
-    {"id": "UCgYif9zf5IGYfqJJ04c-usQ", "slug": "shukaworld",         "name": "슈카월드",           "tab": "videos"},
+    {"id": "UCgYif9zf5IGYfqJJ04c-usQ", "slug": "shukaworld",         "name": "슈카월드",           "tab": "videos", "handle": "syukaworld"},
     {"id": "UChlv4GSd7OQl3js-jkLOnFA", "slug": "sampro_tv",          "name": "삼프로TV",           "tab": "videos"},
     {"id": "UCA_hgsFzmynpv1zkvA5A7jA", "slug": "jisik_inside",       "name": "지식인사이드",       "tab": "videos"},
     {"id": "UCVwxhpr8oegibgO0eygswcQ", "slug": "yonhap_economy",     "name": "연합뉴스경제TV",     "tab": "videos", "keyword": "오건영"},
@@ -72,9 +72,12 @@ def parse_age_days(meta: str) -> int | None:
     return {"초": 0, "분": 0, "시간": 0, "일": n, "주": n * 7, "개월": n * 30, "년": n * 365}[unit]
 
 
-def get_channel_videos(page, channel_id: str, max_videos: int, days_limit: int, tab: str = "videos") -> list[dict]:
+def get_channel_videos(page, channel_id: str, max_videos: int, days_limit: int, tab: str = "videos", handle: str = "") -> list[dict]:
     """Scroll channel /videos or /streams page and collect video entries."""
-    url = f"https://www.youtube.com/channel/{channel_id}/{tab}"
+    if handle:
+        url = f"https://www.youtube.com/@{handle}/{tab}"
+    else:
+        url = f"https://www.youtube.com/channel/{channel_id}/{tab}"
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=30000)
     except Exception:
@@ -335,7 +338,7 @@ def main():
 
         for ch in channels:
             print(f"\n===== {ch['name']} ({ch['slug']}) =====")
-            videos = get_channel_videos(page, ch["id"], args.max_videos, args.days, ch.get("tab", "videos"))
+            videos = get_channel_videos(page, ch["id"], args.max_videos, args.days, ch.get("tab", "videos"), ch.get("handle", ""))
             print(f"  수집 영상: {len(videos)}개")
             keyword = ch.get("keyword")
             if keyword:
