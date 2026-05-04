@@ -16,12 +16,12 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 CHANNELS = [
-    {"id": "UCehQiKylaW68H_OtRS36wGQ", "slug": "dulcinea_studio", "name": "둘시네아"},
-    {"id": "UCfpaSruWW3S4dibonKXENjA", "slug": "tzuyang",          "name": "쯔양"},
-    {"id": "UCzgpOnor-MzT-1iflZil2GQ", "slug": "jaesunrang",       "name": "재선랑"},
-    {"id": "UC-OAmhcFgX9t_OF6fQ-4B1w", "slug": "kimjjamppong",     "name": "김쨈뽕"},
-    {"id": "UC-x55HF1-IilhxZOzwJm7JA", "slug": "kimsawon",         "name": "김사원"},
-    {"id": "UCJo6G1u0e_-wS-JQn3T-zEw", "slug": "moneycomics",      "name": "머니코믹스"},
+    {"id": "UCehQiKylaW68H_OtRS36wGQ", "slug": "dulcinea_studio", "name": "둘시네아",    "tab": "videos"},
+    {"id": "UCfpaSruWW3S4dibonKXENjA", "slug": "tzuyang",          "name": "쯔양",       "tab": "videos"},
+    {"id": "UCzgpOnor-MzT-1iflZil2GQ", "slug": "jaesunrang",       "name": "재선랑",     "tab": "videos"},
+    {"id": "UC-OAmhcFgX9t_OF6fQ-4B1w", "slug": "kimjjamppong",     "name": "김쨈뽕",    "tab": "videos"},
+    {"id": "UC-x55HF1-IilhxZOzwJm7JA", "slug": "kimsawon",         "name": "김사원",     "tab": "videos"},
+    {"id": "UCJo6G1u0e_-wS-JQn3T-zEw", "slug": "moneycomics",      "name": "머니코믹스", "tab": "streams"},
 ]
 
 
@@ -66,9 +66,9 @@ def parse_age_days(meta: str) -> int | None:
     return {"초": 0, "분": 0, "시간": 0, "일": n, "주": n * 7, "개월": n * 30, "년": n * 365}[unit]
 
 
-def get_channel_videos(page, channel_id: str, max_videos: int, days_limit: int) -> list[dict]:
-    """Scroll channel /videos page and collect video entries."""
-    url = f"https://www.youtube.com/channel/{channel_id}/videos"
+def get_channel_videos(page, channel_id: str, max_videos: int, days_limit: int, tab: str = "videos") -> list[dict]:
+    """Scroll channel /videos or /streams page and collect video entries."""
+    url = f"https://www.youtube.com/channel/{channel_id}/{tab}"
     page.goto(url, wait_until="networkidle", timeout=30000)
     time.sleep(3)
 
@@ -308,7 +308,7 @@ def main():
 
         for ch in channels:
             print(f"\n===== {ch['name']} ({ch['slug']}) =====")
-            videos = get_channel_videos(page, ch["id"], args.max_videos, args.days)
+            videos = get_channel_videos(page, ch["id"], args.max_videos, args.days, ch.get("tab", "videos"))
             print(f"  수집 영상: {len(videos)}개")
             save_list_json(args.output_dir, ch["slug"], videos)
 
