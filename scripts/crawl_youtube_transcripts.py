@@ -16,12 +16,18 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 CHANNELS = [
-    {"id": "UCehQiKylaW68H_OtRS36wGQ", "slug": "dulcinea_studio", "name": "둘시네아",    "tab": "videos"},
-    {"id": "UCfpaSruWW3S4dibonKXENjA", "slug": "tzuyang",          "name": "쯔양",       "tab": "videos"},
-    {"id": "UCzgpOnor-MzT-1iflZil2GQ", "slug": "jaesunrang",       "name": "재선랑",     "tab": "videos"},
-    {"id": "UC-OAmhcFgX9t_OF6fQ-4B1w", "slug": "kimjjamppong",     "name": "김쨈뽕",    "tab": "videos"},
-    {"id": "UC-x55HF1-IilhxZOzwJm7JA", "slug": "kimsawon",         "name": "김사원",     "tab": "videos"},
-    {"id": "UCJo6G1u0e_-wS-JQn3T-zEw", "slug": "moneycomics",      "name": "머니코믹스", "tab": "streams"},
+    {"id": "UCehQiKylaW68H_OtRS36wGQ", "slug": "dulcinea_studio",   "name": "둘시네아",            "tab": "videos"},
+    {"id": "UCfpaSruWW3S4dibonKXENjA", "slug": "tzuyang",            "name": "쯔양",               "tab": "videos"},
+    {"id": "UCzgpOnor-MzT-1iflZil2GQ", "slug": "jaesunrang",         "name": "재선랑",             "tab": "videos"},
+    {"id": "UC-OAmhcFgX9t_OF6fQ-4B1w", "slug": "kimjjamppong",       "name": "김쨈뽕",            "tab": "videos"},
+    {"id": "UC-x55HF1-IilhxZOzwJm7JA", "slug": "kimsawon",           "name": "김사원",             "tab": "videos"},
+    {"id": "UCJo6G1u0e_-wS-JQn3T-zEw", "slug": "moneycomics",        "name": "머니코믹스(라이브)", "tab": "streams"},
+    {"id": "UCJo6G1u0e_-wS-JQn3T-zEw", "slug": "moneycomics_videos", "name": "머니코믹스(영상)",   "tab": "videos"},
+    {"id": "UCgYif9zf5IGYfqJJ04c-usQ", "slug": "shukaworld",         "name": "슈카월드",           "tab": "videos"},
+    {"id": "UChlv4GSd7OQl3js-jkLOnFA", "slug": "sampro_tv",          "name": "삼프로TV",           "tab": "videos"},
+    {"id": "UCA_hgsFzmynpv1zkvA5A7jA", "slug": "jisik_inside",       "name": "지식인사이드",       "tab": "videos"},
+    {"id": "UCVwxhpr8oegibgO0eygswcQ", "slug": "yonhap_economy",     "name": "연합뉴스경제TV",     "tab": "videos", "keyword": "오건영"},
+    {"id": "UCvrOll07bwpNzGhBHRB5_yw", "slug": "developmong",        "name": "웅덩이매수디벨롭몽", "tab": "videos"},
 ]
 
 
@@ -321,6 +327,11 @@ def main():
             print(f"\n===== {ch['name']} ({ch['slug']}) =====")
             videos = get_channel_videos(page, ch["id"], args.max_videos, args.days, ch.get("tab", "videos"))
             print(f"  수집 영상: {len(videos)}개")
+            keyword = ch.get("keyword")
+            if keyword:
+                before = len(videos)
+                videos = [v for v in videos if keyword in v.get("title", "")]
+                print(f"  keyword 필터 '{keyword}' 적용: {before} → {len(videos)}개")
             save_list_json(args.output_dir, ch["slug"], videos)
 
             ok = skip = fail = 0
