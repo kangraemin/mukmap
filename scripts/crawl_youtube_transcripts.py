@@ -91,13 +91,17 @@ def get_channel_videos(page, channel_id: str, max_videos: int, days_limit: int, 
         raw_items = page.evaluate("""() => {
             const items = document.querySelectorAll('ytd-rich-item-renderer');
             return Array.from(items).map(item => {
-                const a = item.querySelector('a#video-title-link') ||
-                          Array.from(item.querySelectorAll('a')).find(x => x.href && x.href.includes('/watch?v='));
-                const meta = item.querySelector('#metadata-line');
+                const titleEl = item.querySelector('yt-formatted-string#video-title') ||
+                                item.querySelector('#video-title');
+                const linkEl = item.querySelector('a#video-title-link') ||
+                               (titleEl ? titleEl.closest('a') : null);
+                const metaSpans = item.querySelectorAll('span.inline-metadata-item');
+                const dateText = metaSpans.length > 0 ?
+                    Array.from(metaSpans).map(s => s.textContent.trim()).join(' ') : '';
                 return {
-                    href: a ? a.href : '',
-                    title: a ? (a.title || a.textContent || '').trim() : '',
-                    meta: meta ? meta.textContent.trim() : ''
+                    href: linkEl ? linkEl.href : '',
+                    title: titleEl ? titleEl.textContent.trim() : '',
+                    meta: dateText
                 };
             });
         }""")
