@@ -75,7 +75,10 @@ def parse_age_days(meta: str) -> int | None:
 def get_channel_videos(page, channel_id: str, max_videos: int, days_limit: int, tab: str = "videos") -> list[dict]:
     """Scroll channel /videos or /streams page and collect video entries."""
     url = f"https://www.youtube.com/channel/{channel_id}/{tab}"
-    page.goto(url, wait_until="networkidle", timeout=30000)
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+    except Exception:
+        return []
     time.sleep(3)
 
     videos = []
@@ -143,7 +146,10 @@ def get_transcript(page, vid: str) -> list[dict] | None:
     2. "추가 작업" 버튼 클릭 후 메뉴에서 "스크립트 열기" 항목 클릭
     3. ytd-video-description-transcript-section-renderer 내 첫 번째 button
     """
-    page.goto(f"https://www.youtube.com/watch?v={vid}", wait_until="networkidle", timeout=30000)
+    try:
+        page.goto(f"https://www.youtube.com/watch?v={vid}", wait_until="domcontentloaded", timeout=30000)
+    except Exception:
+        return None
     time.sleep(3)
 
     # Step 1: 설명란 더보기 펼치기 (스크립트 표시 버튼이 숨어있을 수 있음)
