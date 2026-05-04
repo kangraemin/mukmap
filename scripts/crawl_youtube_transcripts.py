@@ -309,6 +309,8 @@ def save_transcript(out_dir: str, slug: str, vid: str, title: str, url: str, seg
 
 
 def save_list_json(out_dir: str, slug: str, videos: list[dict]):
+    if not videos:
+        return
     path = Path(out_dir) / slug / "_list.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     collected_at = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
