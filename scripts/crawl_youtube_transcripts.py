@@ -29,7 +29,7 @@ CHANNELS = [
     {"id": "UCgYif9zf5IGYfqJJ04c-usQ", "slug": "shukaworld",         "name": "슈카월드",           "tab": "videos", "handle": "syukaworld"},
     {"id": "UChlv4GSd7OQl3js-jkLOnFA", "slug": "sampro_tv",          "name": "삼프로TV",           "tab": "videos"},
     {"id": "UCA_hgsFzmynpv1zkvA5A7jA", "slug": "jisik_inside",       "name": "지식인사이드",       "tab": "videos"},
-    {"id": "UCVwxhpr8oegibgO0eygswcQ", "slug": "yonhap_economy",     "name": "연합뉴스경제TV",     "tab": "videos", "keyword": "오건영"},
+    {"id": "UCVwxhpr8oegibgO0eygswcQ", "slug": "yonhap_economy",     "name": "연합뉴스경제TV",     "tab": "videos"},
     {"id": "UCvrOll07bwpNzGhBHRB5_yw", "slug": "developmong",        "name": "웅덩이매수디벨롭몽", "tab": "videos"},
     {"id": "",                           "slug": "doniggangpae",       "name": "돈이깡패다",          "tab": "videos", "handle": "돈이깡패다"},
 ]
