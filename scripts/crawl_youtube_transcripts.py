@@ -10,6 +10,7 @@ import json
 import re
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -46,6 +47,8 @@ def parse_args():
                    help="Output directory (default: rawdata/transcripts)")
     p.add_argument("--no-skip-existing", action="store_true",
                    help="Re-collect even if transcript txt already exists")
+    p.add_argument("--workers", type=int, default=3,
+                   help="병렬 처리 worker 수 (기본: 3)")
     return p.parse_args()
 
 
@@ -319,14 +322,11 @@ def save_list_json(out_dir: str, slug: str, videos: list[dict]):
     path.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def main():
-    args = parse_args()
-    channels = filter_channels(args.channel)
-    skip_existing = not args.no_skip_existing
-
+def process_channel(ch, headless, output_dir, max_videos, days, skip_existing):
+    prefix = f"[{ch['name']}]"
     with sync_playwright() as pw:
         browser = pw.chromium.launch(
-            headless=args.headless,
+            headless=headless,
             args=["--disable-blink-features=AutomationControlled"],
         )
         context = browser.new_context(
@@ -339,36 +339,61 @@ def main():
         )
         page = context.new_page()
 
-        for ch in channels:
-            print(f"\n===== {ch['name']} ({ch['slug']}) =====")
-            videos = get_channel_videos(page, ch["id"], args.max_videos, args.days, ch.get("tab", "videos"), ch.get("handle", ""))
-            print(f"  수집 영상: {len(videos)}개")
-            keyword = ch.get("keyword")
-            if keyword:
-                before = len(videos)
-                videos = [v for v in videos if keyword in v.get("title", "")]
-                print(f"  keyword 필터 '{keyword}' 적용: {before} → {len(videos)}개")
-            save_list_json(args.output_dir, ch["slug"], videos)
+        print(f"\n{prefix} ===== {ch['slug']} =====", flush=True)
+        videos = get_channel_videos(page, ch["id"], max_videos, days, ch.get("tab", "videos"), ch.get("handle", ""))
+        print(f"{prefix} 수집 영상: {len(videos)}개", flush=True)
+        keyword = ch.get("keyword")
+        if keyword:
+            before = len(videos)
+            videos = [v for v in videos if keyword in v.get("title", "")]
+            print(f"{prefix} keyword 필터 '{keyword}': {before} → {len(videos)}개", flush=True)
+        save_list_json(output_dir, ch["slug"], videos)
 
-            ok = skip = fail = 0
-            for v in videos:
-                out_path = Path(args.output_dir) / ch["slug"] / f"{v['vid']}.txt"
-                if skip_existing and out_path.exists():
-                    skip += 1
-                    continue
-                segments = get_transcript(page, v["vid"])
-                if segments:
-                    save_transcript(args.output_dir, ch["slug"], v["vid"], v["title"], v["url"], segments)
-                    ok += 1
-                    print(f"  ✅ {v['vid']} ({len(segments)} segments)")
-                else:
-                    fail += 1
-                    print(f"  ❌ {v['vid']} (transcript unavailable)")
+        ok = skip = fail = 0
+        total = len(videos)
+        for i, v in enumerate(videos, 1):
+            out_path = Path(output_dir) / ch["slug"] / f"{v['vid']}.txt"
+            if skip_existing and out_path.exists():
+                skip += 1
+                continue
+            segments = get_transcript(page, v["vid"])
+            if segments:
+                save_transcript(output_dir, ch["slug"], v["vid"], v["title"], v["url"], segments)
+                ok += 1
+            else:
+                fail += 1
+            if (ok + skip + fail) % 10 == 0:
+                print(f"{prefix} 진행 {i}/{total} (ok={ok} skip={skip} fail={fail})", flush=True)
 
-            print(f"  완료: ok={ok} skip={skip} fail={fail}")
-
+        print(f"{prefix} 완료: ok={ok} skip={skip} fail={fail}", flush=True)
         context.close()
         browser.close()
+    return {"slug": ch["slug"], "ok": ok, "skip": skip, "fail": fail}
+
+
+def main():
+    args = parse_args()
+    channels = filter_channels(args.channel)
+    skip_existing = not args.no_skip_existing
+    workers = min(args.workers, len(channels))
+    print(f"총 {len(channels)}개 채널, {workers} workers로 병렬 실행")
+
+    with ProcessPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(
+                process_channel, ch, args.headless, args.output_dir,
+                args.max_videos, args.days, skip_existing
+            ): ch for ch in channels
+        }
+        for future in as_completed(futures):
+            ch = futures[future]
+            try:
+                r = future.result()
+                print(f"[완료] {r['slug']}: ok={r['ok']} skip={r['skip']} fail={r['fail']}")
+            except Exception as e:
+                print(f"[실패] {ch['slug']}: {e}")
+
+    print("\nALL DONE")
 
 
 if __name__ == "__main__":
