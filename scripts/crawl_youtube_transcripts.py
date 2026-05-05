@@ -28,6 +28,7 @@ CHANNELS = [
     {"id": "UCA_hgsFzmynpv1zkvA5A7jA", "slug": "jisik_inside",       "name": "지식인사이드",       "tab": "videos"},
     {"id": "UCVwxhpr8oegibgO0eygswcQ", "slug": "yonhap_economy",     "name": "연합뉴스경제TV",     "tab": "videos", "keyword": "오건영"},
     {"id": "UCvrOll07bwpNzGhBHRB5_yw", "slug": "developmong",        "name": "웅덩이매수디벨롭몽", "tab": "videos"},
+    {"id": "",                           "slug": "doniggangpae",       "name": "돈이깡패다",          "tab": "videos", "handle": "돈이깡패다"},
 ]
 
 
