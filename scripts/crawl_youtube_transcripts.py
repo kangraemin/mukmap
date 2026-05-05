@@ -7,13 +7,15 @@ Usage:
 """
 import argparse
 import json
+import os
 import re
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+from googleapiclient.discovery import build
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 CHANNELS = [
@@ -67,84 +69,79 @@ def filter_channels(channel_arg: str) -> list[dict]:
     return result
 
 
-def parse_age_days(meta: str) -> int | None:
-    """Parse Korean age strings like '3일 전', '2주 전' -> approximate days."""
-    m = re.search(r"(\d+)\s*(초|분|시간|일|주|개월|년)\s*전", meta)
-    if not m:
-        return None
-    n, unit = int(m.group(1)), m.group(2)
-    return {"초": 0, "분": 0, "시간": 0, "일": n, "주": n * 7, "개월": n * 30, "년": n * 365}[unit]
+def _load_env_key(env_file: str, key: str) -> str:
+    env_path = Path(__file__).parent.parent / env_file
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            if line.startswith(f"{key}="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    raise ValueError(f"{key} not found in env or {env_file}")
 
 
-def get_channel_videos(page, channel_id: str, max_videos: int, days_limit: int, tab: str = "videos", handle: str = "") -> list[dict]:
-    """Scroll channel /videos or /streams page and collect video entries."""
-    if handle:
-        url = f"https://www.youtube.com/@{handle}/{tab}"
-    else:
-        url = f"https://www.youtube.com/channel/{channel_id}/{tab}"
-    try:
-        page.goto(url, wait_until="domcontentloaded", timeout=30000)
-    except Exception:
-        return []
-    time.sleep(3)
+def get_channel_videos_api(youtube, ch: dict, max_videos: int, days_limit: int) -> list[dict]:
+    """YouTube Data API v3으로 채널 영상/스트림 목록 수집."""
+    cutoff = None
+    if days_limit > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days_limit)
 
+    channel_id = ch["id"]
+
+    if not channel_id:
+        handle = ch.get("handle", "")
+        resp = youtube.channels().list(part="id", forHandle=handle).execute()
+        items = resp.get("items", [])
+        if not items:
+            print(f"  [API] handle '{handle}' 채널 찾기 실패", flush=True)
+            return []
+        channel_id = items[0]["id"]
+        print(f"  [API] handle '{handle}' → {channel_id}", flush=True)
+
+    tab = ch.get("tab", "videos")
     videos = []
-    seen_vids: set[str] = set()
-    last_count = 0
-    cutoff_reached = False
 
-    while not cutoff_reached:
-        # JS로 직접 추출 — shadow DOM / 렌더링 타이밍 문제 우회
-        raw_items = page.evaluate("""() => {
-            const items = document.querySelectorAll('ytd-rich-item-renderer');
-            return Array.from(items).map(item => {
-                const titleEl = item.querySelector('yt-formatted-string#video-title') ||
-                                item.querySelector('#video-title');
-                const linkEl = item.querySelector('a#video-title-link') ||
-                               (titleEl ? titleEl.closest('a') : null);
-                const metaSpans = item.querySelectorAll('span.inline-metadata-item');
-                const dateText = metaSpans.length > 0 ?
-                    Array.from(metaSpans).map(s => s.textContent.trim()).join(' ') : '';
-                return {
-                    href: linkEl ? linkEl.href : '',
-                    title: titleEl ? titleEl.textContent.trim() : '',
-                    meta: dateText
-                };
-            });
-        }""")
-
-        for entry in raw_items:
-            href = entry.get("href", "")
-            vid_match = re.search(r"[?&]v=([\w-]{11})", href)
-            if not vid_match:
-                continue
-            vid = vid_match.group(1)
-            if vid in seen_vids:
-                continue
-            seen_vids.add(vid)
-
-            title = entry.get("title", "").strip()
-            meta = entry.get("meta", "").strip()
-            url_full = f"https://www.youtube.com/watch?v={vid}"
-
-            if days_limit > 0:
-                age = parse_age_days(meta)
-                if age is not None and age > days_limit:
-                    cutoff_reached = True
-                    break
-
-            videos.append({"url": url_full, "vid": vid, "title": title, "meta": meta})
-            if max_videos > 0 and len(videos) >= max_videos:
-                return videos
-
-        if cutoff_reached:
-            break
-        current_count = len(raw_items)
-        if current_count == last_count:
-            break
-        last_count = current_count
-        page.evaluate("window.scrollBy(0, 2000)")
-        time.sleep(1.5)
+    if tab == "streams":
+        req = youtube.search().list(
+            part="snippet",
+            channelId=channel_id,
+            type="video",
+            eventType="completed",
+            maxResults=50,
+            order="date",
+        )
+        while req:
+            resp = req.execute()
+            for item in resp.get("items", []):
+                vid = item["id"]["videoId"]
+                title = item["snippet"]["title"]
+                published_at = item["snippet"]["publishedAt"]
+                pub_dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                if cutoff and pub_dt < cutoff:
+                    return videos
+                videos.append({"url": f"https://www.youtube.com/watch?v={vid}", "vid": vid, "title": title, "meta": published_at[:10]})
+                if max_videos > 0 and len(videos) >= max_videos:
+                    return videos
+            req = youtube.search().list_next(req, resp)
+    else:
+        uploads_id = "UU" + channel_id[2:]
+        req = youtube.playlistItems().list(
+            part="snippet",
+            playlistId=uploads_id,
+            maxResults=50,
+        )
+        while req:
+            resp = req.execute()
+            for item in resp.get("items", []):
+                snippet = item["snippet"]
+                vid = snippet["resourceId"]["videoId"]
+                title = snippet["title"]
+                published_at = snippet["publishedAt"]
+                pub_dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                if cutoff and pub_dt < cutoff:
+                    return videos
+                videos.append({"url": f"https://www.youtube.com/watch?v={vid}", "vid": vid, "title": title, "meta": published_at[:10]})
+                if max_videos > 0 and len(videos) >= max_videos:
+                    return videos
+            req = youtube.playlistItems().list_next(req, resp)
 
     return videos
 
@@ -324,50 +321,57 @@ def save_list_json(out_dir: str, slug: str, videos: list[dict]):
 
 def process_channel(ch, headless, output_dir, max_videos, days, skip_existing):
     prefix = f"[{ch['name']}]"
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(
-            headless=headless,
-            args=["--disable-blink-features=AutomationControlled"],
-        )
-        context = browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            viewport={"width": 1280, "height": 800},
-        )
-        page = context.new_page()
+    api_key = os.environ.get("YOUTUBE_API_KEY") or _load_env_key(".env.local", "YOUTUBE_API_KEY")
+    youtube = build("youtube", "v3", developerKey=api_key)
 
-        print(f"\n{prefix} ===== {ch['slug']} =====", flush=True)
-        videos = get_channel_videos(page, ch["id"], max_videos, days, ch.get("tab", "videos"), ch.get("handle", ""))
-        print(f"{prefix} 수집 영상: {len(videos)}개", flush=True)
-        keyword = ch.get("keyword")
-        if keyword:
-            before = len(videos)
-            videos = [v for v in videos if keyword in v.get("title", "")]
-            print(f"{prefix} keyword 필터 '{keyword}': {before} → {len(videos)}개", flush=True)
-        save_list_json(output_dir, ch["slug"], videos)
+    print(f"\n{prefix} ===== {ch['slug']} =====", flush=True)
+    videos = get_channel_videos_api(youtube, ch, max_videos, days)
+    print(f"{prefix} 수집 영상: {len(videos)}개", flush=True)
 
-        ok = skip = fail = 0
-        total = len(videos)
-        for i, v in enumerate(videos, 1):
-            out_path = Path(output_dir) / ch["slug"] / f"{v['vid']}.txt"
-            if skip_existing and out_path.exists():
-                skip += 1
-                continue
-            segments = get_transcript(page, v["vid"])
-            if segments:
-                save_transcript(output_dir, ch["slug"], v["vid"], v["title"], v["url"], segments)
-                ok += 1
-            else:
-                fail += 1
-            if (ok + skip + fail) % 10 == 0:
-                print(f"{prefix} 진행 {i}/{total} (ok={ok} skip={skip} fail={fail})", flush=True)
+    keyword = ch.get("keyword")
+    if keyword:
+        before = len(videos)
+        videos = [v for v in videos if keyword in v.get("title", "")]
+        print(f"{prefix} keyword 필터 '{keyword}': {before} → {len(videos)}개", flush=True)
+    save_list_json(output_dir, ch["slug"], videos)
 
-        print(f"{prefix} 완료: ok={ok} skip={skip} fail={fail}", flush=True)
-        context.close()
-        browser.close()
+    ok = skip = fail = 0
+    total = len(videos)
+
+    videos_to_crawl = [
+        v for v in videos
+        if not (skip_existing and (Path(output_dir) / ch["slug"] / f"{v['vid']}.txt").exists())
+    ]
+    skip = total - len(videos_to_crawl)
+
+    if videos_to_crawl:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(
+                headless=headless,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
+            context = browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1280, "height": 800},
+            )
+            page = context.new_page()
+            for i, v in enumerate(videos_to_crawl, 1):
+                segments = get_transcript(page, v["vid"])
+                if segments:
+                    save_transcript(output_dir, ch["slug"], v["vid"], v["title"], v["url"], segments)
+                    ok += 1
+                else:
+                    fail += 1
+                if (ok + fail) % 10 == 0:
+                    print(f"{prefix} 진행 {i}/{len(videos_to_crawl)} (ok={ok} skip={skip} fail={fail})", flush=True)
+            context.close()
+            browser.close()
+
+    print(f"{prefix} 완료: ok={ok} skip={skip} fail={fail}", flush=True)
     return {"slug": ch["slug"], "ok": ok, "skip": skip, "fail": fail}
 
 
