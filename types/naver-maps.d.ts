@@ -6,6 +6,9 @@ declare namespace naver.maps {
     setZoom(zoom: number): void
     getCenter(): LatLng
     getZoom(): number
+    getMinZoom(): number
+    getMaxZoom(): number
+    getSize(): { width: number; height: number }
     fitBounds(bounds: LatLngBounds, margin?: number): void
     panTo(latlng: LatLng, transitionOptions?: object): void
     morph(latlng: LatLng, zoom: number, transitionOptions?: { duration?: number; easing?: string }): void

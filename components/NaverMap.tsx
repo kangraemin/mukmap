@@ -74,6 +74,24 @@ function readBounds(map: naver.maps.Map): Bounds {
 }
 
 /** 지도 스크립트를 미리 붙인다. 토스 앱은 화면을 그리기 전에 부른다 */
+/** 여러 점이 다 보이는 줌. fitBounds는 순간 이동이라, 같은 줌을 구해 morph로 날아간다 */
+function boundsZoom(map: naver.maps.Map, lats: number[], lngs: number[], pad: number): number {
+  const merc = (lat: number) => { const s = Math.sin((lat * Math.PI) / 180); return Math.log((1 + s) / (1 - s)) / 2 }
+  const size = map.getSize()
+  const lngFrac = Math.max((Math.max(...lngs) - Math.min(...lngs)) / 360, 1e-9)
+  const latFrac = Math.max((merc(Math.max(...lats)) - merc(Math.min(...lats))) / (2 * Math.PI), 1e-9)
+  const z = Math.min(
+    Math.log2((size.width - pad * 2) / 256 / lngFrac),
+    Math.log2((size.height - pad * 2) / 256 / latFrac),
+  )
+  return Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), Math.floor(z)))
+}
+
+function flyToFit(map: naver.maps.Map, lats: number[], lngs: number[], pad: number) {
+  const center = new naver.maps.LatLng((Math.min(...lats) + Math.max(...lats)) / 2, (Math.min(...lngs) + Math.max(...lngs)) / 2)
+  map.morph(center, boundsZoom(map, lats, lngs, pad), { duration: 600, easing: 'easeOutCubic' })
+}
+
 export function preloadMapSdk(): boolean {
   const clientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID
   if (!clientId) return false
@@ -210,13 +228,7 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
           const span = Math.max(Math.max(...lats) - Math.min(...lats), Math.max(...lngs) - Math.min(...lngs))
           // 같은 건물처럼 거의 한 자리면 더 키워도 안 갈라진다. 첫 가게를 바로 보여준다
           if (span < 0.0002 || map.getZoom() >= 19) return cb.current.onPinClick(items[0].id)
-          map.fitBounds(
-            new naver.maps.LatLngBounds(
-              new naver.maps.LatLng(Math.min(...lats), Math.min(...lngs)),
-              new naver.maps.LatLng(Math.max(...lats), Math.max(...lngs))
-            ),
-            80
-          )
+          flyToFit(map, lats, lngs, 80)
         })
       }
       current.set(key, { marker, listener, sig: `${want.selected}` })
@@ -229,16 +241,10 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
     const lats = pins.map((p) => p.lat)
     const lngs = pins.map((p) => p.lng)
     if (pins.length === 1) {
-      map.morph(new naver.maps.LatLng(lats[0], lngs[0]), 15, { duration: 400 })
+      map.morph(new naver.maps.LatLng(lats[0], lngs[0]), 15, { duration: 500, easing: 'easeOutCubic' })
       return
     }
-    map.fitBounds(
-      new naver.maps.LatLngBounds(
-        new naver.maps.LatLng(Math.min(...lats), Math.min(...lngs)),
-        new naver.maps.LatLng(Math.max(...lats), Math.max(...lngs))
-      ),
-      60
-    )
+    flyToFit(map, lats, lngs, 60)
     // pins가 바뀔 때마다 맞추지 않는다. fitKey가 바뀔 때만
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey, sdkLoaded])
@@ -248,7 +254,7 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
     if (!map || !focus) return
     const p = pins.find((x) => x.id === focus.id)
     if (!p) return
-    map.morph(new naver.maps.LatLng(p.lat, p.lng), Math.max(map.getZoom(), 15), { duration: 400 })
+    map.morph(new naver.maps.LatLng(p.lat, p.lng), Math.max(map.getZoom(), 15), { duration: 500, easing: 'easeOutCubic' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus, sdkLoaded])
 
