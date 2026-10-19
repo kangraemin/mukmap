@@ -257,6 +257,9 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     if (readNav().v === 'preview') window.history.back()
   }, [])
 
+  // 칩·검색으로 조건을 바꾸면 고른 가게 카드는 내린다
+  const closePreview = onMapClick
+
   const searchAll = useCallback((q: string) => {
     setText(q)
     setChannelId(null)
@@ -267,17 +270,19 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   }, [])
 
   const searchChannel = useCallback((id: string) => {
+    closePreview()
     setText('')
     setChannelId(id)
     setFitKey((k) => k + 1)
-  }, [])
+  }, [closePreview])
 
   const searchRegion = useCallback((name: string) => {
+    closePreview()
     setText('')
     setRegion(name)
     setCity('')
     setFitKey((k) => k + 1)
-  }, [])
+  }, [closePreview])
 
   const searchRestaurant = useCallback((id: number) => {
     setFocus({ id, seq: Date.now() })
@@ -286,9 +291,10 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   }, [desktop, openDetail, selectPin])
 
   const pickChannel = useCallback((id: string | null) => {
+    closePreview()
     setChannelId(id)
     setFitKey((k) => k + 1)
-  }, [])
+  }, [closePreview])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && readNav().v !== 'map') window.history.back() }
@@ -345,6 +351,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       onSelectChannel={searchChannel}
       onSelectRegion={searchRegion}
       onSearchAll={searchAll}
+      onFocus={closePreview}
     />
   )
 
@@ -381,7 +388,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
         <button
           type="button"
           data-testid="text-chip"
-          onClick={() => { setText(''); setFitKey((k) => k + 1) }}
+          onClick={() => { closePreview(); setText(''); setFitKey((k) => k + 1) }}
           className={`order-first flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full bg-ink px-3.5 text-meta font-bold text-paper ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : ''}`}
         >
           ‘{text}’
@@ -392,7 +399,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       {place && (
         <button
           type="button"
-          onClick={() => { setRegion(''); setCity('') }}
+          onClick={() => { closePreview(); setRegion(''); setCity('') }}
           className={`flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full bg-ink px-3.5 text-meta font-bold text-paper ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : ''}`}
         >
           {place}

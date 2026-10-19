@@ -21,6 +21,8 @@ interface SearchBarProps {
   onSelectRegion: (name: string) => void
   /** 검색어에 맞는 가게 전부를 지도에 띄운다 */
   onSearchAll: (q: string) => void
+  /** 검색창을 누르면 */
+  onFocus?: () => void
 }
 
 type Item =
@@ -57,7 +59,7 @@ function PinIcon() {
 
 const MAX_SHOPS = 8
 
-export default function SearchBar({ index, channels, onSelectRestaurant, onSelectChannel, onSelectRegion, onSearchAll }: SearchBarProps) {
+export default function SearchBar({ index, channels, onSelectRestaurant, onSelectChannel, onSelectRegion, onSearchAll, onFocus }: SearchBarProps) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(-1)
@@ -117,7 +119,7 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); setActive(-1) }}
           onKeyDown={onKeyDown}
-          onFocus={() => setOpen(true)}
+          onFocus={() => { setOpen(true); onFocus?.() }}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
           placeholder="가게, 메뉴, 유튜버, 지역"
           aria-label="검색"

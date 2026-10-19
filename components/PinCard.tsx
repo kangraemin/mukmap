@@ -35,7 +35,8 @@ export function PreviewCard({ pin, faces, onOpen, onClose, leaving, adSlot }: { 
       }`}
     >
       <button type="button" onClick={onOpen} className="block w-full text-left active:opacity-90" aria-label={`${pin.name} 자세히 보기`}>
-        <span className="relative block h-[168px] w-full overflow-hidden bg-well">
+        {/* 영상 썸네일은 16:9라 같은 비율로 둬야 위아래가 잘리지 않는다 */}
+        <span className="relative block aspect-video w-full overflow-hidden bg-well">
           {pin.vid && <img src={`https://i.ytimg.com/vi/${pin.vid}/hqdefault.jpg`} alt="" className="h-full w-full object-cover" />}
           {pin.quote && pin.line && (
             <span className="absolute inset-x-3 bottom-3 block">
