@@ -2,6 +2,8 @@ import { report } from './debug';
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import HomeExplorer from '@/components/HomeExplorer';
+import { preloadMapSdk } from '@/components/NaverMap';
+import { loadPins } from '@/lib/pins';
 import type { Channel } from '@/lib/types';
 import '@/app/globals.css';
 import './toss.css';
@@ -10,6 +12,10 @@ import './toss.css';
 const API = import.meta.env.VITE_API_BASE || 'https://mukmap.kr';
 
 type ChannelRow = Channel & { restaurant_count: number };
+
+// 화면을 그리기 전에 핀 목록과 지도 SDK를 같이 받기 시작한다
+loadPins(API).catch((e) => report('pins-fail', String(e)));
+preloadMapSdk();
 
 // 토스 웹뷰에서는 새 창 링크가 열리지 않는다. 바깥 주소(유튜브, 네이버 지도)는 SDK openURL로 넘긴다
 document.addEventListener('click', async (e) => {
@@ -46,8 +52,7 @@ function App() {
       .catch((e) => { report('channels-fail', String(e)); setChannels([]); });
   }, []);
 
-  if (!channels) return <div className="h-[100dvh] bg-paper" />;
-  return <HomeExplorer channels={channels} apiBase={API} pageLinks={false} />;
+  return <HomeExplorer channels={channels ?? []} apiBase={API} pageLinks={false} />;
 }
 
 createRoot(document.getElementById('root')!).render(

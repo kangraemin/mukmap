@@ -17,6 +17,8 @@ export interface Pin {
   line: string | null
   /** line이 자막 인용인지 */
   quote: boolean
+  /** 영상들에서 먹은 메뉴를 이어 붙인 것(검색용) */
+  menu: string
 }
 
 export interface Bounds {
@@ -38,4 +40,22 @@ export interface PinsPayload {
 
 export function decodePins(p: PinsPayload): Pin[] {
   return p.pins.map((x) => ({ ...x, ch: x.ch.map((i) => p.channels[i]) }))
+}
+
+// 핀은 한 번만 받는다. 토스 앱은 화면을 그리기 전에 미리 불러 둔다
+const loading = new Map<string, Promise<PinsPayload>>()
+
+/** 유튜브 프로필 사진은 800px 원본으로 오는데, 화면엔 40px 남짓이라 작은 크기로 받는다 */
+export function faceSrc(url: string): string {
+  return url.replace(/=s\d+(-|$)/, '=s120$1')
+}
+
+export function loadPins(apiBase = ''): Promise<PinsPayload> {
+  let p = loading.get(apiBase)
+  if (!p) {
+    p = fetch(`${apiBase}/api/pins`).then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+    p.catch(() => loading.delete(apiBase))
+    loading.set(apiBase, p)
+  }
+  return p
 }

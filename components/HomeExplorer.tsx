@@ -7,7 +7,9 @@ import DetailPanel from '@/components/DetailPanel'
 import { ChannelFace } from '@/components/ChannelFace'
 import { PinRow, PreviewCard } from '@/components/PinCard'
 import Toast from '@/components/Toast'
-import { decodePins, inBounds, type Bounds, type Pin, type PinsPayload } from '@/lib/pins'
+import { decodePins, inBounds, loadPins, type Bounds, type Pin, type PinsPayload } from '@/lib/pins'
+import { buildIndex, searchPins } from '@/lib/search'
+import Intro from '@/components/Intro'
 import type { Channel, RestaurantWithVideos } from '@/lib/types'
 
 // 화면 상태. 지도 위 카드(preview)·목록(list)·상세(detail)는 각각 방문 기록 한 칸이라
@@ -21,7 +23,7 @@ type Nav =
 type Sort = 'near' | 'latest' | 'visitors'
 
 const PAGE = 40
-const CACHE_KEY = 'mukmap:pins:v1'
+const CACHE_KEY = 'mukmap:pins:v2'
 
 interface HomeExplorerProps {
   channels: (Channel & { restaurant_count: number })[]
@@ -51,6 +53,17 @@ function writeCache(p: PinsPayload) {
   try { localStorage.setItem(CACHE_KEY, JSON.stringify(p)) } catch {}
 }
 
+/** 사라질 때도 잠깐 그려 두어 닫히는 움직임을 보여준다 */
+function usePresence<T>(value: T | null, ms: number): { shown: T | null; leaving: boolean } {
+  const [last, setLast] = useState<T | null>(value)
+  useEffect(() => {
+    if (value !== null) { setLast(value); return }
+    const t = setTimeout(() => setLast(null), ms)
+    return () => clearTimeout(t)
+  }, [value, ms])
+  return { shown: value ?? last, leaving: value === null && last !== null }
+}
+
 function BackIcon() {
   return (
     <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true">
@@ -71,6 +84,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   const [channelId, setChannelId] = useState<string | null>(null)
   const [region, setRegion] = useState('')
   const [city, setCity] = useState('')
+  const [text, setText] = useState('')
   const [nav, setNav] = useState<Nav>({ v: 'map' })
   const [sort, setSort] = useState<Sort>('near')
   const [shown, setShown] = useState(PAGE)
@@ -96,8 +110,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   useEffect(() => {
     const cached = readCache()
     if (cached) setPins(cached)
-    fetch(`${apiBase}/api/pins`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+    loadPins(apiBase)
       .then((p: PinsPayload) => {
         writeCache(p)
         setPins(decodePins(p))
@@ -107,17 +120,23 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       })
   }, [apiBase])
 
+  // 프로필 사진은 우리 주소를 거쳐 받는다(app/api/face)
+  const faceChannels = useMemo(() => channels.map((c) => ({ ...c, thumbnail_url: c.thumbnail_url ? `${apiBase}/api/face/${c.id}` : null })), [channels, apiBase])
   const faces = useMemo(() => {
     const m: Record<string, Face> = {}
-    for (const c of channels) m[c.id] = { name: c.name, thumbnail: c.thumbnail_url }
+    for (const c of faceChannels) m[c.id] = { name: c.name, thumbnail: c.thumbnail_url }
     return m
-  }, [channels])
+  }, [faceChannels])
 
   const pinById = useMemo(() => new Map((pins || []).map((p) => [p.id, p])), [pins])
 
+  const index = useMemo(() => (pins ? buildIndex(pins, (id) => faces[id]?.name || '') : null), [pins, faces])
+  const textHits = useMemo(() => (index && text ? new Set(searchPins(index, text).map((p) => p.id)) : null), [index, text])
+
   const filtered = useMemo(() => (pins || []).filter((p) =>
-    (!channelId || p.ch.includes(channelId)) && (!region || p.region === region) && (!city || p.city === city)
-  ), [pins, channelId, region, city])
+    (!channelId || p.ch.includes(channelId)) && (!region || p.region === region) && (!city || p.city === city) &&
+    (!textHits || textHits.has(p.id))
+  ), [pins, channelId, region, city, textHits])
 
   const inView = useMemo(() => (bounds ? filtered.filter((p) => inBounds(p, bounds)) : filtered), [filtered, bounds])
 
@@ -184,7 +203,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   useEffect(() => { if (previewId) loadDetail(previewId) }, [previewId, loadDetail])
 
   useEffect(() => {
-    if (!detailId) { setDetail(null); return }
+    if (!detailId) return
     let live = true
     setDetail((d) => (d?.id === detailId ? d : null))
     loadDetail(detailId).then((r) => {
@@ -215,6 +234,28 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     if (readNav().v === 'preview') window.history.back()
   }, [])
 
+  const searchAll = useCallback((q: string) => {
+    setText(q)
+    setChannelId(null)
+    setRegion('')
+    setCity('')
+    setFitKey((k) => k + 1)
+    if (readNav().v === 'preview') window.history.back()
+  }, [])
+
+  const searchChannel = useCallback((id: string) => {
+    setText('')
+    setChannelId(id)
+    setFitKey((k) => k + 1)
+  }, [])
+
+  const searchRegion = useCallback((name: string) => {
+    setText('')
+    setRegion(name)
+    setCity('')
+    setFitKey((k) => k + 1)
+  }, [])
+
   const searchRestaurant = useCallback((id: number) => {
     setFocus({ id, seq: Date.now() })
     if (desktop || readNav().v === 'list') openDetail(id)
@@ -223,12 +264,6 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
 
   const pickChannel = useCallback((id: string | null) => {
     setChannelId(id)
-    setFitKey((k) => k + 1)
-  }, [])
-
-  const pickRegion = useCallback((name: string) => {
-    setRegion(name)
-    setCity('')
     setFitKey((k) => k + 1)
   }, [])
 
@@ -272,18 +307,32 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   const handleToastClose = useCallback(() => setToast(''), [])
 
   const place = [region, city].filter(Boolean).join(' ')
-  const previewPin = previewId ? pinById.get(previewId) : undefined
-  const detailPin = detailId ? pinById.get(detailId) : undefined
+  const preview = usePresence(previewId ? pinById.get(previewId) ?? null : null, 200)
+  const detailP = usePresence(detailId, 240)
+  const listP = usePresence(nav.v === 'list' ? true : null, 200)
+  const shownDetailId = detailP.shown
+  const detailPin = shownDetailId ? pinById.get(shownDetailId) : undefined
+  const shownDetail = detail && detail.id === shownDetailId ? detail : null
   const count = pins ? inView.length : null
+  const search = (
+    <SearchBar
+      index={index}
+      channels={faceChannels}
+      onSelectRestaurant={searchRestaurant}
+      onSelectChannel={searchChannel}
+      onSelectRegion={searchRegion}
+      onSearchAll={searchAll}
+    />
+  )
 
   const chips = (floating: boolean) => (
     <nav aria-label="유튜버 고르기" className="no-scrollbar flex gap-2 overflow-x-auto px-4 py-1 lg:px-5">
       <button
         type="button"
-        onClick={() => pickChannel(null)}
-        aria-pressed={!channelId}
+        onClick={() => { setText(''); pickChannel(null) }}
+        aria-pressed={!channelId && !text}
         className={`flex h-9 flex-shrink-0 items-center rounded-full px-3.5 text-meta font-bold ${
-          !channelId ? 'bg-ink text-paper' : 'bg-paper text-ink'
+          !channelId && !text ? 'bg-ink text-paper' : 'bg-paper text-ink'
         } ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : 'border border-line'}`}
       >
         전체
@@ -300,11 +349,23 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
               on ? 'bg-ink text-paper' : 'bg-paper text-ink'
             } ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : 'border border-line'}`}
           >
-            <ChannelFace face={{ id: ch.id, name: ch.name, thumbnail: ch.thumbnail_url }} size={28} />
+            <ChannelFace face={{ id: ch.id, name: ch.name, thumbnail: faces[ch.id]?.thumbnail ?? null }} size={28} />
             {ch.name}
           </button>
         )
       })}
+      {text && (
+        <button
+          type="button"
+          data-testid="text-chip"
+          onClick={() => { setText(''); setFitKey((k) => k + 1) }}
+          className={`order-first flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full bg-ink px-3.5 text-meta font-bold text-paper ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : ''}`}
+        >
+          ‘{text}’
+          <XIcon />
+          <span className="sr-only">검색 조건 풀기</span>
+        </button>
+      )}
       {place && (
         <button
           type="button"
@@ -324,7 +385,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       {/* 지도 위: 검색 + 유튜버 칩(모바일) */}
       <div className="pointer-events-none fixed inset-x-0 top-0 z-20 pt-[calc(10px+env(safe-area-inset-top))] lg:hidden">
         <div className="pointer-events-auto px-4">
-          <SearchBar apiBase={apiBase} onSelectRestaurant={searchRestaurant} onSelectChannel={pickChannel} onSelectRegion={pickRegion} />
+          {search}
         </div>
         <div className="pointer-events-auto mt-2">{chips(true)}</div>
       </div>
@@ -333,21 +394,21 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       <section
         data-testid="list-view"
         aria-label="가게 목록"
-        className={`${nav.v === 'list' ? 'flex' : 'hidden'} fixed inset-0 z-30 flex-col bg-paper
+        className={`${listP.shown ? 'flex' : 'hidden'} ${listP.leaving ? 'pointer-events-none animate-rise-out' : 'animate-rise-in'} fixed inset-0 z-30 flex-col bg-paper lg:animate-none
           lg:static lg:z-auto lg:flex lg:h-full lg:w-[400px] lg:flex-shrink-0 lg:border-r lg:border-line`}
       >
         <header className="hidden px-5 pb-3 pt-5 lg:block">
           <p className="font-caption text-title text-ink">먹맵</p>
           <p className="mt-0.5 text-meta text-sub">유튜버가 실제로 가서 먹은 집</p>
           <div className="mt-4">
-            <SearchBar apiBase={apiBase} onSelectRestaurant={searchRestaurant} onSelectChannel={pickChannel} onSelectRegion={pickRegion} />
+            {search}
           </div>
         </header>
 
         <div className="border-b border-line bg-paper pt-[env(safe-area-inset-top)] lg:pt-0">
           <div className="flex h-14 items-center justify-between px-4 lg:px-5">
             <h2 className="text-lead font-bold text-ink" aria-live="polite">
-              이 지도 안 <span data-testid="list-count">{count ?? 0}</span>곳
+              {text ? `‘${text}’ ` : '이 지도 안 '}<span data-testid="list-count">{count ?? 0}</span>곳
             </h2>
             <label className="relative inline-flex min-h-[44px] items-center pl-2 text-meta font-bold text-ink">
               <span className="sr-only">정렬</span>
@@ -370,7 +431,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
           <div className="px-4 lg:px-5">
             {pins && sorted.length === 0 && (
               <div className="py-10 text-center">
-                <p className="text-body text-ink">이 지도 안에는 아직 가게가 없어요.</p>
+                <p className="text-body text-ink">{text ? `‘${text}’에 맞는 가게가 이 지도 안에 없어요.` : '이 지도 안에는 아직 가게가 없어요.'}</p>
                 <p className="mt-1 text-meta text-sub">지도를 줄이거나 다른 지역으로 옮겨 보세요.</p>
               </div>
             )}
@@ -409,13 +470,14 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
 
         {/* 지도 아래: 고른 가게 카드, 아니면 목록 보기 */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center px-4 pb-[calc(16px+env(safe-area-inset-bottom))] lg:hidden">
-          {previewPin ? (
+          {preview.shown ? (
             <div className="pointer-events-auto w-full">
               <PreviewCard
-                key={previewPin.id}
-                pin={previewPin}
+                key={preview.shown.id}
+                pin={preview.shown}
                 faces={faces}
-                onOpen={() => push({ v: 'detail', id: previewPin.id })}
+                leaving={preview.leaving}
+                onOpen={() => push({ v: 'detail', id: preview.shown!.id })}
                 onClose={back}
               />
             </div>
@@ -424,7 +486,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
               type="button"
               data-testid="list-pill"
               onClick={() => push({ v: 'list' })}
-              className="pointer-events-auto flex h-12 items-center gap-2 rounded-full bg-ink px-5 text-body font-bold text-paper shadow-[0_4px_16px_rgba(27,29,31,0.16)]"
+              className="pointer-events-auto flex h-12 animate-sheet-in items-center gap-2 rounded-full bg-ink px-5 text-body font-bold text-paper shadow-[0_4px_16px_rgba(27,29,31,0.16)] transition-transform active:scale-95"
             >
               <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true"><path d="M3 4.5h12M3 9h12M3 13.5h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
               목록 보기
@@ -435,11 +497,13 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       </main>
 
       {/* 상세: 모바일은 전체 화면, 데스크톱은 왼쪽 기둥을 덮는다 */}
-      {detailId && (
+      {shownDetailId && (
         <section
           data-testid="detail-view"
           aria-label="가게 정보"
-          className="fixed inset-0 z-40 flex flex-col bg-paper lg:right-auto lg:w-[400px] lg:border-r lg:border-line"
+          className={`fixed inset-0 z-40 flex flex-col bg-paper shadow-[-8px_0_24px_rgba(27,29,31,0.12)] lg:right-auto lg:w-[400px] lg:border-r lg:border-line lg:shadow-none ${
+            detailP.leaving ? 'pointer-events-none animate-slide-out lg:animate-none' : 'animate-slide-in lg:animate-none'
+          }`}
         >
           <header className="flex-shrink-0 border-b border-line bg-paper pt-[env(safe-area-inset-top)]">
             <div className="flex h-14 items-center gap-1 px-2">
@@ -452,19 +516,19 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
               >
                 <BackIcon />
               </button>
-              <p className="truncate text-lead font-bold text-ink">{detail?.name || detailPin?.name || ''}</p>
+              <p className="truncate text-lead font-bold text-ink">{shownDetail?.name || detailPin?.name || ''}</p>
             </div>
           </header>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain sm:px-5">
-            {detail ? (
+            {shownDetail ? (
               <>
                 <DetailPanel
-                  restaurant={detail}
+                  restaurant={shownDetail}
                   channelHref={pageLinks ? (slug) => `/youtuber/${encodeURIComponent(slug)}` : undefined}
                 />
                 {pageLinks && (
                   <p className="px-4 pb-8 sm:px-0">
-                    <a href={`/restaurant/${detail.id}`} className="inline-flex min-h-[44px] items-center text-meta text-sub underline underline-offset-2">
+                    <a href={`/restaurant/${shownDetail.id}`} className="inline-flex min-h-[44px] items-center text-meta text-sub underline underline-offset-2">
                       이 가게만 따로 보기
                     </a>
                   </p>
@@ -485,6 +549,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       )}
 
       {toast && <Toast message={toast} onClose={handleToastClose} />}
+      <Intro ready={pins !== null && bounds !== null} channels={faceChannels} />
     </div>
   )
 }

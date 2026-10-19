@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const revalidate = 3600
+
+const CACHE = { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400' }
+
 export async function GET() {
   try {
     const { data: channels, error } = await supabase
@@ -36,7 +40,7 @@ export async function GET() {
       .filter((ch) => ch.restaurant_count > 0)
       .sort((a, b) => b.restaurant_count - a.restaurant_count)
 
-    return NextResponse.json({ channels: result })
+    return NextResponse.json({ channels: result }, { headers: CACHE })
   } catch {
     return NextResponse.json({ channels: [] })
   }

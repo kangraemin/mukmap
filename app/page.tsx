@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import ReactDOM from 'react-dom'
 import HomeExplorer from '@/components/HomeExplorer'
 import { getAll, getChannelSummaries, getRegionSummaries } from '@/lib/data'
 import { SITE_NAME, SITE_URL, faqJsonLd, jsonLdScript, todayLabel } from '@/lib/seo'
@@ -23,6 +24,10 @@ export default async function Home() {
     getRegionSummaries(),
     getAll(),
   ])
+  // 지도 SDK와 핀 목록을 HTML 파싱과 동시에 받기 시작한다
+  ReactDOM.preconnect('https://oapi.map.naver.com')
+  ReactDOM.preload(`https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID}`, { as: 'script' })
+  ReactDOM.preload('/api/pins', { as: 'fetch', crossOrigin: 'anonymous' })
   const names = channels.slice(0, 4).map((c) => c.name).join(', ')
   const faq = [
     {

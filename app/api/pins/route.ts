@@ -59,6 +59,7 @@ export async function GET() {
       vid: lead?.video_id || null,
       line: (lead?.quote || lead?.menu || null)?.slice(0, 40) || null,
       quote: Boolean(lead?.quote),
+      menu: Array.from(new Set(vs.flatMap((v) => (v.menu || '').split(/\s*,\s*/)).filter(Boolean))).join(', ').slice(0, 80),
     }
   })
 

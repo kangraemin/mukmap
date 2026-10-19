@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- 토스 앱과 같이 쓰는 컴포넌트라 next/image를 쓰지 않는다 */
+import { faceSrc } from '@/lib/pins'
 
 interface Face {
   id: string
@@ -9,7 +10,7 @@ interface Face {
 export function ChannelFace({ face, size = 24, ring = false }: { face: Face; size?: number; ring?: boolean }) {
   return face.thumbnail ? (
     <img
-      src={face.thumbnail}
+      src={faceSrc(face.thumbnail)}
       alt={face.name}
       width={size}
       height={size}
@@ -41,7 +42,7 @@ export function VisitorLine({ faces, size = 20 }: { faces: Face[]; size?: number
           </span>
         ))}
       </span>
-      <span className="text-meta text-sub">{label}</span>
+      <span className={size >= 24 ? 'text-body font-bold text-ink' : 'text-meta text-sub'}>{label}</span>
     </span>
   )
 }

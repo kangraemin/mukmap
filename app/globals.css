@@ -51,6 +51,13 @@ body {
   outline-offset: 2px;
 }
 
+/* 지도 마커가 나타날 때 한 번 튀어 오른다 */
+@keyframes mkPop {
+  from { transform: scale(0.5); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.mk-pop { animation: mkPop 0.3s cubic-bezier(0.2, 1.4, 0.4, 1) both; transform-origin: 50% 100%; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

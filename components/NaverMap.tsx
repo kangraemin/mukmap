@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { DEFAULT_CENTER, DEFAULT_ZOOM } from '@/lib/constants'
-import type { Bounds, Pin } from '@/lib/pins'
+import { faceSrc, type Bounds, type Pin } from '@/lib/pins'
 
 export interface Face {
   name: string
@@ -40,7 +40,7 @@ function escapeAttr(s: string) {
 
 function faceImg(face: Face | undefined, size: number, ring: string, border: number) {
   const inner = face?.thumbnail
-    ? `<img src="${escapeAttr(face.thumbnail)}" alt="" draggable="false" style="width:100%;height:100%;object-fit:cover;display:block;"/>`
+    ? `<img src="${escapeAttr(faceSrc(face.thumbnail))}" alt="" draggable="false" style="width:100%;height:100%;object-fit:cover;display:block;"/>`
     : `<div style="width:100%;height:100%;background:#E5E8EB;"></div>`
   return `<div style="width:${size}px;height:${size}px;border-radius:50%;overflow:hidden;border:${border}px solid ${ring};box-sizing:border-box;background:#fff;box-shadow:0 2px 8px rgba(27,29,31,0.25);">${inner}</div>`
 }
@@ -54,7 +54,7 @@ function singleIcon(pin: Pin, faces: Record<string, Face>, selected: boolean): n
   const ring = selected ? '#FFE14D' : '#FFFFFF'
   const more = pin.ch.length > 1 ? badge(`+${pin.ch.length - 1}`) : ''
   const tail = `<div style="position:absolute;left:${size / 2 - 6}px;top:${size - 2}px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid ${ring};"></div>`
-  const content = `<div role="button" aria-label="${escapeAttr(pin.name)}" data-pin="${pin.id}" style="position:relative;width:${size}px;height:${size + 8}px;cursor:pointer;">${faceImg(faces[pin.ch[0]], size, ring, selected ? 3 : 2)}${tail}${more}</div>`
+  const content = `<div class="mk-pop" role="button" aria-label="${escapeAttr(pin.name)}" data-pin="${pin.id}" style="position:relative;width:${size}px;height:${size + 8}px;cursor:pointer;">${faceImg(faces[pin.ch[0]], size, ring, selected ? 3 : 2)}${tail}${more}</div>`
   return { content, size: new naver.maps.Size(size, size + 8), anchor: new naver.maps.Point(size / 2, size + 6) }
 }
 
@@ -64,13 +64,26 @@ function clusterIcon(items: Pin[], faces: Record<string, Face>): naver.maps.Mark
   for (const p of items) for (const c of p.ch) tally.set(c, (tally.get(c) || 0) + 1)
   const top = Array.from(tally.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0]
   const count = items.length > 999 ? '999+' : String(items.length)
-  const content = `<div role="button" aria-label="가게 ${items.length}곳" data-cluster="${items.length}" style="position:relative;width:${CLUSTER_FACE}px;height:${CLUSTER_FACE}px;cursor:pointer;">${faceImg(top ? faces[top] : undefined, CLUSTER_FACE, '#FFFFFF', 2)}${badge(count)}</div>`
+  const content = `<div class="mk-pop" role="button" aria-label="가게 ${items.length}곳" data-cluster="${items.length}" style="position:relative;width:${CLUSTER_FACE}px;height:${CLUSTER_FACE}px;cursor:pointer;">${faceImg(top ? faces[top] : undefined, CLUSTER_FACE, '#FFFFFF', 2)}${badge(count)}</div>`
   return { content, size: new naver.maps.Size(CLUSTER_FACE, CLUSTER_FACE), anchor: new naver.maps.Point(CLUSTER_FACE / 2, CLUSTER_FACE / 2) }
 }
 
 function readBounds(map: naver.maps.Map): Bounds {
   const b = map.getBounds()
   return { sw_lat: b.getSW().lat(), sw_lng: b.getSW().lng(), ne_lat: b.getNE().lat(), ne_lng: b.getNE().lng() }
+}
+
+/** 지도 스크립트를 미리 붙인다. 토스 앱은 화면을 그리기 전에 부른다 */
+export function preloadMapSdk(): boolean {
+  const clientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID
+  if (!clientId) return false
+  if (!document.querySelector('script[src*="oapi.map.naver.com"]')) {
+    const script = document.createElement('script')
+    script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${clientId}`
+    script.async = true
+    document.head.appendChild(script)
+  }
+  return true
 }
 
 export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapClick, onBoundsChange, fitKey, focus }: NaverMapProps) {
@@ -91,14 +104,7 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
       setSdkLoaded(true)
       return
     }
-    const clientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID
-    if (!clientId) return
-    if (!document.querySelector('script[src*="oapi.map.naver.com"]')) {
-      const script = document.createElement('script')
-      script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${clientId}`
-      script.async = true
-      document.head.appendChild(script)
-    }
+    if (!preloadMapSdk()) return
     let timeoutId: ReturnType<typeof setTimeout> | null = null
     const poll = setInterval(() => {
       if ((window as Window & { naver?: { maps?: unknown } }).naver?.maps) {

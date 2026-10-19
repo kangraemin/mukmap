@@ -4,6 +4,8 @@ import { test, expect, type Page } from '@playwright/test'
 
 async function ready(page: Page) {
   await page.goto('/')
+  // 첫 화면 소개가 걷힐 때까지
+  await expect(page.getByTestId('intro')).toHaveCount(0, { timeout: 10_000 })
   await expect(page.getByTestId('pill-count')).toHaveText(/\d+곳/, { timeout: 30_000 })
   // 지도 SDK가 핀을 그릴 때까지
   await expect(page.locator('[data-cluster], [data-pin]').first()).toBeVisible({ timeout: 30_000 })
@@ -90,8 +92,9 @@ test('목록 보기 → 전체 화면 목록 → 상세 → 뒤로 → 목록 �
   await page.getByTestId('list-pill').click()
   const list = page.getByTestId('list-view')
   await expect(list).toBeVisible()
+  // 올라오는 움직임이 끝난 뒤 위치를 잰다
+  await expect.poll(async () => (await list.boundingBox())!.y).toBeLessThanOrEqual(1)
   const box = (await list.boundingBox())!
-  expect(box.y).toBeLessThanOrEqual(1)
   expect(box.height).toBeGreaterThanOrEqual(page.viewportSize()!.height - 1)
 
   const first = page.getByTestId('list-item').first()
@@ -121,4 +124,43 @@ test('가로 스크롤이 없다', async ({ page }) => {
   await ready(page)
   const ok = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
   expect(ok).toBe(true)
+})
+
+function searchBox(page: Page) {
+  return page.locator('input[aria-label="검색"]:visible').first()
+}
+
+const num = async (page: Page) => Number((await page.getByTestId('pill-count').textContent())!.replace(/\D/g, ''))
+
+test('첫 화면에 소개가 떴다가 지도가 준비되면 걷힌다', async ({ page }) => {
+  // 서버가 그린 HTML에 이미 들어 있어 JS가 돌기 전부터 보인다
+  const res = await page.request.get('/')
+  expect(await res.text()).toContain('data-testid="intro"')
+  await page.goto('/')
+  await expect(page.getByTestId('intro')).toHaveCount(0, { timeout: 10_000 })
+})
+
+test('메뉴 이름으로 찾아진다', async ({ page }) => {
+  await ready(page)
+  await searchBox(page).fill('국밥')
+  await expect(page.getByTestId('search-restaurant').first()).toBeVisible()
+})
+
+test('유튜버 + 지역을 띄어 쓰면 둘 다 맞는 가게가 나오고, 전체 보기는 지도 개수를 줄인다', async ({ page }) => {
+  await ready(page)
+  const all = await num(page)
+  await searchBox(page).fill('쯔양 서울')
+  await expect(page.getByTestId('search-restaurant').first()).toBeVisible()
+  await page.getByTestId('search-all').click()
+  const chip = page.locator('[data-testid="text-chip"]:visible').first()
+  await expect(chip).toBeVisible()
+  await expect.poll(() => num(page)).toBeLessThan(all)
+  await chip.click()
+  await expect(page.locator('[data-testid="text-chip"]:visible')).toHaveCount(0)
+})
+
+test('붙여 쓴 검색어도 나눠서 찾는다', async ({ page }) => {
+  await ready(page)
+  await searchBox(page).fill('쯔양서울')
+  await expect(page.getByTestId('search-restaurant').first()).toBeVisible()
 })
