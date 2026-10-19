@@ -56,7 +56,7 @@ export default function Intro({ ready, channels }: { ready: boolean; channels: I
         <div className="mt-7 flex -space-x-2 animate-rise-in [animation-delay:240ms] [animation-fill-mode:both]">
           {faces.map((c) => (
             <span key={c.id} className="rounded-full ring-2 ring-paper">
-              <ChannelFace face={{ id: c.id, name: c.name, thumbnail: c.thumbnail_url }} size={40} />
+              <ChannelFace face={{ id: c.id, name: c.name, thumbnail: c.thumbnail_url }} size={40} eager />
             </span>
           ))}
         </div>

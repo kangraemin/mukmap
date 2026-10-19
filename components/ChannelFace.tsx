@@ -7,15 +7,15 @@ interface Face {
   thumbnail: string | null
 }
 
-export function ChannelFace({ face, size = 24, ring = false }: { face: Face; size?: number; ring?: boolean }) {
+export function ChannelFace({ face, size = 24, ring = false, eager = false }: { face: Face; size?: number; ring?: boolean; eager?: boolean }) {
   return face.thumbnail ? (
     <img
       src={faceSrc(face.thumbnail)}
       alt={face.name}
       width={size}
       height={size}
-      loading="lazy"
-      className={`flex-shrink-0 rounded-full object-cover ${ring ? 'ring-2 ring-paper' : ''}`}
+      loading={eager ? 'eager' : 'lazy'}
+      className={`flex-shrink-0 rounded-full bg-well object-cover ${ring ? 'ring-2 ring-paper' : ''}`}
       style={{ width: size, height: size }}
     />
   ) : (
