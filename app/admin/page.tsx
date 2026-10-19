@@ -13,6 +13,7 @@ interface Restaurant {
   needs_review: boolean
   is_visible: boolean
   created_at: string
+  said?: { name: string; address_hint?: string; video_id?: string; timestamp_seconds?: number | null } | null
 }
 
 interface Video {
@@ -183,6 +184,16 @@ export default function AdminPage() {
       if (tab === 'review') fetchReviewRestaurants()
       else fetchAllRestaurants()
     }
+  }
+
+  // 주소가 맞으면 고칠 것 없이 바로 노출한다
+  const approve = async (id: number) => {
+    const res = await fetch('/api/admin/restaurants', {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({ id, needs_review: false, is_visible: true }),
+    })
+    if (res.ok) setRestaurants((prev) => prev.filter((r) => r.id !== id))
   }
 
   const deleteRestaurant = async (id: number) => {
@@ -380,8 +391,38 @@ export default function AdminPage() {
                       <p className="text-xs text-gray-400">
                         lat: {r.lat ?? 'null'}, lng: {r.lng ?? 'null'}
                       </p>
+                      {r.said && (
+                        <p className="mt-1 text-sm">
+                          영상에서 말한 가게: <b>{r.said.name}</b>
+                          {r.said.address_hint ? ` · ${r.said.address_hint}` : ''}
+                          {r.said.video_id && (
+                            <a
+                              className="ml-2 text-primary underline"
+                              href={`https://www.youtube.com/watch?v=${r.said.video_id}${r.said.timestamp_seconds ? `&t=${r.said.timestamp_seconds}s` : ''}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              영상 장면
+                            </a>
+                          )}
+                          <a
+                            className="ml-2 text-primary underline"
+                            href={`https://map.naver.com/p/search/${encodeURIComponent(`${r.said.address_hint ?? ''} ${r.said.name}`.trim())}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            네이버 지도에서 찾기
+                          </a>
+                        </p>
+                      )}
                     </div>
                     <div className="flex gap-2">
+                      <button
+                        onClick={() => approve(r.id)}
+                        className="rounded bg-success px-3 py-1.5 text-sm text-white"
+                      >
+                        맞음
+                      </button>
                       <button
                         onClick={() => startEdit(r)}
                         className="rounded bg-primary px-3 py-1.5 text-sm text-white"
