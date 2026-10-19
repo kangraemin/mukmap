@@ -336,7 +336,29 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   const handleToastClose = useCallback(() => setToast(''), [])
 
   const place = [region, city].filter(Boolean).join(' ')
+  // 카드가 떠 있으면 지도에서 가려지는 위(검색·칩)·아래(카드) 높이. 고른 핀을 그 사이 가운데에 둔다
+  const topBarRef = useRef<HTMLDivElement>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
+  const [insets, setInsets] = useState<{ top: number; bottom: number } | null>(null)
   const preview = usePresence(previewId ? pinById.get(previewId) ?? null : null, 200)
+  const cardShown = !!preview.shown && !preview.leaving
+  useEffect(() => {
+    const card = cardRef.current
+    const bar = topBarRef.current
+    if (!cardShown || !card || !bar) { setInsets(null); return }
+    const measure = () => {
+      const top = bar.getBoundingClientRect().bottom
+      // 카드는 들어오는 동안 움직이니 움직이지 않는 바깥 틀의 위치를 잰다
+      const bottom = window.innerHeight - card.parentElement!.getBoundingClientRect().top
+      setInsets((cur) => (cur && Math.abs(cur.top - top) < 2 && Math.abs(cur.bottom - bottom) < 2 ? cur : { top, bottom }))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(card)
+    ro.observe(bar)
+    return () => ro.disconnect()
+  }, [cardShown, preview.shown?.id])
+
   const detailP = usePresence(detailId, 240)
   const listP = usePresence(nav.v === 'list' ? true : null, 200)
   const shownDetailId = detailP.shown
@@ -413,7 +435,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-paper">
       {/* 지도 위: 검색 + 유튜버 칩(모바일) */}
-      <div className="pointer-events-none fixed inset-x-0 top-0 z-20 pt-[calc(10px+env(safe-area-inset-top))] lg:hidden">
+      <div ref={topBarRef} className="pointer-events-none fixed inset-x-0 top-0 z-20 pt-[calc(10px+env(safe-area-inset-top))] lg:hidden">
         <div className="pointer-events-auto px-4">
           {search}
         </div>
@@ -499,12 +521,13 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
           onBoundsChange={setBounds}
           fitKey={fitKey}
           focus={focus}
+          insets={insets}
         />
 
         {/* 지도 아래: 고른 가게 카드, 아니면 목록 보기 */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center px-4 pb-[calc(16px+env(safe-area-inset-bottom))] lg:hidden">
           {preview.shown ? (
-            <div className="pointer-events-auto w-full">
+            <div ref={cardRef} className="pointer-events-auto w-full">
               <PreviewCard
                 key={preview.shown.id}
                 pin={preview.shown}

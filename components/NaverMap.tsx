@@ -21,6 +21,8 @@ interface NaverMapProps {
   fitKey: number
   /** 값이 바뀌면 이 핀으로 지도를 옮긴다 */
   focus: { id: number; seq: number } | null
+  /** 카드가 떠 있을 때 지도 위·아래가 가려지는 높이(px). 고른 핀을 그 사이 가운데로 옮긴다 */
+  insets?: { top: number; bottom: number } | null
 }
 
 // 핀끼리 이 거리(px) 안이면 묶는다. 줌과 상관없이 같은 기준이라 얼굴이 겹치지 않는다
@@ -32,6 +34,14 @@ const CLUSTER_FACE = 40
 function mercY(lat: number) {
   const s = Math.sin((lat * Math.PI) / 180)
   return Math.log((1 + s) / (1 - s)) / 2
+}
+
+/** 이 줌에서 핀이 화면 가운데보다 dy(px) 아래에 보이게 하는 지도 중심 */
+function centerAbove(lat: number, lng: number, zoom: number, dy: number) {
+  const world = 256 * 2 ** zoom
+  const y = (0.5 - mercY(lat) / (2 * Math.PI)) * world - dy
+  const m = (0.5 - y / world) * 2 * Math.PI
+  return new naver.maps.LatLng((Math.atan(Math.sinh(m)) * 180) / Math.PI, lng)
 }
 
 function escapeAttr(s: string) {
@@ -104,7 +114,7 @@ export function preloadMapSdk(): boolean {
   return true
 }
 
-export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapClick, onBoundsChange, fitKey, focus }: NaverMapProps) {
+export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapClick, onBoundsChange, fitKey, focus, insets }: NaverMapProps) {
   const mapElRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<naver.maps.Map | null>(null)
   const markersRef = useRef<Map<string, { marker: naver.maps.Marker; listener: unknown; sig: string }>>(new Map())
@@ -216,8 +226,6 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
         })
         listener = naver.maps.Event.addListener(marker, 'click', () => {
           cb.current.onPinClick(p.id)
-          // 카드가 뜨면 언제나 그 가게로 확대해 가운데에 둔다
-          map.morph(new naver.maps.LatLng(p.lat, p.lng), Math.max(map.getZoom(), 15), { duration: 500, easing: 'easeOutCubic' })
         })
       } else {
         const lat = items.reduce((s, p) => s + p.lat, 0) / items.length
@@ -235,7 +243,6 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
           // 같은 건물처럼 거의 한 자리면 더 키워도 안 갈라진다. 첫 가게를 바로 보여준다
           if (span < 0.0002 || map.getZoom() >= 19) {
             cb.current.onPinClick(items[0].id)
-            map.morph(new naver.maps.LatLng(lat, lng), Math.max(map.getZoom(), 15), { duration: 500, easing: 'easeOutCubic' })
             return
           }
           flyToFit(map, lats, lngs, 80)
@@ -267,6 +274,23 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
     map.morph(new naver.maps.LatLng(p.lat, p.lng), Math.max(map.getZoom(), 15), { duration: 500, easing: 'easeOutCubic' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus, sdkLoaded])
+
+  // 카드가 뜨면 고른 가게로 확대해, 위 검색·칩과 카드 사이 빈 곳 가운데에 둔다
+  const insetTop = insets?.top ?? null
+  const insetBottom = insets?.bottom ?? null
+  useEffect(() => {
+    const map = mapRef.current
+    const el = mapElRef.current
+    if (!map || !el || selectedId == null || insetTop == null || insetBottom == null) return
+    const p = pins.find((x) => x.id === selectedId)
+    if (!p) return
+    const h = el.clientHeight
+    const freeMid = insetTop + (h - insetTop - insetBottom) / 2
+    const zoom = Math.max(map.getZoom(), 15)
+    map.morph(centerAbove(p.lat, p.lng, zoom, freeMid - h / 2), zoom, { duration: 500, easing: 'easeOutCubic' })
+    // 핀 목록이 바뀔 때마다 다시 옮기지 않는다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, insetTop, insetBottom, sdkLoaded])
 
   return (
     <div ref={mapElRef} data-testid="map" className="h-full w-full">
