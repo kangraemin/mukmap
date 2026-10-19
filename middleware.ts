@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// 토스 미니앱(<app>.web.tossmini.com, <app>.private-web.tossmini.com)이 읽기 API를 부를 수 있게 연다.
-const TOSS_ORIGIN = /^https:\/\/[a-z0-9-]+\.(private-)?web\.tossmini\.com$/
+// 토스 미니앱이 읽기 API를 부를 수 있게 연다. 실제 토스 앱(3.x 테스트)은 <app>.private-apps.tossmini.com에서 연다(2026-10-19 원격 로그로 확인).
+const TOSS_ORIGIN = /^https:\/\/[a-z0-9-]+\.(private-)?(web|apps)\.tossmini\.com$/
 
 export function middleware(request: NextRequest) {
   const origin = request.headers.get('origin') || ''
