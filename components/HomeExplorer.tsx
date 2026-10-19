@@ -57,6 +57,8 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
 
   const restaurantCache = useRef<Map<string, RestaurantWithVideos[]>>(new Map())
 
+  const fitOnFirstLoad = useRef(false)
+
   // 바텀시트(모바일). 데스크톱에서는 같은 패널이 왼쪽 목록이 된다
   const [, setSheetState] = useState<SheetState>('collapsed')
   const sheetRef = useRef<HTMLDivElement>(null)
@@ -105,6 +107,11 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
         if (restaurantCache.current.size > 50) restaurantCache.current.clear()
         restaurantCache.current.set(cacheKey, list)
         setRestaurants(list)
+        // 주소 조건으로 열었으면 첫 결과가 온 뒤에 지도를 맞춘다(초기 bounds 이벤트가 먼저 풀어버린다)
+        if (fitOnFirstLoad.current && list.length > 0) {
+          fitOnFirstLoad.current = false
+          setFitToMarkers(true)
+        }
       })
       .catch((e: unknown) => {
         if ((e as Error).name !== 'AbortError') {
@@ -266,6 +273,24 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     goToState('half')
   }, [goToState])
 
+  // 목록·가게 페이지에서 넘어온 조건(?yt=쯔양&region=서울, ?place=12)으로 지도를 연다
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    const yt = q.get('yt')
+    const ch = yt ? channels.find((c) => c.slug === yt || c.id === yt) : undefined
+    const reg = q.get('region')
+    const place = Number(q.get('place'))
+    if (ch) setChannelId(ch.id)
+    if (reg) setRegion(reg)
+    if (ch || reg) {
+      fitOnFirstLoad.current = true
+      goToState('half')
+    }
+    if (Number.isInteger(place) && place > 0) openRestaurant(place)
+    // 첫 진입 한 번만 읽는다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const handleToastClose = useCallback(() => setToast(''), [])
 
   const activeChannel = channels.find((c) => c.id === channelId)
@@ -344,8 +369,8 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
               <div className="flex min-h-[44px] items-center justify-between border-b border-line px-4 lg:px-5">
                 <p className="text-body text-ink" aria-live="polite">
                   {loading ? '찾는 중' : sorted.length >= FETCH_LIMIT
-                    ? <>이 지도 안에 <b>{FETCH_LIMIT}곳 넘게</b></>
-                    : <>이 지도 안에 <b>{sorted.length}곳</b></>}
+                    ? <>지금 지도에서 <b>{FETCH_LIMIT}곳</b>까지 보여줘요</>
+                    : <>지금 지도에서 <b>{sorted.length}곳</b></>}
                 </p>
                 <div className="flex items-center">
                   {filterLabel && (

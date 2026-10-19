@@ -65,6 +65,17 @@ export async function GET(request: NextRequest) {
     if (region) {
       query = query.eq('region', region)
     }
+    // 유튜버 조건은 DB에서 먼저 건다. 200개를 받은 뒤 거르면 그 유튜버 가게가 잘려 0곳이 된다
+    if (channel_ids && channel_ids.length > 0) {
+      const { data: hits } = await supabase
+        .from('videos')
+        .select('restaurant_id')
+        .in('channel_id', channel_ids)
+        .not('restaurant_id', 'is', null)
+      const ids = Array.from(new Set((hits || []).map((h: { restaurant_id: number }) => h.restaurant_id)))
+      if (ids.length === 0) return NextResponse.json({ restaurants: [], total: 0 })
+      query = query.in('id', ids)
+    }
     if (category && category.length > 0) {
       query = query.in('category', category)
     }

@@ -4,7 +4,7 @@ export interface Crumb {
   path: string
 }
 
-export default function SiteHeader({ crumbs }: { crumbs: Crumb[] }) {
+export default function SiteHeader({ crumbs, mapHref = '/' }: { crumbs: Crumb[]; mapHref?: string }) {
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-paper/95 pt-[env(safe-area-inset-top)] backdrop-blur">
       <div className="mx-auto flex h-14 max-w-3xl items-center gap-3 px-4">
@@ -21,7 +21,7 @@ export default function SiteHeader({ crumbs }: { crumbs: Crumb[] }) {
             ))}
           </ol>
         </nav>
-        <a href="/" className="inline-flex min-h-[44px] flex-shrink-0 items-center text-meta font-bold text-ink">지도</a>
+        <a href={mapHref} className="inline-flex min-h-[44px] flex-shrink-0 items-center text-meta font-bold text-ink">지도 보기</a>
       </div>
     </header>
   )

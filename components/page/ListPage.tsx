@@ -1,12 +1,12 @@
 // 유튜버·지역 목록 페이지 공용 틀. 서버에서만 그린다.
 import type { RestaurantWithVideos } from '@/lib/types'
 import { SceneCard } from '@/components/RestaurantCard'
-import { breadcrumbJsonLd, collectionJsonLd, faqJsonLd, jsonLdScript, todayLabel } from '@/lib/seo'
+import { breadcrumbJsonLd, collectionJsonLd, faqJsonLd, jsonLdScript } from '@/lib/seo'
 import SiteHeader, { type Crumb } from './SiteHeader'
 
 export interface LinkGroup {
   title: string
-  items: { href: string; label: string; count: number }[]
+  items: { href: string; label: string; count?: number }[]
 }
 
 interface ListPageProps {
@@ -20,57 +20,94 @@ interface ListPageProps {
   restaurants: RestaurantWithVideos[]
   dateModified: string | null
   groups?: LinkGroup[]
-  /** 카드를 몇 개까지 보여줄지. 넘는 건 아래 묶음 링크로 넘긴다 */
+  /** 같은 조건으로 여는 지도 주소 (/?yt=..&region=..) */
+  mapHref: string
+  /** 조건을 넓히는 링크. 필터 줄이 아니라 목록 끝에 둔다 */
+  more?: { href: string; label: string }
+  /** 처음에 보여줄 카드 수. 나머지는 '더 보기'로 펼친다 */
   limit?: number
 }
 
+/** 직답의 첫 문장. 화면엔 이것만, 전체는 FAQ 구조화 데이터로 남긴다 */
+function firstSentence(text: string): string {
+  const m = text.match(/^.+?다\./)
+  return m ? m[0] : text
+}
+
 export default function ListPage({
-  crumbs, title, h1, description, question, answer, restaurants, dateModified, groups = [], limit = 60,
+  crumbs, title, h1, description, question, answer, restaurants, dateModified, groups = [], mapHref, more, limit = 60,
 }: ListPageProps) {
   const path = crumbs[crumbs.length - 1].path
   const shown = restaurants.slice(0, limit)
+  const rest = restaurants.slice(limit)
+  const chips = groups.filter((g) => g.items.length > 0)
 
   return (
     <>
-      <SiteHeader crumbs={crumbs} />
+      <SiteHeader crumbs={crumbs} mapHref={mapHref} />
       <main className="mx-auto max-w-3xl px-4 pb-[calc(48px+env(safe-area-inset-bottom))]">
         <h1 className="pt-6 text-display font-bold text-ink">{h1}</h1>
+        <p className="mt-1.5 max-w-[60ch] text-body text-sub">{firstSentence(answer)}</p>
 
-        <section aria-labelledby="answer" className="mt-4">
-          <h2 id="answer" className="text-lead font-bold text-ink">{question}</h2>
-          <p className="mt-1.5 max-w-[60ch] text-body text-sub">{answer}</p>
-          <p className="mt-2 text-meta text-sub">{todayLabel()} 기준</p>
-        </section>
-
-        {groups.map((g) => g.items.length > 0 && (
-          <section key={g.title} aria-label={g.title} className="mt-6">
-            <h2 className="text-body font-bold text-ink">{g.title}</h2>
-            <ul className="no-scrollbar -mx-4 mt-2 flex gap-2 overflow-x-auto px-4 pb-1">
-              {g.items.map((it) => (
-                <li key={it.href} className="flex-shrink-0">
-                  <a
-                    href={it.href}
-                    className="inline-flex min-h-[40px] items-center gap-1 rounded-full border border-line px-3.5 text-body text-ink"
-                  >
-                    {it.label}
-                    <span className="text-meta text-sub">{it.count}</span>
-                  </a>
-                </li>
-              ))}
+        {chips.length > 0 && (
+          <nav aria-label="좁혀 보기" className="mt-4">
+            <ul className="no-scrollbar -mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1">
+              {chips.map((g, gi) => [
+                gi > 0 && <li key={`sep-${g.title}`} aria-hidden="true" className="mx-1 h-5 w-px flex-shrink-0 bg-line" />,
+                ...g.items.map((it) => (
+                  <li key={it.href} className="flex-shrink-0">
+                    <a
+                      href={it.href}
+                      className="inline-flex min-h-[40px] items-center rounded-full border border-line px-3.5 text-body text-ink"
+                    >
+                      {it.label}
+                    </a>
+                  </li>
+                )),
+              ])}
             </ul>
-          </section>
-        ))}
+          </nav>
+        )}
 
-        <ol className="mt-8 grid gap-x-5 gap-y-8 sm:grid-cols-2">
+        <a
+          href={mapHref}
+          className="mt-4 flex min-h-[48px] items-center gap-2 border-y border-line text-body text-ink"
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 flex-shrink-0 text-sub" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21Z" />
+            <circle cx="12" cy="9.5" r="2.5" />
+          </svg>
+          <span className="flex-1">{restaurants.length}곳을 지도에서 위치로 보기</span>
+          <span aria-hidden="true" className="text-sub">›</span>
+        </a>
+
+        <ol className="mt-6 grid gap-x-5 gap-y-8 sm:grid-cols-2">
           {shown.map((r) => (
             <li key={r.id}>
               <SceneCard restaurant={r} href={`/restaurant/${r.id}`} />
             </li>
           ))}
         </ol>
-        {restaurants.length > shown.length && (
-          <p className="mt-8 text-body text-sub">
-            최근 영상 순으로 {shown.length}곳만 보여드렸어요. 나머지 {restaurants.length - shown.length}곳은 위의 지역 묶음에서 볼 수 있어요.
+        {rest.length > 0 && (
+          <details className="group mt-8">
+            <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-center rounded-full border border-line text-body text-ink group-open:hidden">
+              나머지 {rest.length}곳 더 보기
+            </summary>
+            <ol className="grid gap-x-5 gap-y-8 sm:grid-cols-2">
+              {rest.map((r) => (
+                <li key={r.id}>
+                  <SceneCard restaurant={r} href={`/restaurant/${r.id}`} />
+                </li>
+              ))}
+            </ol>
+          </details>
+        )}
+
+        {more && (
+          <p className="mt-8">
+            <a href={more.href} className="inline-flex min-h-[44px] items-center text-body font-bold text-ink underline-offset-4 hover:underline">
+              {more.label} ›
+            </a>
           </p>
         )}
 

@@ -16,6 +16,16 @@ export function pathOf(...parts: string[]) {
   return '/' + parts.map((p) => encodeURIComponent(p)).join('/')
 }
 
+/** 같은 조건으로 홈 지도를 여는 주소. HomeExplorer가 yt·region·place를 읽는다 */
+export function mapHrefOf(q: { yt?: string; region?: string | null; place?: string | number }) {
+  const sp = new URLSearchParams()
+  if (q.yt) sp.set('yt', q.yt)
+  if (q.region) sp.set('region', q.region)
+  if (q.place != null) sp.set('place', String(q.place))
+  const qs = sp.toString()
+  return qs ? `/?${qs}` : '/'
+}
+
 export function todayLabel(d = new Date()) {
   const k = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
   return `${k.getFullYear()}년 ${k.getMonth() + 1}월 ${k.getDate()}일`

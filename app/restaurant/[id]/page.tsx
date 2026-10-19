@@ -5,7 +5,7 @@ import SiteHeader from '@/components/page/SiteHeader'
 import { getRestaurant } from '@/lib/data'
 import { areaOf, leadVideo, thumbOf, visitorsOf } from '@/lib/format'
 import { iGa } from '@/lib/josa'
-import { breadcrumbJsonLd, jsonLdScript, pageMetadata, pathOf, restaurantJsonLd } from '@/lib/seo'
+import { breadcrumbJsonLd, jsonLdScript, mapHrefOf, pageMetadata, pathOf, restaurantJsonLd } from '@/lib/seo'
 
 export const revalidate = 3600
 
@@ -49,7 +49,7 @@ export default async function RestaurantPage({ params }: Props) {
 
   return (
     <>
-      <SiteHeader crumbs={crumbs} />
+      <SiteHeader crumbs={crumbs} mapHref={mapHrefOf({ place: r.id })} />
       <main className="mx-auto max-w-2xl sm:px-4 sm:pt-6">
         <DetailPanel
           restaurant={r}
@@ -57,7 +57,14 @@ export default async function RestaurantPage({ params }: Props) {
           channelHref={(slug) => pathOf('youtuber', slug)}
         />
         <section aria-label="더 보기" className="px-4 pb-[calc(40px+env(safe-area-inset-bottom))] pt-2 sm:px-0">
-          <h2 className="text-body font-bold text-ink">근처 다른 맛집</h2>
+          <a
+            href={mapHrefOf({ place: r.id })}
+            className="mb-5 flex min-h-[48px] items-center gap-2 border-y border-line text-body text-ink"
+          >
+            <span className="flex-1">지도에서 주변 맛집 같이 보기</span>
+            <span aria-hidden="true" className="text-sub">›</span>
+          </a>
+          <h2 className="text-body font-bold text-ink">이 지역 더 보기</h2>
           <ul className="mt-2 flex flex-wrap gap-2">
             {r.region && r.city && (
               <li>

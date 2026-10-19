@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import ListPage from '@/components/page/ListPage'
 import { MIN_INDEXABLE, decodeParam, restaurantsOf } from '@/lib/data'
 import { regionAnswer } from '@/lib/region-page'
-import { abs, pageMetadata, pathOf } from '@/lib/seo'
+import { abs, mapHrefOf, pageMetadata, pathOf } from '@/lib/seo'
 
 export const revalidate = 3600
 
@@ -46,6 +46,7 @@ export default async function CityPage({ params }: Props) {
       answer={answer}
       restaurants={restaurants}
       dateModified={facts.latest}
+      mapHref={mapHrefOf({ region })}
       limit={120}
       groups={[{
         title: `유튜버별 ${region} 맛집`,

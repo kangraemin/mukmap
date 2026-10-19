@@ -4,7 +4,7 @@ import ListPage from '@/components/page/ListPage'
 import { MIN_INDEXABLE, decodeParam, restaurantsOf } from '@/lib/data'
 import { regionAnswer } from '@/lib/region-page'
 import { iGa } from '@/lib/josa'
-import { pageMetadata, pathOf } from '@/lib/seo'
+import { mapHrefOf, pageMetadata, pathOf } from '@/lib/seo'
 
 export const revalidate = 3600
 
@@ -46,6 +46,7 @@ export default async function RegionPage({ params }: Props) {
       answer={answer}
       restaurants={restaurants}
       dateModified={facts.latest}
+      mapHref={mapHrefOf({ region })}
       groups={[
         {
           title: `${region} 구·시별`,

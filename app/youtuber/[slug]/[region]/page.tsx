@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import ListPage from '@/components/page/ListPage'
 import { MIN_INDEXABLE, decodeParam, factsOf, getChannelBySlugOrId, restaurantsOf, yearRange } from '@/lib/data'
 import { eunNeun, iGa } from '@/lib/josa'
-import { abs, pageMetadata, pathOf } from '@/lib/seo'
+import { abs, mapHrefOf, pageMetadata, pathOf } from '@/lib/seo'
 
 export const revalidate = 3600
 
@@ -57,10 +57,8 @@ export default async function YoutuberRegionPage({ params }: Props) {
       restaurants={restaurants}
       dateModified={facts.latest}
       limit={120}
-      groups={[{
-        title: `${region} 다른 유튜버 맛집`,
-        items: [{ href: pathOf('region', region), label: `${region} 전체`, count: (await restaurantsOf({ region })).length }],
-      }]}
+      mapHref={mapHrefOf({ yt: slug, region })}
+      more={{ href: pathOf('region', region), label: `${region}의 다른 유튜버 맛집` }}
     />
   )
 }

@@ -3,7 +3,7 @@ import { notFound, permanentRedirect } from 'next/navigation'
 import ListPage from '@/components/page/ListPage'
 import { MIN_INDEXABLE, decodeParam, factsOf, getChannelBySlugOrId, restaurantsOf, yearRange } from '@/lib/data'
 import { eunNeun, iGa } from '@/lib/josa'
-import { pageMetadata, pathOf } from '@/lib/seo'
+import { mapHrefOf, pageMetadata, pathOf } from '@/lib/seo'
 
 export const revalidate = 3600
 
@@ -57,6 +57,7 @@ export default async function YoutuberPage({ params }: Props) {
       answer={answer}
       restaurants={restaurants}
       dateModified={facts.latest}
+      mapHref={mapHrefOf({ yt: slug })}
       groups={[{
         title: `${channel.name} 지역별 맛집`,
         items: regions.map(([r, n]) => ({ href: pathOf('youtuber', slug, r), label: r, count: n })),
