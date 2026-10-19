@@ -6,6 +6,26 @@ function checkAuth(request: NextRequest): boolean {
   return password === process.env.ADMIN_PASSWORD
 }
 
+// 관리자 목록: 숨김 포함, 검수 대기만(review=1) 또는 전체. 공개 API의 200개 상한을 피해 1000개까지 준다
+export async function GET(request: NextRequest) {
+  if (!checkAuth(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const review = request.nextUrl.searchParams.get('review') === '1'
+  const supabase = createServiceClient()
+  let query = supabase
+    .from('restaurants')
+    .select('*, videos (id, video_id, channel_id, title, thumbnail_url, rating, summary, is_ad, timestamp_seconds, published_at, menu, price, quote, why, channels (name, thumbnail_url, slug))')
+    .order('id', { ascending: false })
+    .limit(1000)
+  if (review) query = query.eq('needs_review', true)
+  const { data, error } = await query
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+  return NextResponse.json({ restaurants: data || [] })
+}
+
 export async function PATCH(request: NextRequest) {
   if (!checkAuth(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

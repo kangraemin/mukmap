@@ -65,28 +65,27 @@ export default function AdminPage() {
   const fetchReviewRestaurants = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/restaurants?sw_lat=-90&sw_lng=-180&ne_lat=90&ne_lng=180&limit=200&include_hidden=true`)
+      const res = await fetch('/api/admin/restaurants?review=1', { headers: getHeaders() })
       const data = await res.json()
-      setRestaurants((data.restaurants || []).filter((r: Restaurant) => r.needs_review))
+      setRestaurants(data.restaurants || [])
     } catch { /* empty */ }
     setLoading(false)
-  }, [])
+  }, [getHeaders])
 
   const fetchAllRestaurants = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/restaurants?sw_lat=-90&sw_lng=-180&ne_lat=90&ne_lng=180&limit=200&include_hidden=true`)
+      const res = await fetch('/api/admin/restaurants', { headers: getHeaders() })
       const data = await res.json()
       setAllRestaurants(data.restaurants || [])
     } catch { /* empty */ }
     setLoading(false)
-  }, [])
+  }, [getHeaders])
 
   const fetchVideos = useCallback(async () => {
     setLoading(true)
     try {
-      // Fetch all restaurants to get their videos
-      const res = await fetch(`/api/restaurants?sw_lat=-90&sw_lng=-180&ne_lat=90&ne_lng=180&limit=200`)
+      const res = await fetch('/api/admin/restaurants', { headers: getHeaders() })
       const data = await res.json()
       const allVideos: Video[] = []
       for (const r of data.restaurants || []) {
@@ -97,7 +96,7 @@ export default function AdminPage() {
       setVideos(allVideos)
     } catch { /* empty */ }
     setLoading(false)
-  }, [])
+  }, [getHeaders])
 
   useEffect(() => {
     if (!authenticated) return

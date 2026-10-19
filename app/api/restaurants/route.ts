@@ -20,7 +20,6 @@ export async function GET(request: NextRequest) {
   const city = params.get('city')
   const category = params.get('category')?.split(',').filter(Boolean)
   const limit = Math.min(Number(params.get('limit') || 200), 200)
-  const include_hidden = params.get('include_hidden') === 'true'
 
   try {
     let query = supabase
@@ -59,9 +58,7 @@ export async function GET(request: NextRequest) {
       .order('id', { ascending: false })
       .limit(limit)
 
-    if (!include_hidden) {
-      query = query.eq('is_visible', true)
-    }
+    query = query.eq('is_visible', true)
 
     if (region) {
       query = query.eq('region', region)
