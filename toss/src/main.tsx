@@ -63,9 +63,9 @@ function App() {
         apiBase={API}
         pageLinks={false}
         hostNav
-        detailAd={(id) => <AdBanner key={id} />}
-        listAd={(slot) => <AdBanner key={`list-${slot}`} className="my-3" />}
-        previewAd={(id) => <AdBanner key={`pv-${id}`} variant="expanded" className="border-t border-line" />}
+        detailAd={(id) => <AdBanner key={id} kind="strip" className="mt-6" />}
+        listAd={(slot) => <AdBanner key={`list-${slot}`} kind="feed" className="my-3" />}
+        previewAd={(id) => <AdBanner key={`pv-${id}`} kind="strip" variant="expanded" className="border-t border-line" />}
       />
     </>
   );
