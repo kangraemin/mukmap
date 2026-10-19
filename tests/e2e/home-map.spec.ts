@@ -63,6 +63,23 @@ test('핀 → 카드, 지도 누르면 카드 닫힘', async ({ page }) => {
   await expect(page.getByTestId('list-pill')).toBeVisible()
 })
 
+test('첫 화면에서 낱개 핀을 누르면 카드와 함께 그 가게로 확대된다', async ({ page }) => {
+  await ready(page)
+  // 첫 화면의 전체 맞춤 이동이 끝난 뒤에 누른다
+  await page.waitForTimeout(1200)
+  const pin = page.locator('[data-pin]').first()
+  test.skip(!(await pin.isVisible().catch(() => false)), '첫 화면에 낱개 핀이 없다')
+  const id = await pin.getAttribute('data-pin')
+  await pin.tap()
+  await expect(page.getByTestId('preview-card')).toBeVisible()
+  // 확대가 끝나면 고른 핀이 지도 가운데에 온다
+  const map = (await page.getByTestId('map').boundingBox())!
+  await expect.poll(async () => {
+    const b = await page.locator(`[data-pin="${id}"]`).boundingBox()
+    return b ? Math.abs(b.x + b.width / 2 - (map.x + map.width / 2)) : 999
+  }, { timeout: 5_000 }).toBeLessThan(30)
+})
+
 test('카드 → 상세가 화면 전체를 덮고, 뒤로가면 카드로 돌아온다', async ({ page }) => {
   await ready(page)
   const pin = await zoomToSinglePin(page)

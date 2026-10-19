@@ -2,7 +2,6 @@
 import React from 'react'
 import type { RestaurantWithVideos } from '@/lib/types'
 import { areaOf, leadVideo, thumbOf, visitorsOf } from '@/lib/format'
-import CaptionQuote from './CaptionQuote'
 import { VisitorLine } from './ChannelFace'
 
 interface CardProps {
@@ -30,7 +29,7 @@ function Shell({ href, onClick, className, children }: Omit<CardProps, 'restaura
 /** 목록 한 줄. 시트·사이드바에서 여러 개를 훑어볼 때 쓴다 */
 function RestaurantCard({ restaurant: r, href, onClick, selected }: CardProps) {
   const lead = leadVideo(r)
-  const line = lead?.quote || lead?.menu || lead?.summary
+  const line = lead?.menu || lead?.summary
   return (
     <Shell
       href={href}
@@ -51,9 +50,7 @@ function RestaurantCard({ restaurant: r, href, onClick, selected }: CardProps) {
         </span>
         <span className="truncate text-meta text-sub">{areaOf(r)}</span>
         {line && (
-          lead?.quote
-            ? <CaptionQuote text={line} size="sm" className="line-clamp-1" />
-            : <span className="line-clamp-1 text-body text-ink">{line}</span>
+          <span className="line-clamp-1 text-body text-ink">{line}</span>
         )}
         <span className="mt-0.5"><VisitorLine faces={visitorsOf(r)} size={18} /></span>
       </span>
@@ -71,11 +68,6 @@ export function SceneCard({ restaurant: r, href, onClick }: CardProps) {
       <span className="relative block aspect-video overflow-hidden rounded-card bg-well">
         {lead && (
           <img src={thumbOf(lead)} alt={`${r.name} 영상 장면`} loading="lazy" className="h-full w-full object-cover" />
-        )}
-        {lead?.quote && (
-          <span className="absolute inset-x-3 bottom-3">
-            <CaptionQuote text={lead.quote} size="md" className="line-clamp-2" />
-          </span>
         )}
       </span>
       <span className="mt-3 flex items-baseline gap-2">

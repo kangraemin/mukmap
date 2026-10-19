@@ -214,7 +214,11 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
           zIndex: want.selected ? 1000 : 10,
           icon: singleIcon(p, faces, want.selected),
         })
-        listener = naver.maps.Event.addListener(marker, 'click', () => cb.current.onPinClick(p.id))
+        listener = naver.maps.Event.addListener(marker, 'click', () => {
+          cb.current.onPinClick(p.id)
+          // 카드가 뜨면 언제나 그 가게로 확대해 가운데에 둔다
+          map.morph(new naver.maps.LatLng(p.lat, p.lng), Math.max(map.getZoom(), 15), { duration: 500, easing: 'easeOutCubic' })
+        })
       } else {
         const lat = items.reduce((s, p) => s + p.lat, 0) / items.length
         const lng = items.reduce((s, p) => s + p.lng, 0) / items.length
@@ -229,7 +233,11 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
           const lngs = items.map((p) => p.lng)
           const span = Math.max(Math.max(...lats) - Math.min(...lats), Math.max(...lngs) - Math.min(...lngs))
           // 같은 건물처럼 거의 한 자리면 더 키워도 안 갈라진다. 첫 가게를 바로 보여준다
-          if (span < 0.0002 || map.getZoom() >= 19) return cb.current.onPinClick(items[0].id)
+          if (span < 0.0002 || map.getZoom() >= 19) {
+            cb.current.onPinClick(items[0].id)
+            map.morph(new naver.maps.LatLng(lat, lng), Math.max(map.getZoom(), 15), { duration: 500, easing: 'easeOutCubic' })
+            return
+          }
           flyToFit(map, lats, lngs, 80)
         })
       }

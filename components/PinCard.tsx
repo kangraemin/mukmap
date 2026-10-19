@@ -15,10 +15,10 @@ function thumb(vid: string | null) {
 }
 
 function Line({ pin }: { pin: Pin }) {
-  if (!pin.line) return null
-  return pin.quote
-    ? <span className="block truncate text-meta"><span className="caption-band rounded-[6px]">{pin.line}</span></span>
-    : <span className="block truncate text-meta text-ink">{pin.line}</span>
+  // 자막 인용은 보여주지 않는다. 메뉴·요약만
+  const text = pin.quote ? pin.menu : pin.line
+  if (!text) return null
+  return <span className="block truncate text-meta text-ink">{text}</span>
 }
 
 function meta(pin: Pin) {
@@ -38,11 +38,6 @@ export function PreviewCard({ pin, faces, onOpen, onClose, leaving, adSlot }: { 
         {/* 영상 썸네일은 16:9라 같은 비율로 둬야 위아래가 잘리지 않는다 */}
         <span className="relative block aspect-video w-full overflow-hidden bg-well">
           {pin.vid && <img src={`https://i.ytimg.com/vi/${pin.vid}/hqdefault.jpg`} alt="" className="h-full w-full object-cover" />}
-          {pin.quote && pin.line && (
-            <span className="absolute inset-x-3 bottom-3 block">
-              <span className="caption-band animate-caption-in rounded-[6px] text-lead">{pin.line}</span>
-            </span>
-          )}
         </span>
         <span className="block px-4 pb-4 pt-3">
           <span className="flex items-baseline gap-2">

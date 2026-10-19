@@ -1,7 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- 토스 앱과 같이 쓰는 컴포넌트라 next/image를 쓰지 않는다 */
 import type { RestaurantWithVideos } from '@/lib/types'
 import { areaOf, dateLabel, leadVideo, placeUrl, sceneUrl, thumbOf } from '@/lib/format'
-import CaptionQuote from './CaptionQuote'
 import { ChannelFace } from './ChannelFace'
 
 interface DetailPanelProps {
@@ -54,11 +53,6 @@ export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫�
       {lead && (
         <div className="relative aspect-video overflow-hidden bg-well sm:rounded-card">
           <img src={thumbOf(lead)} alt={`${r.name} 영상 장면`} className="h-full w-full object-cover" />
-          {lead.quote && (
-            <div className="absolute inset-x-4 bottom-4 animate-caption-in">
-              <CaptionQuote text={lead.quote} size="lg" className="line-clamp-3" />
-            </div>
-          )}
         </div>
       )}
 
@@ -100,7 +94,6 @@ export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫�
                   {name}
                   {v.published_at && <span className="ml-auto text-meta text-sub">영상 게시 {dateLabel(v.published_at)}</span>}
                 </div>
-                {v.quote && v !== lead && <CaptionQuote text={v.quote} size="sm" className="mt-3" />}
                 <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-body">
                   {v.menu && (<><dt className="text-sub">먹은 것</dt><dd className="text-ink">{v.menu}</dd></>)}
                   {v.price && (<><dt className="text-sub">영상 속 가격</dt><dd className="text-ink">{v.price}</dd></>)}
