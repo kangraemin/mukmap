@@ -2,7 +2,7 @@
 import { defineConfig } from '@apps-in-toss/web-framework/config';
 
 export default defineConfig({
-  appName: 'mukmap',
+  appName: 'mukmap-kr',
   brand: { primaryColor: '#1B1D1F' },
   permissions: [],
   navigationBar: { withBackButton: true, withHomeButton: true },
