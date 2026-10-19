@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Black_Han_Sans } from 'next/font/google'
+import Script from 'next/script'
 import './globals.css'
 import { SITE_NAME, SITE_URL, jsonLdScript, siteJsonLd } from '@/lib/seo'
 
@@ -28,7 +29,16 @@ export const metadata: Metadata = {
   },
   formatDetection: { telephone: false },
   icons: { apple: '/apple-touch-icon.png' },
+  verification: {
+    google: '4Is-0ncEK0T6CX29cU1ufNxnqUPkgTiOromSm43Vwhg',
+    other: {
+      'naver-site-verification': 'b9e3cee388babb56b7ecfe470a82410959cac502',
+      'msvalidate.01': '57132096C71EC15E786D6702170C9A2C',
+    },
+  },
 }
+
+const GA_ID = 'G-KGKJWJ5NKV'
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -54,6 +64,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body className="antialiased">
         {children}
         {jsonLdScript(siteJsonLd())}
+        <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
+        <Script id="ga" strategy="afterInteractive">
+          {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','${GA_ID}')`}
+        </Script>
       </body>
     </html>
   )
