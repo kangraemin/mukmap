@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { getChannelHue, channelColor, DEFAULT_CENTER, DEFAULT_ZOOM } from '@/lib/constants'
+import { useEffect, useRef, useState } from 'react'
+import { DEFAULT_CENTER, DEFAULT_ZOOM } from '@/lib/constants'
 import type { RestaurantWithVideos } from '@/lib/types'
 
 interface Bounds {
@@ -15,7 +15,6 @@ interface NaverMapProps {
   onBoundsChange: (bounds: Bounds) => void
   restaurants: RestaurantWithVideos[]
   onMarkerClick: (restaurantId: number) => void
-  selectedChannels: string[]
   fitToMarkers?: boolean
   focusedRestaurantId?: number | null
   onFitComplete?: () => void
@@ -25,7 +24,6 @@ export default function NaverMap({
   onBoundsChange,
   restaurants,
   onMarkerClick,
-  selectedChannels,
   fitToMarkers,
   focusedRestaurantId,
   onFitComplete,
@@ -37,6 +35,8 @@ export default function NaverMap({
   // clusterRef removed — using grid-based clustering
   const [sdkLoaded, setSdkLoaded] = useState(false)
   const [sdkError, setSdkError] = useState(false)
+  // 줌이 바뀌면 묶음 크기가 달라지므로 마커를 다시 그린다
+  const [zoomTick, setZoomTick] = useState(0)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const restaurantMarkerMapRef = useRef<Map<number, naver.maps.Marker>>(new Map())
 
@@ -96,6 +96,7 @@ export default function NaverMap({
     naver.maps.Event.addListener(map, 'idle', () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
+        setZoomTick(map.getZoom())
         const b = map.getBounds()
         onBoundsChange({
           sw_lat: b.getSW().lat(),
@@ -111,13 +112,6 @@ export default function NaverMap({
     }
   }, [sdkLoaded, onBoundsChange])
 
-  // Channel color map
-  const getChannelColor = useCallback((channelId: string) => {
-    const idx = selectedChannels.indexOf(channelId)
-    const hue = getChannelHue(channelId, idx >= 0 ? idx : 0)
-    return channelColor(hue)
-  }, [selectedChannels])
-
   // Update markers
   useEffect(() => {
     const map = mapRef.current
@@ -130,59 +124,54 @@ export default function NaverMap({
     markersRef.current = []
     restaurantMarkerMapRef.current.clear()
 
-    // 줌 레벨 기반 그리드 클러스터링
+    // 화면에서 56px 안에 겹치는 가게끼리 묶는다(줌과 무관하게 핀이 겹치지 않게)
     const zoom = map.getZoom()
-    const gridSize = zoom <= 8 ? 0.5 : zoom <= 10 ? 0.2 : zoom <= 12 ? 0.05 : zoom <= 14 ? 0.01 : 0
+    const el = mapElRef.current
+    const bnd = map.getBounds()
+    const degPerPx = el && el.clientWidth ? (bnd.getNE().lng() - bnd.getSW().lng()) / el.clientWidth : 0
+    const radius = zoom >= 16 || !degPerPx ? 0 : degPerPx * 56
+    // 위도는 경도보다 화면에서 길게 보인다(한국 위도 기준 약 1.25배)
+    const latScale = Math.cos((36.5 * Math.PI) / 180)
 
     const validRestaurants = restaurants.filter(r => r.lat && r.lng)
-    const groups: Map<string, typeof validRestaurants> = new Map()
-
-    if (gridSize > 0) {
-      for (const r of validRestaurants) {
-        const key = `${Math.round(r.lat! / gridSize)}_${Math.round(r.lng! / gridSize)}`
-        if (!groups.has(key)) groups.set(key, [])
-        groups.get(key)!.push(r)
-      }
-    } else {
-      for (const r of validRestaurants) {
-        groups.set(`s_${r.id}`, [r])
-      }
+    const clusters: { lat: number; lng: number; items: typeof validRestaurants }[] = []
+    for (const r of validRestaurants) {
+      const hit = radius
+        ? clusters.find(c => Math.abs(c.lng - r.lng!) < radius && Math.abs(c.lat - r.lat!) < radius * latScale)
+        : undefined
+      if (hit) hit.items.push(r)
+      else clusters.push({ lat: r.lat!, lng: r.lng!, items: [r] })
     }
+    const groups = clusters.map(c => c.items)
 
     const newMarkers: naver.maps.Marker[] = []
 
     groups.forEach((clusterItems) => {
       if (clusterItems.length === 1) {
         const restaurant = clusterItems[0]
-        const mainVideo = restaurant.videos?.[0]
-        const color = mainVideo ? getChannelColor(mainVideo.channel_id) : channelColor(18)
-
-        const isTopRated = restaurant.videos?.some(v => v.rating === '강력추천')
-        const thumbnail = mainVideo?.channel_thumbnail ?? ''
-        const badgeHtml = isTopRated
-          ? `<div style="position:absolute;top:-4px;right:-4px;width:16px;height:16px;background:#D9614A;border-radius:50%;border:1.5px solid #fff;font-size:10px;display:flex;align-items:center;justify-content:center;line-height:1;">🔥</div>`
-          : ''
-        const avatarHtml = thumbnail
-          ? `<img src="${thumbnail}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;"/>`
-          : `<div style="width:100%;height:100%;border-radius:50%;background:${color};"></div>`
-
-        const content = `<div style="position:relative;width:40px;height:46px;cursor:pointer;">
-  <div style="position:absolute;top:0;left:2px;width:36px;height:36px;border-radius:50% 50% 50% 0;background:#fff;transform:rotate(-45deg);border:2px solid ${color};box-shadow:0 2px 6px rgba(0,0,0,0.22);display:flex;align-items:center;justify-content:center;">
-    <div style="transform:rotate(45deg);width:26px;height:26px;overflow:hidden;border-radius:50%;">
-      ${avatarHtml}
-    </div>
-  </div>
-  ${badgeHtml}
-  <div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:8px;height:3px;border-radius:50%;background:rgba(0,0,0,0.2);filter:blur(1px);"></div>
-</div>`
+        const faces = Array.from(new Map((restaurant.videos ?? []).map(v => [v.channel_id, v.channel_thumbnail ?? ''])).values()).slice(0, 3)
+        const selected = restaurant.id === focusedRestaurantId
+        const ring = selected ? '#FFE14D' : '#FFFFFF'
+        const size = selected ? 44 : 36
+        const step = 12
+        const width = size + step * (faces.length - 1)
+        const faceHtml = faces.map((src, i) => {
+          const inner = src
+            ? `<img src="${escapeAttr(src)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;"/>`
+            : `<div style="width:100%;height:100%;background:#E5E8EB;"></div>`
+          return `<div style="position:absolute;top:0;left:${i * step}px;width:${size}px;height:${size}px;border-radius:50%;overflow:hidden;border:3px solid ${ring};box-sizing:border-box;background:#fff;z-index:${3 - i};box-shadow:0 1px 4px rgba(0,0,0,0.25);">${inner}</div>`
+        }).join('')
+        const tail = `<div style="position:absolute;left:${size / 2 - 5}px;top:${size - 2}px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${ring};"></div>`
+        const content = `<div role="button" aria-label="${escapeAttr(restaurant.name)}" style="position:relative;width:${width}px;height:${size + 6}px;cursor:pointer;">${faceHtml}${tail}</div>`
 
         const marker = new naver.maps.Marker({
           position: new naver.maps.LatLng(restaurant.lat!, restaurant.lng!),
           map,
+          zIndex: selected ? 100 : 1,
           icon: {
             content,
-            size: new naver.maps.Size(40, 46),
-            anchor: new naver.maps.Point(2, 34),
+            size: new naver.maps.Size(width, size + 6),
+            anchor: new naver.maps.Point(size / 2, size + 5),
           },
         })
 
@@ -197,52 +186,17 @@ export default function NaverMap({
         const avgLat = clusterItems.reduce((s: number, r: { lat: number | null }) => s + r.lat!, 0) / clusterItems.length
         const avgLng = clusterItems.reduce((s: number, r: { lng: number | null }) => s + r.lng!, 0) / clusterItems.length
         const count = clusterItems.length
+        const size = count >= 50 ? 52 : count >= 10 ? 44 : 38
 
-        // 클러스터 내 채널별 count 집계 → 상위 4개 stripe
-        const chCountMap = new Map<string, number>()
-        for (const r of clusterItems) {
-          for (const v of (r.videos ?? [])) {
-            chCountMap.set(v.channel_id, (chCountMap.get(v.channel_id) ?? 0) + 1)
-          }
-        }
-        const topChannels = Array.from(chCountMap.entries())
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 4)
-          .map(([id], idx) => ({ hue: getChannelHue(id, idx) }))
-
-        const primaryHue = topChannels[0]?.hue ?? 28
-        const hasMust = clusterItems.some(r => r.videos?.some(v => v.rating === '강력추천'))
-        const size = count >= 10 ? 56 : count >= 5 ? 48 : 42
-
-        const stripeHtml = topChannels
-          .map(ch => `<div style="flex:1;background:${channelColor(ch.hue)};"></div>`)
-          .join('')
-
-        const mustBadgeHtml = hasMust
-          ? `<div style="position:absolute;top:-3px;right:-3px;width:18px;height:18px;border-radius:50%;background:#D9614A;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid #fff;font-size:10px;line-height:1;">🔥</div>`
-          : ''
-
-        const clusterContent = `<div style="position:relative;width:${size + 12}px;height:${size + 12}px;cursor:pointer;">
-  <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
-    <div style="position:relative;width:${size}px;height:${size}px;">
-      <div style="position:absolute;inset:-6px;border-radius:50%;background:${hasMust ? 'rgba(217,97,74,0.18)' : 'rgba(15,13,8,0.08)'};"></div>
-      <div style="position:absolute;inset:0;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,0.18);border:2px solid ${channelColor(primaryHue)};display:flex;align-items:center;justify-content:center;flex-direction:column;overflow:hidden;">
-        <div style="font-size:${size >= 56 ? 18 : size >= 48 ? 16 : 14}px;font-weight:800;color:#0F0D08;letter-spacing:-0.03em;line-height:1;margin-top:-1px;">${count}</div>
-        <div style="font-size:8.5px;font-weight:600;color:#9A8E78;letter-spacing:0.02em;margin-top:2px;">맛집</div>
-        <div style="position:absolute;bottom:0;left:0;right:0;height:4px;display:flex;">${stripeHtml}</div>
-      </div>
-      ${mustBadgeHtml}
-    </div>
-  </div>
-</div>`
+        const clusterContent = `<div role="button" aria-label="가게 ${count}곳" style="width:${size}px;height:${size}px;border-radius:50%;background:#1B1D1F;color:#fff;border:3px solid #fff;box-sizing:border-box;box-shadow:0 1px 4px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font:700 ${size >= 44 ? 15 : 13}px 'Pretendard Variable',sans-serif;cursor:pointer;">${count}</div>`
 
         const marker = new naver.maps.Marker({
           position: new naver.maps.LatLng(avgLat, avgLng),
           map,
           icon: {
             content: clusterContent,
-            size: new naver.maps.Size(size + 12, size + 12),
-            anchor: new naver.maps.Point((size + 12) / 2, (size + 12) / 2),
+            size: new naver.maps.Size(size, size),
+            anchor: new naver.maps.Point(size / 2, size / 2),
           },
         })
 
@@ -260,7 +214,7 @@ export default function NaverMap({
     })
 
     markersRef.current = newMarkers
-  }, [restaurants, sdkLoaded, getChannelColor, onMarkerClick])
+  }, [restaurants, sdkLoaded, onMarkerClick, focusedRestaurantId, zoomTick])
 
   // Focus on restaurant when focusedRestaurantId changes
   useEffect(() => {
@@ -278,7 +232,8 @@ export default function NaverMap({
       map.morph(pos, Math.max(map.getZoom(), 13), { duration: 500 })
     } else {
       // 클러스터에 묶여있음 → 줌 인하면 개별 마커 생성됨
-      map.morph(pos, 15, { duration: 500 })
+      // 묶음을 푸는 줌(16)까지 들어가야 고른 핀이 따로 보인다
+      map.morph(pos, 16, { duration: 500 })
     }
   }, [focusedRestaurantId, restaurants])
 
@@ -307,16 +262,16 @@ export default function NaverMap({
   return (
     <div ref={mapElRef} className="h-full w-full">
       {!sdkLoaded && !sdkError && (
-        <div className="flex h-full items-center justify-center bg-surface-low text-sm text-ink-muted">
-          지도를 불러오는 중...
+        <div className="flex h-full items-center justify-center bg-well text-body text-sub">
+          지도를 불러오는 중
         </div>
       )}
       {sdkError && (
-        <div className="flex h-full flex-col items-center justify-center gap-2 bg-surface-low text-sm text-ink-muted">
-          <span>지도를 불러오지 못했습니다</span>
+        <div className="flex h-full flex-col items-center justify-center gap-2 bg-well text-body text-sub">
+          <span>지도를 불러오지 못했어요. 네트워크를 확인하고 다시 시도하세요.</span>
           <button
             onClick={() => window.location.reload()}
-            className="text-primary underline"
+            className="min-h-[44px] px-3 font-bold text-ink underline"
           >
             다시 시도
           </button>
@@ -324,4 +279,8 @@ export default function NaverMap({
       )}
     </div>
   )
+}
+
+function escapeAttr(s: string) {
+  return s.replace(/[&"<>]/g, (c) => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' }[c]!))
 }

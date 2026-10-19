@@ -1,230 +1,123 @@
-'use client'
-
-import Image from 'next/image'
+/* eslint-disable @next/next/no-img-element -- 토스 앱과 같이 쓰는 컴포넌트라 next/image를 쓰지 않는다 */
 import type { RestaurantWithVideos } from '@/lib/types'
+import { areaOf, clock, dateLabel, leadVideo, placeUrl, sceneUrl, thumbOf } from '@/lib/format'
+import CaptionQuote from './CaptionQuote'
+import { ChannelFace } from './ChannelFace'
 
 interface DetailPanelProps {
   restaurant: RestaurantWithVideos
-  onClose: () => void
-  mobile?: boolean
+  onClose?: () => void
+  closeLabel?: string
+  /** 유튜버 이름을 누르면 갈 주소. 없으면 링크 없이 이름만 */
+  channelHref?: (slug: string) => string
+  /** 페이지(가게 상세)에서는 이름을 h1로 */
+  asPage?: boolean
 }
 
-const RATING_WEIGHT: Record<string, number> = {
-  '강력추천': 5, '추천': 4, '보통': 3, '비추': 2, '언급없음': 1,
-}
-
-function RatingChip({ rating }: { rating: string }) {
-  const config: Record<string, { bg: string; fg: string; flame: boolean; label: string }> = {
-    '강력추천': { bg: 'oklch(0.68 0.18 28)', fg: '#fff', flame: true, label: '강추' },
-    '추천':    { bg: 'oklch(0.94 0.04 60)',  fg: 'oklch(0.42 0.12 35)', flame: false, label: '추천' },
-    '보통':    { bg: '#F1EDE3', fg: '#6B5F4A', flame: false, label: '보통' },
-    '비추':    { bg: '#EDE8DC', fg: '#9A8E78', flame: false, label: '비추' },
-    '언급없음': { bg: '#EDE8DC', fg: '#9A8E78', flame: false, label: '언급없음' },
-  }
-  const c = config[rating] ?? { bg: '#EDE8DC', fg: '#9A8E78', flame: false, label: rating }
+function PlayGlyph() {
   return (
-    <span
-      style={{ background: c.bg, color: c.fg }}
-      className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10.5px] font-bold"
-    >
-      {c.flame && (
-        <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor">
-          <path d="M8 1c1 2 3 3 3 6a3 3 0 11-6 0c0-1 .5-1.5 1-2 0 1.5.5 2 1.5 2 0-2-1-3 .5-6z"/>
-        </svg>
-      )}
-      {c.label}
-    </span>
-  )
-}
-
-function CloseIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none">
-      <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path d="M4.5 2.8v10.4L13 8z" fill="currentColor" />
     </svg>
   )
 }
 
-function BackArrowIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none">
-      <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  )
-}
-
-function PinIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="12" height="12" fill="none">
-      <path d="M8 14s5-4.6 5-8.4A5 5 0 0 0 3 5.6C3 9.4 8 14 8 14z" stroke="currentColor" strokeWidth="1.4"/>
-      <circle cx="8" cy="6" r="1.6" fill="currentColor"/>
-    </svg>
-  )
-}
-
-function NavigateIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none">
-      <path d="M2 8l12-5-5 12-2-5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
-    </svg>
-  )
-}
-
-function PlayIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="12" height="12" fill="white">
-      <path d="M4 3l9 5-9 5z"/>
-    </svg>
-  )
-}
-
-export default function DetailPanel({ restaurant, onClose, mobile }: DetailPanelProps) {
-  const visits = [...restaurant.videos].sort(
-    (a, b) => (RATING_WEIGHT[b.rating ?? ''] ?? 0) - (RATING_WEIGHT[a.rating ?? ''] ?? 0)
-  )
-  const top = visits[0]
-
-  const totalViews = visits.reduce((s, v) => s + (v.view_count ?? 0), 0)
-  const viewsLabel = totalViews >= 10000
-    ? `${Math.floor(totalViews / 10000)}만+`
-    : totalViews > 0 ? totalViews.toLocaleString() : '-'
-
-  const naverUrl = restaurant.naver_place_id
-    ? `https://map.naver.com/v5/entry/place/${restaurant.naver_place_id}`
-    : `https://map.naver.com/v5/search/${encodeURIComponent(restaurant.name)}`
+export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫기', channelHref, asPage }: DetailPanelProps) {
+  const lead = leadVideo(r)
+  const Title = asPage ? 'h1' : 'h2'
+  const Sub = asPage ? 'h2' : 'h3'
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-cream-warm">
-      {/* Hero */}
-      <div className="relative h-[240px] flex-shrink-0 bg-surface-low">
-        {top?.thumbnail_url ? (
-          <a
-            href={`https://www.youtube.com/watch?v=${top.video_id}${top.timestamp_seconds ? `&t=${top.timestamp_seconds}s` : ''}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="absolute inset-0 cursor-pointer"
-          >
-            <Image
-              src={top.thumbnail_url}
-              alt={restaurant.name}
-              fill
-              className="object-cover"
-              sizes="380px"
-            />
-          </a>
-        ) : (
-          <div
-            className="absolute inset-0 flex items-center justify-center"
-            style={{ background: 'oklch(0.88 0.04 28)' }}
-          >
-            <span className="text-5xl">🍽️</span>
-          </div>
-        )}
-        <button
-          onClick={onClose}
-          className="absolute left-3.5 top-3.5 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-ink-body shadow-md transition-opacity hover:opacity-80"
-        >
-          {mobile ? <BackArrowIcon /> : <CloseIcon />}
-        </button>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-5 pb-10">
-        {/* Title */}
-        <p className="mb-1 text-xs text-ink-muted">
-          {restaurant.category}{restaurant.region ? ` · ${restaurant.region}` : ''}
-        </p>
-        <h1 className="text-2xl font-extrabold leading-tight tracking-tight text-ink">
-          {restaurant.name}
-        </h1>
-        {restaurant.address && (
-          <p className="mt-1.5 flex items-center gap-1.5 text-[13px] text-ink-secondary">
-            <PinIcon /> {restaurant.address}
-          </p>
-        )}
-
-        {/* Rating summary */}
-        <div className="mt-4 flex gap-3 rounded-xl border border-border bg-white p-3.5">
-          <div className="flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-ink-muted">유튜버 종합</p>
-            <div className="mt-1.5 flex items-center gap-2">
-              {top?.rating && <RatingChip rating={top.rating} />}
+    <article className="bg-paper pb-[calc(24px+env(safe-area-inset-bottom))]">
+      {lead && (
+        <div className="relative aspect-video overflow-hidden bg-well sm:rounded-card">
+          <img src={thumbOf(lead)} alt={`${r.name} 영상 장면`} className="h-full w-full object-cover" />
+          {lead.quote && (
+            <div className="absolute inset-x-4 bottom-4 animate-caption-in">
+              <CaptionQuote text={lead.quote} size="lg" className="line-clamp-3" />
             </div>
-          </div>
-          <div className="w-px bg-border" />
-          <div className="flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-ink-muted">총 조회수</p>
-            <p className="mt-1.5 text-lg font-extrabold text-ink-body">{viewsLabel}</p>
-          </div>
+          )}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={closeLabel}
+              className="absolute left-3 top-3 flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white"
+            >
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
         </div>
+      )}
 
-        {/* Action buttons */}
-        <div className="mt-3.5">
+      <div className="px-4 pt-5 sm:px-0">
+        <Title className="text-title font-bold text-ink">{r.name}</Title>
+        <p className="mt-1 text-body text-sub">
+          {r.category}
+          <span aria-hidden="true">{'  '}</span>
+          {r.address || areaOf(r)}
+        </p>
+
+        <div className="mt-4 flex gap-2">
+          {lead && (
+            <a
+              href={sceneUrl(lead)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-12 flex-1 items-center justify-center gap-1.5 rounded-card bg-play text-body font-bold text-white"
+            >
+              <PlayGlyph />
+              영상에서 보기{lead.timestamp_seconds ? ` ${clock(lead.timestamp_seconds)}` : ''}
+            </a>
+          )}
           <a
-            href={naverUrl}
+            href={placeUrl(r)}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex w-full items-center justify-center gap-1.5 rounded-[10px] py-[11px] text-[13.5px] font-bold text-white transition-opacity hover:opacity-90"
-            style={{ background: 'oklch(0.68 0.18 28)' }}
+            className="flex h-12 flex-1 items-center justify-center rounded-card border border-line text-body font-bold text-ink"
           >
-            <NavigateIcon /> 길찾기
+            길찾기
           </a>
         </div>
 
-        {/* Visits list */}
-        <div className="mt-6">
-          <div className="mb-2.5 flex items-baseline justify-between">
-            <h2 className="text-[15px] font-bold text-ink-body">유튜버 방문 기록</h2>
-            <span className="text-xs text-ink-muted">{visits.length}건</span>
-          </div>
-          <div className="flex flex-col gap-2">
-            {visits.map((v) => (
-              <a
-                key={v.id}
-                href={`https://www.youtube.com/watch?v=${v.video_id}${v.timestamp_seconds ? `&t=${v.timestamp_seconds}s` : ''}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex gap-2.5 rounded-[10px] border border-border bg-white p-3 transition-colors hover:bg-surface-low"
-              >
-                {/* Video thumb */}
-                <div className="relative h-14 w-[76px] flex-shrink-0 overflow-hidden rounded-md bg-surface-low">
-                  {v.thumbnail_url ? (
-                    <Image src={v.thumbnail_url} alt={v.channel_name} fill className="object-cover" sizes="76px" />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center bg-surface-high">
-                      <PlayIcon />
-                    </div>
-                  )}
+        <Sub className="mt-8 text-lead font-bold text-ink">다녀간 유튜버 {new Set(r.videos.map((v) => v.channel_id)).size}명</Sub>
+        <ol className="mt-1">
+          {r.videos.map((v) => {
+            const face = { id: v.channel_id, name: v.channel_name, thumbnail: v.channel_thumbnail }
+            const name = channelHref && v.channel_slug
+              ? <a href={channelHref(v.channel_slug)} className="font-bold text-ink underline-offset-2 hover:underline">{v.channel_name}</a>
+              : <span className="font-bold text-ink">{v.channel_name}</span>
+            return (
+              <li key={v.id} className="border-b border-line py-4 last:border-0">
+                <div className="flex items-center gap-2 text-body">
+                  <ChannelFace face={face} size={28} />
+                  {name}
+                  <span className="ml-auto text-meta text-sub">{dateLabel(v.published_at)}</span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="mb-1 flex items-center gap-1.5">
-                    {/* Channel avatar */}
-                    {v.channel_thumbnail ? (
-                      <div className="relative h-5 w-5 flex-shrink-0 overflow-hidden rounded-full">
-                        <Image src={v.channel_thumbnail} alt={v.channel_name} fill className="object-cover" sizes="20px" />
-                      </div>
-                    ) : (
-                      <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-surface-high text-[9px] font-bold text-ink-tertiary">
-                        {v.channel_name?.[0] ?? '?'}
-                      </div>
-                    )}
-                    <span className="text-[12.5px] font-semibold text-ink-body">{v.channel_name}</span>
-                    {v.rating && <RatingChip rating={v.rating} />}
-                  </div>
-                  {v.summary && (
-                    <p className="truncate text-[13px] text-ink-section">&ldquo;{v.summary}&rdquo;</p>
-                  )}
-                  {v.published_at && (
-                    <p className="mt-1 text-[11px] text-ink-muted">
-                      {new Date(v.published_at).toLocaleDateString('ko-KR')}
-                    </p>
-                  )}
-                </div>
-              </a>
-            ))}
-          </div>
-        </div>
+                {v.quote && v !== lead && <CaptionQuote text={v.quote} size="sm" className="mt-3" />}
+                <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-body">
+                  {v.menu && (<><dt className="text-sub">먹은 것</dt><dd className="text-ink">{v.menu}</dd></>)}
+                  {v.price && (<><dt className="text-sub">가격</dt><dd className="text-ink">{v.price}</dd></>)}
+                  {(v.why || v.summary) && (<><dt className="text-sub">한마디</dt><dd className="text-ink">{v.why || v.summary}</dd></>)}
+                </dl>
+                <a
+                  href={sceneUrl(v)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-flex min-h-[44px] items-center text-meta text-sub underline underline-offset-2"
+                >
+                  {v.title || '영상 보기'}
+                </a>
+              </li>
+            )
+          })}
+        </ol>
+        <p className="mt-6 text-meta text-sub">
+          메뉴·가격·인용은 영상 자막에서 자동으로 뽑았습니다. 정확한 내용은 원본 영상에서 확인하세요.
+        </p>
       </div>
-    </div>
+    </article>
   )
 }

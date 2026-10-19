@@ -38,9 +38,14 @@ export async function GET(request: NextRequest) {
           timestamp_seconds,
           published_at,
           view_count,
+          menu,
+          price,
+          quote,
+          why,
           channels (
             name,
-            thumbnail_url
+            thumbnail_url,
+            slug
           )
         )
       `)
@@ -50,6 +55,7 @@ export async function GET(request: NextRequest) {
       .lte('lat', Number(ne_lat))
       .gte('lng', Number(sw_lng))
       .lte('lng', Number(ne_lng))
+      .order('id', { ascending: false })
       .limit(limit)
 
     if (!include_hidden) {
@@ -81,7 +87,7 @@ export async function GET(request: NextRequest) {
     // Transform videos to include channel_name and channel_thumbnail
     const result = filtered.map((r) => {
       const videos = (r.videos || []).map((v: Record<string, unknown>) => {
-        const channel = v.channels as { name: string; thumbnail_url: string | null } | null
+        const channel = v.channels as { name: string; thumbnail_url: string | null; slug: string | null } | null
         return {
           id: v.id,
           video_id: v.video_id,
@@ -94,10 +100,17 @@ export async function GET(request: NextRequest) {
           timestamp_seconds: v.timestamp_seconds,
           published_at: v.published_at,
           view_count: v.view_count as number | null,
+          menu: v.menu,
+          price: v.price,
+          quote: v.quote,
+          why: v.why,
           channel_name: channel?.name || '',
           channel_thumbnail: channel?.thumbnail_url || null,
+          channel_slug: channel?.slug || null,
         }
       })
+      videos.sort((a: { published_at: string | null }, b: { published_at: string | null }) =>
+        (b.published_at || '').localeCompare(a.published_at || ''))
       const { videos: _rawVideos, ...rest } = r
       return { ...rest, videos }
     })

@@ -1,19 +1,13 @@
-import Link from 'next/link'
-
 export default function NotFound() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <div className="mb-4 text-6xl">🍽️</div>
-        <h1 className="mb-2 text-2xl font-bold text-secondary">이 페이지를 찾을 수 없어요</h1>
-        <p className="mb-6 text-sm text-gray-400">요청하신 페이지가 존재하지 않습니다</p>
-        <Link
-          href="/"
-          className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-white hover:bg-primary-dark"
-        >
-          메인으로 돌아가기
-        </Link>
-      </div>
-    </div>
+    <main className="flex min-h-[100dvh] flex-col items-center justify-center px-6 text-center">
+      <p className="text-title">
+        <span className="caption-band">여기엔 아무것도 없어요</span>
+      </p>
+      <p className="mt-4 text-body text-sub">주소가 바뀌었거나 문을 닫은 가게일 수 있어요.</p>
+      <a href="/" className="mt-6 inline-flex min-h-[48px] items-center rounded-card bg-ink px-5 text-body font-bold text-paper">
+        지도에서 다시 찾기
+      </a>
+    </main>
   )
 }

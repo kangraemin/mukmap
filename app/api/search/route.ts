@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
         .limit(5),
       supabase
         .from('channels')
-        .select('id, name, thumbnail_url')
+        .select('id, name, thumbnail_url, slug')
         .ilike('name', `%${sanitized}%`)
         .limit(3),
     ])

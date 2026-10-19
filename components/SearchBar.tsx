@@ -7,6 +7,8 @@ interface SearchBarProps {
   onSelectRestaurant: (id: number) => void
   onSelectChannel: (id: string) => void
   onSelectRegion: (name: string) => void
+  /** 토스 앱처럼 다른 도메인에서 쓸 때 API 주소 앞부분 */
+  apiBase?: string
 }
 
 interface ResultItem {
@@ -27,7 +29,7 @@ function SearchIcon() {
 
 function CloseIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="10" height="10" fill="none">
+    <svg viewBox="0 0 16 16" width="12" height="12" fill="none">
       <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
     </svg>
   )
@@ -37,6 +39,7 @@ export default function SearchBar({
   onSelectRestaurant,
   onSelectChannel,
   onSelectRegion,
+  apiBase = '',
 }: SearchBarProps) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<ResultItem[]>([])
@@ -55,12 +58,12 @@ export default function SearchBar({
     const cached = searchCacheRef.current.get(q)
     if (cached) { setResults(cached); setOpen(cached.length > 0); setActiveIndex(-1); return }
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
+      const res = await fetch(`${apiBase}/api/search?q=${encodeURIComponent(q)}`)
       if (!res.ok) { setResults([]); return }
       const data: SearchResult = await res.json()
       const items: ResultItem[] = [
         ...data.channels.map((ch) => ({ type: 'channel' as const, id: ch.id, label: ch.name, sub: '유튜버' })),
-        ...data.restaurants.map((r) => ({ type: 'restaurant' as const, id: r.id, label: r.name, sub: `${r.category} · ${r.address || ''}` })),
+        ...data.restaurants.map((r) => ({ type: 'restaurant' as const, id: r.id, label: r.name, sub: r.address || r.category })),
         ...data.regions.map((r) => ({ type: 'region' as const, id: r, label: r, sub: '지역' })),
       ]
       if (searchCacheRef.current.size > 100) searchCacheRef.current.clear()
@@ -71,7 +74,7 @@ export default function SearchBar({
     } catch {
       setResults([])
     }
-  }, [])
+  }, [apiBase])
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -95,52 +98,55 @@ export default function SearchBar({
     else if (e.key === 'Escape') setOpen(false)
   }
 
-  const typeIcon: Record<string, string> = { channel: '👤', restaurant: '🍽️', region: '📍' }
-
   return (
     <div className="relative flex-1">
-      <div className="flex items-center gap-2 rounded-[10px] border border-border bg-white px-3" style={{ height: 40 }}>
-        <span className="flex-shrink-0 text-ink-muted"><SearchIcon /></span>
+      <label className="flex h-12 items-center gap-2 rounded-full border border-line bg-paper px-4">
+        <span className="flex-shrink-0 text-sub"><SearchIcon /></span>
         <input
           ref={inputRef}
-          type="text"
+          type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => results.length > 0 && setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 200)}
-          placeholder="맛집·지역·유튜버 검색"
-          className="min-w-0 flex-1 bg-transparent text-[13.5px] text-ink-body placeholder:text-ink-muted focus:outline-none"
+          placeholder="가게, 지역, 유튜버 이름"
+          aria-label="검색"
+          className="min-w-0 flex-1 bg-transparent text-body text-ink placeholder:text-sub focus:outline-none [&::-webkit-search-cancel-button]:hidden"
         />
         {query && (
           <button
+            type="button"
+            aria-label="검색어 지우기"
             onMouseDown={(e) => { e.preventDefault(); setQuery('') }}
-            className="flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded-full bg-surface-high text-ink-muted"
+            className="-mr-2 flex h-11 w-11 flex-shrink-0 items-center justify-center text-sub"
           >
             <CloseIcon />
           </button>
         )}
-      </div>
+      </label>
 
       {open && results.length > 0 && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1.5 max-h-72 overflow-y-auto rounded-xl border border-border bg-white shadow-lg">
+        <ul className="absolute left-0 right-0 top-full z-50 mt-2 max-h-80 overflow-y-auto rounded-card border border-line bg-paper py-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
           {results.map((item, idx) => (
-            <button
-              key={`${item.type}-${item.id}`}
-              onMouseDown={() => handleSelect(item)}
-              className={`flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-sm transition-colors ${
-                idx === activeIndex ? 'bg-primary-light' : 'hover:bg-surface-low'
-              }`}
-            >
-              <span className="text-base">{typeIcon[item.type]}</span>
-              <div className="flex-1 overflow-hidden">
-                <span className="font-semibold text-ink-body">{item.label}</span>
-                {item.sub && <span className="ml-2 text-xs text-ink-muted">{item.sub}</span>}
-              </div>
-            </button>
+            <li key={`${item.type}-${item.id}`}>
+              <button
+                type="button"
+                onMouseDown={() => handleSelect(item)}
+                className={`flex min-h-[48px] w-full items-center gap-3 px-4 text-left ${idx === activeIndex ? 'bg-well' : 'hover:bg-well'}`}
+              >
+                <span className="w-9 flex-shrink-0 text-meta text-sub">{KIND[item.type]}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="text-body font-bold text-ink">{item.label}</span>
+                  {item.type === 'restaurant' && item.sub && <span className="ml-2 text-meta text-sub">{item.sub}</span>}
+                </span>
+              </button>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   )
 }
+
+const KIND: Record<ResultItem['type'], string> = { channel: '유튜버', restaurant: '가게', region: '지역' }

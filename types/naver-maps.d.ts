@@ -46,6 +46,7 @@ declare namespace naver.maps {
     map?: Map
     icon?: MarkerIcon | string
     title?: string
+    zIndex?: number
   }
 
   interface MarkerIcon {

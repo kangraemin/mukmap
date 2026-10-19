@@ -1,602 +1,88 @@
-'use client'
+import type { Metadata } from 'next'
+import HomeExplorer from '@/components/HomeExplorer'
+import { getAll, getChannelSummaries, getRegionSummaries } from '@/lib/data'
+import { SITE_NAME, SITE_URL, faqJsonLd, jsonLdScript, todayLabel } from '@/lib/seo'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useDrag } from '@use-gesture/react'
-import NaverMap from '@/components/NaverMap'
-import ChannelFilter from '@/components/ChannelFilter'
-import RegionCategoryFilter from '@/components/RegionCategoryFilter'
-import SearchBar from '@/components/SearchBar'
-import RestaurantCard from '@/components/RestaurantCard'
-import EmptyState from '@/components/EmptyState'
-import DetailPanel from '@/components/DetailPanel'
-import Onboarding from '@/components/Onboarding'
-import Toast from '@/components/Toast'
-import type { Channel, RestaurantWithVideos } from '@/lib/types'
+export const revalidate = 3600
 
-interface Bounds {
-  sw_lat: number
-  sw_lng: number
-  ne_lat: number
-  ne_lng: number
+export async function generateMetadata(): Promise<Metadata> {
+  const { restaurants } = await getAll()
+  const title = '쯔양·히밥·성시경이 다녀간 유튜버 맛집 지도 | 먹맵'
+  const description = `쯔양, 히밥, 성시경 먹을텐데, 츄릅켠 등 먹방 유튜버가 영상에서 실제로 방문한 식당 ${restaurants.length}곳을 지도에서 찾고, 먹은 메뉴와 가격, 영상 속 한마디를 확인하세요.`
+  return {
+    title,
+    description,
+    alternates: { canonical: SITE_URL, types: { 'application/rss+xml': `${SITE_URL}/feed.xml` } },
+    openGraph: { type: 'website', siteName: SITE_NAME, locale: 'ko_KR', title, description, url: SITE_URL },
+  }
 }
 
-type SheetState = 'collapsed' | 'half' | 'full'
-
-const RATING_WEIGHT: Record<string, number> = {
-  '강력추천': 5, '추천': 4, '보통': 3, '비추': 2, '언급없음': 1,
-}
-
-function ratingScore(r: RestaurantWithVideos) {
-  return r.videos.reduce((s, v) => s + (RATING_WEIGHT[v.rating ?? ''] ?? 0), 0)
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="12" height="12" fill="none">
-      <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  )
-}
-
-function PinIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="white">
-      <path d="M8 14s5-4.6 5-8.4A5 5 0 0 0 3 5.6C3 9.4 8 14 8 14z" fill="white"/>
-      <circle cx="8" cy="6" r="1.6" fill="rgba(255,255,255,0.6)"/>
-    </svg>
-  )
-}
-
-export default function Home() {
-  const [onboarded, setOnboarded] = useState(false)
-  const [allChannels, setAllChannels] = useState<Channel[]>([])
-
-  const [focusedRestaurantId, setFocusedRestaurantId] = useState<number | null>(null)
-  const [bounds, setBounds] = useState<Bounds | null>(null)
-  const [restaurants, setRestaurants] = useState<RestaurantWithVideos[]>([])
-  const [selectedChannels, setSelectedChannels] = useState<string[]>([])
-  const [region, setRegion] = useState('')
-  const [categories, setCategories] = useState<string[]>([])
-  const [toast, setToast] = useState('')
-  const [fitToMarkers, setFitToMarkers] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [sortBy, setSortBy] = useState<'rating' | 'latest'>('rating')
-  const [mobileView, setMobileView] = useState<'list' | 'detail'>('list')
-
-  // Client-side cache for restaurant API results
-  const restaurantCache = useRef<Map<string, RestaurantWithVideos[]>>(new Map())
-
-  // Mobile bottom sheet
-  const [_sheetState, setSheetState] = useState<SheetState>('collapsed')
-  const sheetRef = useRef<HTMLDivElement>(null)
-  const handleRef = useRef<HTMLDivElement>(null)
-  const contentRef = useRef<HTMLDivElement>(null)
-  const snapOffsets = useRef<Record<SheetState, number>>({ full: 0, half: 0, collapsed: 0 })
-  const currentSnapOffset = useRef(0)
-
-  // Derive focused restaurant from list
-  const focusedRestaurant = useMemo(
-    () => restaurants.find((r) => r.id === focusedRestaurantId) ?? null,
-    [restaurants, focusedRestaurantId]
-  )
-
-  // Sorted restaurants
-  const sorted = useMemo(() => {
-    if (sortBy === 'rating') {
-      return [...restaurants].sort((a, b) => ratingScore(b) - ratingScore(a))
-    }
-    return [...restaurants].sort((a, b) => {
-      const parseTs = (dateStr: string | undefined | null) => {
-        if (!dateStr) return -Infinity
-        const t = new Date(dateStr).getTime()
-        return isFinite(t) ? t : -Infinity
-      }
-      const ta = parseTs(a.videos[0]?.published_at)
-      const tb = parseTs(b.videos[0]?.published_at)
-      return tb - ta
-    })
-  }, [restaurants, sortBy])
-
-  // Fetch all channels once on mount (shared by onboarding + ChannelChips)
-  useEffect(() => {
-    fetch('/api/channels')
-      .then((r) => r.json())
-      .then((data) => setAllChannels(data.channels || []))
-      .catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    setOnboarded(!!localStorage.getItem('mukmap_onboarded'))
-  }, [])
-
-  const handleOnboardingComplete = useCallback((ids: string[]) => {
-    localStorage.setItem('mukmap_onboarded', '1')
-    if (ids.length > 0) setSelectedChannels(ids)
-    setOnboarded(true)
-  }, [])
-
-  // Fetch restaurants when bounds/filters change (with client-side cache)
-  useEffect(() => {
-    if (!bounds) return
-
-    const boundsKey = [bounds.sw_lat, bounds.sw_lng, bounds.ne_lat, bounds.ne_lng]
-      .map(n => n.toFixed(3)).join(',')
-    const cacheKey = `${boundsKey}|${[...selectedChannels].sort().join(',')}|${region}|${[...categories].sort().join(',')}`
-
-    const cached = restaurantCache.current.get(cacheKey)
-    if (cached) {
-      setRestaurants(cached)
-      return
-    }
-
-    const params = new URLSearchParams({
-      sw_lat: String(bounds.sw_lat),
-      sw_lng: String(bounds.sw_lng),
-      ne_lat: String(bounds.ne_lat),
-      ne_lng: String(bounds.ne_lng),
-      limit: '200',
-    })
-
-    if (selectedChannels.length > 0) {
-      params.set('channel_ids', selectedChannels.join(','))
-    }
-    if (region) params.set('region', region)
-    if (categories.length > 0) params.set('category', categories.join(','))
-
-    const controller = new AbortController()
-    setLoading(true)
-    fetch(`/api/restaurants?${params}`, { signal: controller.signal })
-      .then((r) => r.json())
-      .then((data) => {
-        const newList = data.restaurants || []
-        if (restaurantCache.current.size > 50) restaurantCache.current.clear()
-        restaurantCache.current.set(cacheKey, newList)
-        setRestaurants(prev => {
-          if (prev.length === newList.length && prev.length > 0 && prev[0]?.id === newList[0]?.id) return prev
-          return newList
-        })
-      })
-      .catch((e: unknown) => { if ((e as Error).name !== 'AbortError') setRestaurants([]) })
-      .finally(() => setLoading(false))
-
-    return () => controller.abort()
-  }, [bounds, selectedChannels, region, categories])
-
-  const handleBoundsChange = useCallback((b: Bounds) => {
-    setBounds(b)
-    setFitToMarkers(false)
-  }, [])
-
-  const handleChannelToggle = useCallback((channelId: string) => {
-    if (!selectedChannels.includes(channelId) && selectedChannels.length >= 5) {
-      setToast('유튜버는 최대 5명까지 선택 가능합니다')
-      return
-    }
-    setSelectedChannels((prev) => {
-      const next = prev.includes(channelId)
-        ? prev.filter((id) => id !== channelId)
-        : [...prev, channelId]
-      if (next.length > prev.length) setFitToMarkers(true)
-      return next
-    })
-  }, [selectedChannels])
-
-  const handleCategoryToggle = useCallback((cat: string) => {
-    setCategories((prev) =>
-      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
-    )
-  }, [])
-
-  const handleReset = useCallback(() => {
-    setRegion('')
-    setCategories([])
-    setSelectedChannels([])
-  }, [])
-
-  const goToState = useCallback((state: SheetState) => {
-    const offset = snapOffsets.current[state]
-    currentSnapOffset.current = offset
-    if (sheetRef.current) {
-      sheetRef.current.style.transition = 'transform 300ms ease-out'
-      sheetRef.current.style.transform = `translateY(${offset}px)`
-    }
-    setSheetState(state)
-  }, [])
-
-  useEffect(() => {
-    const el = contentRef.current
-    if (!el) return
-    const onScroll = () => {
-      el.style.touchAction = el.scrollTop > 0 ? 'pan-y' : 'pan-up'
-    }
-    el.addEventListener('scroll', onScroll, { passive: true })
-    el.style.touchAction = 'pan-up'
-    return () => el.removeEventListener('scroll', onScroll)
-  }, [])
-
-  // snap offset 초기화
-  useEffect(() => {
-    const sheet = sheetRef.current
-    if (!sheet) return
-
-    const recalculate = () => {
-      const vh = window.innerHeight
-      snapOffsets.current = { full: 0, half: vh * 0.9 - vh * 0.5, collapsed: vh * 0.9 - 120 }
-      currentSnapOffset.current = snapOffsets.current.collapsed
-      sheet.style.transition = 'none'
-      sheet.style.transform = `translateY(${snapOffsets.current.collapsed}px)`
-    }
-
-    recalculate()
-    window.addEventListener('resize', recalculate)
-    return () => window.removeEventListener('resize', recalculate)
-  }, [])
-
-  const nearestSnap = useCallback((y: number): SheetState =>
-    (['full', 'half', 'collapsed'] as SheetState[])
-      .sort((a, b) => Math.abs(y - snapOffsets.current[a]) - Math.abs(y - snapOffsets.current[b]))[0]
-  , [])
-
-  // Handle: @use-gesture/react — multi-step pointermove 누적 처리, page.mouse + touch 양쪽 수용
-  useDrag(
-    ({ movement: [, my], last, first, memo, event }) => {
-      if (event && 'cancelable' in event && (event as Event).cancelable) {
-        try { (event as Event).preventDefault() } catch {}
-      }
-      const startOffset = first ? currentSnapOffset.current : (memo as number)
-      const newY = Math.max(0, Math.min(startOffset + my, snapOffsets.current.collapsed))
-      if (last) {
-        goToState(nearestSnap(newY))
-      } else if (sheetRef.current) {
-        sheetRef.current.style.transition = 'none'
-        sheetRef.current.style.transform = `translateY(${newY}px)`
-      }
-      return startOffset
+export default async function Home() {
+  const [channels, regions, { restaurants }] = await Promise.all([
+    getChannelSummaries(),
+    getRegionSummaries(),
+    getAll(),
+  ])
+  const names = channels.slice(0, 4).map((c) => c.name).join(', ')
+  const faq = [
+    {
+      q: '먹맵은 어떤 사이트인가요?',
+      a: `먹맵은 먹방 유튜버가 영상에서 실제로 찾아간 식당을 지도에 모은 사이트입니다. ${todayLabel()} 기준 유튜버 ${channels.length}명이 다녀간 식당 ${restaurants.length}곳이 있습니다.`,
     },
     {
-      target: handleRef,
-      axis: 'y',
-      filterTaps: false,
-      eventOptions: { passive: false },
-    }
-  )
-
-  // Content: useDrag로 통일 — multi-step pointermove 누적 + setPointerCapture 라이브러리 위임
-  // first 시 startOffset 무조건 capture, threshold(5px) 후 방향 + scrollTop으로 cancel 결정
-  useDrag(
-    ({ movement: [, my], last, first, memo, event, cancel }) => {
-      const content = contentRef.current
-      if (!content) return memo
-
-      if (first) {
-        return currentSnapOffset.current
-      }
-
-      const startOffset = (memo as number | undefined) ?? currentSnapOffset.current
-
-      // threshold 미만은 아직 결정 보류 (transform 안 건드림)
-      if (Math.abs(my) < 5) return startOffset
-
-      // 아래로 드래그인데 콘텐츠가 스크롤 가능 위치면 native scroll에 양보
-      if (my > 5 && content.scrollTop > 0) {
-        cancel()
-        return startOffset
-      }
-
-      // 시트 활성: native scroll/bounce 차단 시도
-      if (event && 'cancelable' in event && (event as Event).cancelable) {
-        try { (event as Event).preventDefault() } catch {}
-      }
-
-      const newY = Math.max(0, Math.min(startOffset + my, snapOffsets.current.collapsed))
-      if (last) {
-        goToState(nearestSnap(newY))
-      } else if (sheetRef.current) {
-        sheetRef.current.style.transition = 'none'
-        sheetRef.current.style.transform = `translateY(${newY}px)`
-      }
-      return startOffset
+      q: '가게 정보는 어디서 가져오나요?',
+      a: '유튜브 영상의 자막과 설명란에서 가게 이름, 먹은 메뉴, 가격, 유튜버가 한 말을 뽑고 네이버 지역 검색으로 주소를 확인합니다. 배달이나 포장으로만 먹은 가게, 문을 닫은 가게는 넣지 않습니다.',
     },
-    {
-      target: contentRef,
-      axis: 'y',
-      filterTaps: false,
-      eventOptions: { passive: false },
-    }
-  )
+  ]
 
-  const handleMarkerClick = useCallback((id: number) => {
-    setFocusedRestaurantId(id)
-    setMobileView('detail')
-    goToState('full')
-  }, [goToState])
-
-  const handleSelectRestaurant = useCallback((id: number) => {
-    setFocusedRestaurantId(id)
-    setMobileView('detail')
-    goToState('full')
-  }, [goToState])
-
-  const handleSelectChannel = useCallback((id: string) => {
-    if (selectedChannels.includes(id)) return
-    if (selectedChannels.length >= 5) {
-      setToast('유튜버는 최대 5명까지 선택 가능합니다')
-      return
-    }
-    setSelectedChannels([...selectedChannels, id])
-    setFitToMarkers(true)
-  }, [selectedChannels])
-
-  const handleSelectRegion = useCallback((name: string) => {
-    setRegion(name)
-  }, [])
-
-  const handleToastClose = useCallback(() => setToast(''), [])
-
-  return (
-    <div className="flex h-screen overflow-hidden bg-cream">
-      {/* Desktop Sidebar */}
-      <aside className="hidden w-80 flex-shrink-0 flex-col border-r border-border bg-cream lg:flex">
-        {/* Brand row */}
-        <div className="flex items-center gap-2.5 border-b border-border px-4 py-3.5">
-          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-primary">
-            <PinIcon />
-          </div>
-          <div>
-            <p className="text-[15px] font-extrabold tracking-tight text-ink">MukMap</p>
-            <p className="-mt-0.5 text-[10.5px] text-ink-muted">유튜버 맛집 지도</p>
-          </div>
-        </div>
-
-        {/* Search */}
-        <div className="px-4 pb-2 pt-3">
-          <SearchBar
-            onSelectRestaurant={handleSelectRestaurant}
-            onSelectChannel={handleSelectChannel}
-            onSelectRegion={handleSelectRegion}
-          />
-        </div>
-
-        {/* Region + Categories */}
-        <div className="px-4 pb-3">
-          <RegionCategoryFilter
-            region={region}
-            categories={categories}
-            onRegionChange={setRegion}
-            onCategoryToggle={handleCategoryToggle}
-            onReset={handleReset}
-          />
-        </div>
-
-        <div className="border-t border-border" />
-
-        {/* Channels */}
-        <div className="px-4 py-3.5">
-          <ChannelFilter
-            selectedChannels={selectedChannels}
-            onChannelToggle={handleChannelToggle}
-            onMaxExceeded={() => setToast('유튜버는 최대 5명까지 선택 가능합니다')}
-          />
-        </div>
-
-        <div className="border-t border-border" />
-
-        {/* Count + Sort toggle */}
-        <div className="flex items-baseline justify-between px-4 py-3">
-          <div>
-            <span className="text-[17px] font-extrabold tracking-tight text-ink">
-              {loading ? '...' : restaurants.length}
-            </span>
-            <span className="ml-1 text-[12px] text-ink-tertiary">곳의 맛집</span>
-          </div>
-          <button
-            onClick={() => setSortBy(s => s === 'rating' ? 'latest' : 'rating')}
-            className="flex items-center gap-1 text-[11.5px] text-ink-muted"
-          >
-            {sortBy === 'rating' ? '평점순' : '최신순'}
-            <ChevronDownIcon />
-          </button>
-        </div>
-
-        {/* Restaurant list */}
-        <div className="flex-1 overflow-y-auto px-3 pb-4">
-          <div className="space-y-2">
-            {sorted.length === 0 && !loading && (
-              <EmptyState onReset={handleReset} />
-            )}
-            {sorted.map((r, idx) => (
-              <RestaurantCard
-                key={r.id}
-                name={r.name}
-                category={r.category}
-                region={r.region}
-                thumbnailUrl={r.videos?.[0]?.thumbnail_url}
-                rating={r.videos?.[0]?.rating}
-                channelName={r.videos?.[0]?.channel_name}
-                channelThumbnail={r.videos?.[0]?.channel_thumbnail}
-                channelId={r.videos?.[0]?.channel_id}
-                channelIndex={idx}
-                channelThumbnails={r.videos.map(v => v.channel_thumbnail ?? null)}
-                summary={r.videos?.[0]?.summary}
-                isSelected={r.id === focusedRestaurantId}
-                onClick={() => handleMarkerClick(r.id)}
-              />
-            ))}
-          </div>
-        </div>
-      </aside>
-
-      {/* Map + Detail Panel */}
-      <div className="relative flex-1 overflow-hidden">
-        <NaverMap
-          onBoundsChange={handleBoundsChange}
-          restaurants={restaurants}
-          onMarkerClick={handleMarkerClick}
-          selectedChannels={selectedChannels}
-          fitToMarkers={fitToMarkers}
-          focusedRestaurantId={focusedRestaurantId}
-          onFitComplete={() => setFitToMarkers(false)}
-        />
-
-        {/* Desktop: slide-in Detail Panel */}
-        {focusedRestaurantId && focusedRestaurant && (
-          <div className="absolute inset-y-0 right-0 z-25 hidden w-[380px] animate-slide-in-r shadow-[-8px_0_28px_rgba(0,0,0,0.08)] lg:block">
-            <DetailPanel
-              restaurant={focusedRestaurant}
-              onClose={() => setFocusedRestaurantId(null)}
-            />
-          </div>
-        )}
-
-        {/* Mobile: floating search bar */}
-        <div className="absolute left-3 right-3 top-3 z-20 lg:hidden">
-          <SearchBar
-            onSelectRestaurant={handleSelectRestaurant}
-            onSelectChannel={handleSelectChannel}
-            onSelectRegion={handleSelectRegion}
-          />
-        </div>
-
-        {/* Mobile bottom sheet */}
-        <div
-          ref={sheetRef}
-          className="fixed bottom-0 left-0 right-0 z-30 rounded-t-2xl bg-cream shadow-[0_-4px_20px_rgba(0,0,0,0.1)] lg:hidden h-[90vh]"
-          data-testid="bottom-sheet"
-          style={{ transform: 'translateY(calc(90vh - 120px))' }}
-        >
-          {/* Handle — 스와이프 전용 */}
-          <div ref={handleRef} data-testid="sheet-handle" className="flex justify-center py-3 touch-none cursor-grab">
-            <div className="h-1 w-10 rounded-full bg-border" />
-          </div>
-
-          <div
-            ref={contentRef}
-            data-testid="sheet-content"
-            className="overflow-y-auto px-4"
-            style={{ maxHeight: 'calc(100% - 24px)' }}
-          >
-            {mobileView === 'detail' && focusedRestaurant ? (
-              <DetailPanel
-                restaurant={focusedRestaurant}
-                mobile
-                onClose={() => {
-                  setFocusedRestaurantId(null)
-                  setMobileView('list')
-                  goToState('half')
-                }}
-              />
-            ) : (
-              <div>
-                {/* Channel chips */}
-                <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-                  <ChannelChips
-                    selectedChannels={selectedChannels}
-                    onToggle={handleChannelToggle}
-                    channels={allChannels}
-                  />
-                </div>
-
-                {/* Category chips */}
-                <div className="mb-3 flex flex-wrap gap-1.5">
-                  {['한식','일식','중식','양식','카페/디저트','분식','고기/구이','해산물','기타'].map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => handleCategoryToggle(cat)}
-                      className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all ${
-                        categories.includes(cat)
-                          ? 'border-ink-body bg-ink-body text-white'
-                          : 'border-border bg-white text-ink-section'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Count + Sort toggle */}
-                <div className="flex items-baseline justify-between mb-2">
-                  <p className="text-xs text-ink-muted">
-                    {loading ? '검색 중...' : `총 ${sorted.length}곳`}
-                  </p>
-                  <button
-                    onClick={() => setSortBy(s => s === 'rating' ? 'latest' : 'rating')}
-                    className="flex items-center gap-1 text-[11.5px] text-ink-muted"
-                  >
-                    {sortBy === 'rating' ? '평점순' : '최신순'}
-                    <ChevronDownIcon />
-                  </button>
-                </div>
-
-                {/* Restaurant list */}
-                <div className="space-y-2 pb-4">
-                  {sorted.length === 0 && !loading && <EmptyState onReset={handleReset} />}
-                  {sorted.slice(0, 20).map((r, idx) => (
-                    <RestaurantCard
-                      key={r.id}
-                      name={r.name}
-                      category={r.category}
-                      region={r.region}
-                      thumbnailUrl={r.videos?.[0]?.thumbnail_url}
-                      rating={r.videos?.[0]?.rating}
-                      channelName={r.videos?.[0]?.channel_name}
-                      channelThumbnail={r.videos?.[0]?.channel_thumbnail}
-                      channelId={r.videos?.[0]?.channel_id}
-                      channelIndex={idx}
-                      channelThumbnails={r.videos.map(v => v.channel_thumbnail ?? null)}
-                      summary={r.videos?.[0]?.summary}
-                      isSelected={r.id === focusedRestaurantId}
-                      onClick={() => handleMarkerClick(r.id)}
-                    />
-                  ))}
-                  {sorted.length > 20 && (
-                    <p className="py-3 text-center text-[11px] text-ink-muted">
-                      +{sorted.length - 20}곳 더 있습니다 · 지도를 확대해 보세요
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {toast && <Toast message={toast} onClose={handleToastClose} />}
-
-      {!onboarded && (
-        <Onboarding
-          channels={allChannels}
-          onComplete={handleOnboardingComplete}
-          restaurantCount={restaurants.length}
-        />
-      )}
-    </div>
-  )
-}
-
-function ChannelChips({
-  selectedChannels,
-  onToggle,
-  channels,
-}: {
-  selectedChannels: string[]
-  onToggle: (id: string) => void
-  channels: { id: string; name: string }[]
-}) {
   return (
     <>
-      {channels.map((ch) => (
-        <button
-          key={ch.id}
-          onClick={() => onToggle(ch.id)}
-          className={`flex-shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${
-            selectedChannels.includes(ch.id)
-              ? 'border-ink-body bg-ink-body text-white'
-              : 'border-border bg-white text-ink-section'
-          }`}
-        >
-          {ch.name}
-        </button>
-      ))}
+      <h1 className="sr-only">유튜버 맛집 지도 먹맵</h1>
+      <HomeExplorer channels={channels}>
+        <section aria-labelledby="by-youtuber">
+          <h2 id="by-youtuber" className="text-title font-bold text-ink">유튜버별 맛집</h2>
+          <ul className="mt-2">
+            {channels.map((c) => (
+              <li key={c.id}>
+                <a
+                  href={`/youtuber/${encodeURIComponent(c.slug || c.id)}`}
+                  className="flex min-h-[44px] items-center justify-between border-b border-line text-body text-ink"
+                >
+                  <span>{c.name} 맛집</span>
+                  <span className="text-meta text-sub">{c.restaurant_count}곳</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section aria-labelledby="by-region" className="mt-8">
+          <h2 id="by-region" className="text-title font-bold text-ink">지역별 맛집</h2>
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {regions.map((r) => (
+              <li key={r.region}>
+                <a
+                  href={`/region/${encodeURIComponent(r.region)}`}
+                  className="inline-flex min-h-[40px] items-center gap-1 rounded-full border border-line px-3.5 text-body text-ink"
+                >
+                  {r.region}
+                  <span className="text-meta text-sub">{r.count}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section aria-labelledby="about" className="mt-8">
+          <h2 id="about" className="text-title font-bold text-ink">먹맵은 어떤 사이트인가요?</h2>
+          <p className="mt-2 text-body text-sub">
+            {faq[0].a} {names} 같은 유튜버가 무엇을 먹고 얼마를 냈는지, 영상 몇 분쯤에 나오는지까지 적어 두었습니다.
+          </p>
+          <h3 className="mt-5 text-body font-bold text-ink">{faq[1].q}</h3>
+          <p className="mt-1 text-body text-sub">{faq[1].a}</p>
+        </section>
+      </HomeExplorer>
+      {jsonLdScript(faqJsonLd(faq))}
     </>
   )
 }

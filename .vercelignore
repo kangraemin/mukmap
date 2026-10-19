@@ -1,0 +1,4 @@
+# 웹 배포에 필요 없는 것: 토스 미니앱 번들, 로컬 Supabase CLI 상태
+toss/
+supabase/.temp/
+tests/

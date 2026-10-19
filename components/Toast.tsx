@@ -21,7 +21,8 @@ export default function Toast({ message, onClose, duration = 3000 }: ToastProps)
 
   return (
     <div
-      className={`fixed bottom-28 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-on-surface px-4 py-2.5 text-sm text-surface shadow-lg transition-opacity duration-300 ${
+      role="status"
+      className={`fixed bottom-[calc(140px+env(safe-area-inset-bottom))] left-1/2 z-50 w-max max-w-[calc(100vw-32px)] -translate-x-1/2 rounded-card bg-ink px-4 py-3 text-body text-paper shadow-lg transition-opacity duration-300 ${
         visible ? 'opacity-100' : 'opacity-0'
       }`}
     >

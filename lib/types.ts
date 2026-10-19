@@ -3,6 +3,7 @@ export interface Channel {
   name: string
   thumbnail_url: string | null
   subscriber_count: number
+  slug: string | null
   created_at: string
 }
 
@@ -14,6 +15,7 @@ export interface Restaurant {
   lng: number | null
   category: string
   region: string | null
+  city: string | null
   naver_place_id: string | null
   needs_review: boolean
   is_visible: boolean
@@ -34,12 +36,17 @@ export interface Video {
   published_at: string | null
   created_at: string
   view_count: number | null
+  menu: string | null
+  price: string | null
+  quote: string | null
+  why: string | null
 }
 
 export interface RestaurantWithVideos extends Restaurant {
   videos: (Video & {
     channel_name: string
     channel_thumbnail: string | null
+    channel_slug?: string | null
   })[]
 }
 

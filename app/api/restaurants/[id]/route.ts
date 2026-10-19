@@ -26,13 +26,20 @@ export async function GET(
           is_ad,
           timestamp_seconds,
           published_at,
+          view_count,
+          menu,
+          price,
+          quote,
+          why,
           channels (
             name,
-            thumbnail_url
+            thumbnail_url,
+            slug
           )
         )
       `)
       .eq('id', id)
+      .eq('is_visible', true)
       .single()
 
     if (error || !restaurant) {
@@ -40,7 +47,7 @@ export async function GET(
     }
 
     const videos = (restaurant.videos || []).map((v: Record<string, unknown>) => {
-      const channel = v.channels as { name: string; thumbnail_url: string | null } | null
+      const channel = v.channels as { name: string; thumbnail_url: string | null; slug: string | null } | null
       return {
         id: v.id,
         video_id: v.video_id,
@@ -52,11 +59,19 @@ export async function GET(
         is_ad: v.is_ad,
         timestamp_seconds: v.timestamp_seconds,
         published_at: v.published_at,
+        view_count: v.view_count as number | null,
+        menu: v.menu,
+        price: v.price,
+        quote: v.quote,
+        why: v.why,
         channel_name: channel?.name || '',
         channel_thumbnail: channel?.thumbnail_url || null,
+        channel_slug: channel?.slug || null,
       }
     })
 
+    videos.sort((a: { published_at: string | null }, b: { published_at: string | null }) =>
+      (b.published_at || '').localeCompare(a.published_at || ''))
     const { videos: _rawVideos, ...rest } = restaurant
     return NextResponse.json({ ...rest, videos })
   } catch {

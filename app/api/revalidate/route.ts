@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
+import { DATA_TAG } from '@/lib/data'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,7 +10,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  revalidatePath('/')
+  revalidateTag(DATA_TAG)
+  revalidatePath('/', 'layout')
   revalidatePath('/api/channels')
   revalidatePath('/api/restaurants')
 

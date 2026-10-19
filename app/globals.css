@@ -3,17 +3,60 @@
 @tailwind utilities;
 
 :root {
-  --background: #FAF7F0;
-  --foreground: #221E15;
+  --paper: 255 255 255;
+  --well: 244 245 247;
+  --line: 229 232 235;
+  --sub: 107 118 132;
+  --ink: 27 29 31;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: 23 24 28;
+    --well: 33 35 40;
+    --line: 48 51 58;
+    --sub: 154 163 174;
+    --ink: 236 238 241;
+    color-scheme: dark;
+  }
+}
+
+html,
+body {
+  background: rgb(var(--paper));
+  color: rgb(var(--ink));
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: 'Pretendard Variable', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  letter-spacing: -0.02em;
+  font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  letter-spacing: -0.01em;
+  -webkit-tap-highlight-color: transparent;
 }
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px; }
-::-webkit-scrollbar-track { background: transparent; }
+/* 예능 자막: 노란 띠 위 굵은 글씨. 줄이 바뀌어도 줄마다 띠가 이어진다 */
+.caption-band {
+  font-family: var(--font-caption), 'Pretendard Variable', sans-serif;
+  background: #FFE14D;
+  color: #1B1D1F;
+  padding: 2px 8px 1px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  line-height: 1.55;
+  word-break: keep-all;
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--ink));
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }

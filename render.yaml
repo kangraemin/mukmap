@@ -1,6 +1,0 @@
-services:
-  - type: web
-    name: youtube-transcript-api
-    runtime: docker
-    plan: free
-    dockerfilePath: ./Dockerfile

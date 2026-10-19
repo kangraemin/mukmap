@@ -1,0 +1,4 @@
+/* 웹은 next/font가 넣는 변수. 토스 번들은 구글 폰트에서 받은 같은 서체를 가리킨다 */
+:root {
+  --font-caption: 'Black Han Sans';
+}
