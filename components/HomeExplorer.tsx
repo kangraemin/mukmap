@@ -285,10 +285,17 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   }, [closePreview])
 
   const searchRestaurant = useCallback((id: number) => {
+    // 걸린 필터('영등포' 검색·유튜버·지역)에 빠진 가게면 필터를 풀어야 지도가 그 가게로 간다
+    if (!filtered.some((p) => p.id === id)) {
+      setText('')
+      setChannelId(null)
+      setRegion('')
+      setCity('')
+    }
     setFocus({ id, seq: Date.now() })
     if (desktop || readNav().v === 'list') openDetail(id)
     else selectPin(id)
-  }, [desktop, openDetail, selectPin])
+  }, [desktop, openDetail, selectPin, filtered])
 
   const pickChannel = useCallback((id: string | null) => {
     closePreview()

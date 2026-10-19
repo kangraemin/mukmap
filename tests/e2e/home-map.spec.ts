@@ -185,3 +185,44 @@ test('붙여 쓴 검색어도 나눠서 찾는다', async ({ page }) => {
   await searchBox(page).fill('쯔양서울')
   await expect(page.getByTestId('search-restaurant').first()).toBeVisible()
 })
+
+test('검색에서 가게를 누르면 지도가 그 가게로 가고 카드가 뜬다', async ({ page }) => {
+  await ready(page)
+  // 첫 화면(서울 근처)에서 먼 가게: 강릉
+  await searchBox(page).fill('콩새장치찜')
+  await page.getByTestId('search-restaurant').first().click()
+  const card = page.getByTestId('preview-card')
+  await expect(card).toBeVisible()
+  await expect(card).toContainText('콩새장치찜')
+  // 고른 가게 핀이 화면 안(검색칩과 카드 사이)에 보인다
+  const pin = page.locator('[data-pin="647"]')
+  await expect(pin).toBeVisible({ timeout: 10_000 })
+  await expect.poll(async () => {
+    const b = await pin.boundingBox()
+    const c = await card.boundingBox()
+    const vp = page.viewportSize()!
+    return !!b && !!c && b.x > 0 && b.x + b.width < vp.width && b.y > 100 && b.y + b.height < c.y
+  }, { timeout: 10_000 }).toBe(true)
+})
+
+test('다른 지역 검색 필터가 걸린 채로 가게를 고르면 지도가 그 가게로 간다', async ({ page }) => {
+  await ready(page)
+  // '영등포' 전체 보기로 필터를 건다
+  await searchBox(page).fill('영등포')
+  await page.getByTestId('search-all').click()
+  await expect(page.getByText('‘영등포’').first()).toBeVisible()
+  await page.waitForTimeout(1500) // 지도가 영등포로 다 움직인 뒤
+  // 송파 가게를 고른다
+  await searchBox(page).fill('기유')
+  await page.locator('[data-testid="search-restaurant"]:visible').first().click()
+  const card = page.getByTestId('preview-card')
+  await expect(card).toContainText('기유')
+  const pin = page.locator('[data-pin="655"]')
+  await expect(pin).toBeVisible({ timeout: 10_000 })
+  await expect.poll(async () => {
+    const b = await pin.boundingBox()
+    const c = await card.boundingBox()
+    const vp = page.viewportSize()!
+    return !!b && !!c && b.x > 0 && b.x + b.width < vp.width && b.y > 100 && b.y + b.height < c.y
+  }, { timeout: 10_000 }).toBe(true)
+})
