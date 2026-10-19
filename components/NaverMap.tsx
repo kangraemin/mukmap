@@ -2,45 +2,90 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { DEFAULT_CENTER, DEFAULT_ZOOM } from '@/lib/constants'
-import type { RestaurantWithVideos } from '@/lib/types'
+import type { Bounds, Pin } from '@/lib/pins'
 
-interface Bounds {
-  sw_lat: number
-  sw_lng: number
-  ne_lat: number
-  ne_lng: number
+export interface Face {
+  name: string
+  thumbnail: string | null
 }
 
 interface NaverMapProps {
-  onBoundsChange: (bounds: Bounds) => void
-  restaurants: RestaurantWithVideos[]
-  onMarkerClick: (restaurantId: number) => void
-  fitToMarkers?: boolean
-  focusedRestaurantId?: number | null
-  onFitComplete?: () => void
+  /** 거르기가 끝난 핀 전체. 화면 안에 든 것만 그린다 */
+  pins: Pin[]
+  faces: Record<string, Face>
+  selectedId: number | null
+  onPinClick: (id: number) => void
+  onMapClick: () => void
+  onBoundsChange: (b: Bounds) => void
+  /** 값이 바뀌면 pins 전체가 보이게 맞춘다 */
+  fitKey: number
+  /** 값이 바뀌면 이 핀으로 지도를 옮긴다 */
+  focus: { id: number; seq: number } | null
 }
 
-export default function NaverMap({
-  onBoundsChange,
-  restaurants,
-  onMarkerClick,
-  fitToMarkers,
-  focusedRestaurantId,
-  onFitComplete,
-}: NaverMapProps) {
+// 핀끼리 이 거리(px) 안이면 묶는다. 줌과 상관없이 같은 기준이라 얼굴이 겹치지 않는다
+const CLUSTER_PX = 64
+const FACE = 36
+const FACE_SELECTED = 44
+const CLUSTER_FACE = 40
+
+function mercY(lat: number) {
+  const s = Math.sin((lat * Math.PI) / 180)
+  return Math.log((1 + s) / (1 - s)) / 2
+}
+
+function escapeAttr(s: string) {
+  return s.replace(/[&"<>]/g, (c) => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' }[c]!))
+}
+
+function faceImg(face: Face | undefined, size: number, ring: string, border: number) {
+  const inner = face?.thumbnail
+    ? `<img src="${escapeAttr(face.thumbnail)}" alt="" draggable="false" style="width:100%;height:100%;object-fit:cover;display:block;"/>`
+    : `<div style="width:100%;height:100%;background:#E5E8EB;"></div>`
+  return `<div style="width:${size}px;height:${size}px;border-radius:50%;overflow:hidden;border:${border}px solid ${ring};box-sizing:border-box;background:#fff;box-shadow:0 2px 8px rgba(27,29,31,0.25);">${inner}</div>`
+}
+
+function badge(text: string) {
+  return `<div style="position:absolute;top:-4px;right:-8px;min-width:20px;height:20px;padding:0 6px;box-sizing:border-box;border-radius:10px;background:#1B1D1F;color:#fff;border:2px solid #fff;font:700 11px/16px 'Pretendard Variable',sans-serif;text-align:center;">${text}</div>`
+}
+
+function singleIcon(pin: Pin, faces: Record<string, Face>, selected: boolean): naver.maps.MarkerIcon {
+  const size = selected ? FACE_SELECTED : FACE
+  const ring = selected ? '#FFE14D' : '#FFFFFF'
+  const more = pin.ch.length > 1 ? badge(`+${pin.ch.length - 1}`) : ''
+  const tail = `<div style="position:absolute;left:${size / 2 - 6}px;top:${size - 2}px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid ${ring};"></div>`
+  const content = `<div role="button" aria-label="${escapeAttr(pin.name)}" data-pin="${pin.id}" style="position:relative;width:${size}px;height:${size + 8}px;cursor:pointer;">${faceImg(faces[pin.ch[0]], size, ring, selected ? 3 : 2)}${tail}${more}</div>`
+  return { content, size: new naver.maps.Size(size, size + 8), anchor: new naver.maps.Point(size / 2, size + 6) }
+}
+
+function clusterIcon(items: Pin[], faces: Record<string, Face>): naver.maps.MarkerIcon {
+  // 대표 얼굴: 이 묶음에서 가장 많이 다녀간 유튜버
+  const tally = new Map<string, number>()
+  for (const p of items) for (const c of p.ch) tally.set(c, (tally.get(c) || 0) + 1)
+  const top = Array.from(tally.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0]
+  const count = items.length > 999 ? '999+' : String(items.length)
+  const content = `<div role="button" aria-label="가게 ${items.length}곳" data-cluster="${items.length}" style="position:relative;width:${CLUSTER_FACE}px;height:${CLUSTER_FACE}px;cursor:pointer;">${faceImg(top ? faces[top] : undefined, CLUSTER_FACE, '#FFFFFF', 2)}${badge(count)}</div>`
+  return { content, size: new naver.maps.Size(CLUSTER_FACE, CLUSTER_FACE), anchor: new naver.maps.Point(CLUSTER_FACE / 2, CLUSTER_FACE / 2) }
+}
+
+function readBounds(map: naver.maps.Map): Bounds {
+  const b = map.getBounds()
+  return { sw_lat: b.getSW().lat(), sw_lng: b.getSW().lng(), ne_lat: b.getNE().lat(), ne_lng: b.getNE().lng() }
+}
+
+export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapClick, onBoundsChange, fitKey, focus }: NaverMapProps) {
   const mapElRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<naver.maps.Map | null>(null)
-  const markersRef = useRef<naver.maps.Marker[]>([])
-  const markerListenersRef = useRef<unknown[]>([])
-  // clusterRef removed — using grid-based clustering
+  const markersRef = useRef<Map<string, { marker: naver.maps.Marker; listener: unknown; sig: string }>>(new Map())
   const [sdkLoaded, setSdkLoaded] = useState(false)
   const [sdkError, setSdkError] = useState(false)
-  // 줌이 바뀌면 묶음 크기가 달라지므로 마커를 다시 그린다
-  const [zoomTick, setZoomTick] = useState(0)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const restaurantMarkerMapRef = useRef<Map<number, naver.maps.Marker>>(new Map())
+  // 지도가 멈출 때마다 올라간다. 마커를 다시 묶는 신호
+  const [idleTick, setIdleTick] = useState(0)
 
-  // Load SDK
+  // 콜백은 바뀌어도 리스너를 다시 달지 않게 ref로 읽는다
+  const cb = useRef({ onPinClick, onMapClick, onBoundsChange })
+  cb.current = { onPinClick, onMapClick, onBoundsChange }
+
   useEffect(() => {
     if ((window as Window & { naver?: { maps?: unknown } }).naver?.maps) {
       setSdkLoaded(true)
@@ -50,7 +95,7 @@ export default function NaverMap({
     if (!clientId) return
     if (!document.querySelector('script[src*="oapi.map.naver.com"]')) {
       const script = document.createElement('script')
-      script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${clientId}&submodules=geocoder`
+      script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${clientId}`
       script.async = true
       document.head.appendChild(script)
     }
@@ -61,7 +106,7 @@ export default function NaverMap({
         if (timeoutId) clearTimeout(timeoutId)
         setSdkLoaded(true)
       }
-    }, 100)
+    }, 50)
     timeoutId = setTimeout(() => {
       clearInterval(poll)
       setSdkError(true)
@@ -72,195 +117,137 @@ export default function NaverMap({
     }
   }, [])
 
-  // Init map
   useEffect(() => {
     if (!sdkLoaded || !mapElRef.current || mapRef.current) return
-
     const map = new naver.maps.Map(mapElRef.current, {
       center: new naver.maps.LatLng(DEFAULT_CENTER.lat, DEFAULT_CENTER.lng),
       zoom: DEFAULT_ZOOM,
       zoomControl: false,
     })
     mapRef.current = map
-
-    // Initial bounds
-    const bounds = map.getBounds()
-    onBoundsChange({
-      sw_lat: bounds.getSW().lat(),
-      sw_lng: bounds.getSW().lng(),
-      ne_lat: bounds.getNE().lat(),
-      ne_lng: bounds.getNE().lng(),
-    })
-
-    // idle event with debounce
+    cb.current.onBoundsChange(readBounds(map))
+    setIdleTick((t) => t + 1)
     naver.maps.Event.addListener(map, 'idle', () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      debounceRef.current = setTimeout(() => {
-        setZoomTick(map.getZoom())
-        const b = map.getBounds()
-        onBoundsChange({
-          sw_lat: b.getSW().lat(),
-          sw_lng: b.getSW().lng(),
-          ne_lat: b.getNE().lat(),
-          ne_lng: b.getNE().lng(),
-        })
-      }, 500)
+      cb.current.onBoundsChange(readBounds(map))
+      setIdleTick((t) => t + 1)
     })
+    naver.maps.Event.addListener(map, 'click', () => cb.current.onMapClick())
+  }, [sdkLoaded])
 
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [sdkLoaded, onBoundsChange])
-
-  // Update markers
+  // 화면 안 핀만 묶어서 그린다. 바뀐 마커만 갈아 끼워 깜빡이지 않게 한다
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !sdkLoaded) return
-
-    // Clear old markers
-    markerListenersRef.current.forEach(l => naver.maps.Event.removeListener(l))
-    markerListenersRef.current = []
-    markersRef.current.forEach((m) => m.setMap(null))
-    markersRef.current = []
-    restaurantMarkerMapRef.current.clear()
-
-    // 화면에서 56px 안에 겹치는 가게끼리 묶는다(줌과 무관하게 핀이 겹치지 않게)
-    const zoom = map.getZoom()
     const el = mapElRef.current
-    const bnd = map.getBounds()
-    const degPerPx = el && el.clientWidth ? (bnd.getNE().lng() - bnd.getSW().lng()) / el.clientWidth : 0
-    const radius = zoom >= 16 || !degPerPx ? 0 : degPerPx * 56
-    // 위도는 경도보다 화면에서 길게 보인다(한국 위도 기준 약 1.25배)
-    const latScale = Math.cos((36.5 * Math.PI) / 180)
+    if (!map || !el || !el.clientWidth) return
 
-    const validRestaurants = restaurants.filter(r => r.lat && r.lng)
-    const clusters: { lat: number; lng: number; items: typeof validRestaurants }[] = []
-    for (const r of validRestaurants) {
-      const hit = radius
-        ? clusters.find(c => Math.abs(c.lng - r.lng!) < radius && Math.abs(c.lat - r.lat!) < radius * latScale)
-        : undefined
-      if (hit) hit.items.push(r)
-      else clusters.push({ lat: r.lat!, lng: r.lng!, items: [r] })
+    const b = readBounds(map)
+    // 화면 가장자리 핀이 갑자기 생기지 않게 반 화면씩 여유를 둔다
+    const padLat = (b.ne_lat - b.sw_lat) / 2
+    const padLng = (b.ne_lng - b.sw_lng) / 2
+    const pxPerLng = el.clientWidth / (b.ne_lng - b.sw_lng)
+    const pxPerMerc = pxPerLng * (180 / Math.PI)
+
+    const cells = new Map<string, Pin[]>()
+    let selected: Pin | undefined
+    for (const p of pins) {
+      if (p.lat < b.sw_lat - padLat || p.lat > b.ne_lat + padLat || p.lng < b.sw_lng - padLng || p.lng > b.ne_lng + padLng) continue
+      // 고른 핀은 묶지 않고 따로 그린다
+      if (p.id === selectedId) { selected = p; continue }
+      const key = `${Math.floor((p.lng * pxPerLng) / CLUSTER_PX)}:${Math.floor((-mercY(p.lat) * pxPerMerc) / CLUSTER_PX)}`
+      const cell = cells.get(key)
+      if (cell) cell.push(p)
+      else cells.set(key, [p])
     }
-    const groups = clusters.map(c => c.items)
 
-    const newMarkers: naver.maps.Marker[] = []
+    const next = new Map<string, { pins: Pin[]; selected: boolean }>()
+    cells.forEach((items) => {
+      next.set(items.length === 1 ? `p${items[0].id}` : `c${items[0].id}-${items.length}`, { pins: items, selected: false })
+    })
+    if (selected) next.set(`p${selected.id}`, { pins: [selected], selected: true })
 
-    groups.forEach((clusterItems) => {
-      if (clusterItems.length === 1) {
-        const restaurant = clusterItems[0]
-        const faces = Array.from(new Map((restaurant.videos ?? []).map(v => [v.channel_id, v.channel_thumbnail ?? ''])).values()).slice(0, 3)
-        const selected = restaurant.id === focusedRestaurantId
-        const ring = selected ? '#FFE14D' : '#FFFFFF'
-        const size = selected ? 44 : 36
-        const step = 12
-        const width = size + step * (faces.length - 1)
-        const faceHtml = faces.map((src, i) => {
-          const inner = src
-            ? `<img src="${escapeAttr(src)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;"/>`
-            : `<div style="width:100%;height:100%;background:#E5E8EB;"></div>`
-          return `<div style="position:absolute;top:0;left:${i * step}px;width:${size}px;height:${size}px;border-radius:50%;overflow:hidden;border:3px solid ${ring};box-sizing:border-box;background:#fff;z-index:${3 - i};box-shadow:0 1px 4px rgba(0,0,0,0.25);">${inner}</div>`
-        }).join('')
-        const tail = `<div style="position:absolute;left:${size / 2 - 5}px;top:${size - 2}px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${ring};"></div>`
-        const content = `<div role="button" aria-label="${escapeAttr(restaurant.name)}" style="position:relative;width:${width}px;height:${size + 6}px;cursor:pointer;">${faceHtml}${tail}</div>`
-
-        const marker = new naver.maps.Marker({
-          position: new naver.maps.LatLng(restaurant.lat!, restaurant.lng!),
-          map,
-          zIndex: selected ? 100 : 1,
-          icon: {
-            content,
-            size: new naver.maps.Size(width, size + 6),
-            anchor: new naver.maps.Point(size / 2, size + 5),
-          },
-        })
-
-        restaurantMarkerMapRef.current.set(restaurant.id, marker)
-        markerListenersRef.current.push(
-          naver.maps.Event.addListener(marker, 'click', () => {
-            onMarkerClick(restaurant.id)
-          })
-        )
-        newMarkers.push(marker)
-      } else {
-        const avgLat = clusterItems.reduce((s: number, r: { lat: number | null }) => s + r.lat!, 0) / clusterItems.length
-        const avgLng = clusterItems.reduce((s: number, r: { lng: number | null }) => s + r.lng!, 0) / clusterItems.length
-        const count = clusterItems.length
-        const size = count >= 50 ? 52 : count >= 10 ? 44 : 38
-
-        const clusterContent = `<div role="button" aria-label="가게 ${count}곳" style="width:${size}px;height:${size}px;border-radius:50%;background:#1B1D1F;color:#fff;border:3px solid #fff;box-sizing:border-box;box-shadow:0 1px 4px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font:700 ${size >= 44 ? 15 : 13}px 'Pretendard Variable',sans-serif;cursor:pointer;">${count}</div>`
-
-        const marker = new naver.maps.Marker({
-          position: new naver.maps.LatLng(avgLat, avgLng),
-          map,
-          icon: {
-            content: clusterContent,
-            size: new naver.maps.Size(size, size),
-            anchor: new naver.maps.Point(size / 2, size / 2),
-          },
-        })
-
-        markerListenersRef.current.push(
-          naver.maps.Event.addListener(marker, 'click', () => {
-            const lats = clusterItems.map(r => r.lat!)
-            const lngs = clusterItems.map(r => r.lng!)
-            const sw = new naver.maps.LatLng(Math.min(...lats), Math.min(...lngs))
-            const ne = new naver.maps.LatLng(Math.max(...lats), Math.max(...lngs))
-            map.fitBounds(new naver.maps.LatLngBounds(sw, ne), 80)
-          })
-        )
-        newMarkers.push(marker)
+    const current = markersRef.current
+    current.forEach((m, key) => {
+      const want = next.get(key)
+      if (!want || m.sig !== `${want.selected}`) {
+        naver.maps.Event.removeListener(m.listener)
+        m.marker.setMap(null)
+        current.delete(key)
       }
     })
 
-    markersRef.current = newMarkers
-  }, [restaurants, sdkLoaded, onMarkerClick, focusedRestaurantId, zoomTick])
+    next.forEach((want, key) => {
+      if (current.has(key)) return
+      const items = want.pins
+      let marker: naver.maps.Marker
+      let listener: unknown
+      if (items.length === 1) {
+        const p = items[0]
+        marker = new naver.maps.Marker({
+          position: new naver.maps.LatLng(p.lat, p.lng),
+          map,
+          zIndex: want.selected ? 1000 : 10,
+          icon: singleIcon(p, faces, want.selected),
+        })
+        listener = naver.maps.Event.addListener(marker, 'click', () => cb.current.onPinClick(p.id))
+      } else {
+        const lat = items.reduce((s, p) => s + p.lat, 0) / items.length
+        const lng = items.reduce((s, p) => s + p.lng, 0) / items.length
+        marker = new naver.maps.Marker({
+          position: new naver.maps.LatLng(lat, lng),
+          map,
+          zIndex: 20 + Math.min(items.length, 500),
+          icon: clusterIcon(items, faces),
+        })
+        listener = naver.maps.Event.addListener(marker, 'click', () => {
+          const lats = items.map((p) => p.lat)
+          const lngs = items.map((p) => p.lng)
+          const span = Math.max(Math.max(...lats) - Math.min(...lats), Math.max(...lngs) - Math.min(...lngs))
+          // 같은 건물처럼 거의 한 자리면 더 키워도 안 갈라진다. 첫 가게를 바로 보여준다
+          if (span < 0.0002 || map.getZoom() >= 19) return cb.current.onPinClick(items[0].id)
+          map.fitBounds(
+            new naver.maps.LatLngBounds(
+              new naver.maps.LatLng(Math.min(...lats), Math.min(...lngs)),
+              new naver.maps.LatLng(Math.max(...lats), Math.max(...lngs))
+            ),
+            80
+          )
+        })
+      }
+      current.set(key, { marker, listener, sig: `${want.selected}` })
+    })
+  }, [pins, faces, selectedId, idleTick])
 
-  // Focus on restaurant when focusedRestaurantId changes
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !focusedRestaurantId) return
-
-    const restaurant = restaurants.find((r) => r.id === focusedRestaurantId)
-    if (!restaurant || !restaurant.lat || !restaurant.lng) return
-
-    const pos = new naver.maps.LatLng(restaurant.lat, restaurant.lng)
-
-    const marker = restaurantMarkerMapRef.current.get(focusedRestaurantId)
-    if (marker) {
-      // 개별 마커 있음 → 이동
-      map.morph(pos, Math.max(map.getZoom(), 13), { duration: 500 })
-    } else {
-      // 클러스터에 묶여있음 → 줌 인하면 개별 마커 생성됨
-      // 묶음을 푸는 줌(16)까지 들어가야 고른 핀이 따로 보인다
-      map.morph(pos, 16, { duration: 500 })
+    if (!map || !fitKey || pins.length === 0) return
+    const lats = pins.map((p) => p.lat)
+    const lngs = pins.map((p) => p.lng)
+    if (pins.length === 1) {
+      map.morph(new naver.maps.LatLng(lats[0], lngs[0]), 15, { duration: 400 })
+      return
     }
-  }, [focusedRestaurantId, restaurants])
+    map.fitBounds(
+      new naver.maps.LatLngBounds(
+        new naver.maps.LatLng(Math.min(...lats), Math.min(...lngs)),
+        new naver.maps.LatLng(Math.max(...lats), Math.max(...lngs))
+      ),
+      60
+    )
+    // pins가 바뀔 때마다 맞추지 않는다. fitKey가 바뀔 때만
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitKey, sdkLoaded])
 
-  // Fit bounds to markers
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !fitToMarkers || restaurants.length === 0) return
-
-    const validRestaurants = restaurants.filter((r) => r.lat && r.lng)
-    if (validRestaurants.length === 0) return
-
-    const bounds = new naver.maps.LatLngBounds(
-      new naver.maps.LatLng(
-        Math.min(...validRestaurants.map((r) => r.lat!)),
-        Math.min(...validRestaurants.map((r) => r.lng!))
-      ),
-      new naver.maps.LatLng(
-        Math.max(...validRestaurants.map((r) => r.lat!)),
-        Math.max(...validRestaurants.map((r) => r.lng!))
-      )
-    )
-    map.fitBounds(bounds, 60)
-    onFitComplete?.()
-  }, [fitToMarkers, restaurants, onFitComplete])
+    if (!map || !focus) return
+    const p = pins.find((x) => x.id === focus.id)
+    if (!p) return
+    map.morph(new naver.maps.LatLng(p.lat, p.lng), Math.max(map.getZoom(), 15), { duration: 400 })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus, sdkLoaded])
 
   return (
-    <div ref={mapElRef} className="h-full w-full">
+    <div ref={mapElRef} data-testid="map" className="h-full w-full">
       {!sdkLoaded && !sdkError && (
         <div className="flex h-full items-center justify-center bg-well text-body text-sub">
           지도를 불러오는 중
@@ -279,8 +266,4 @@ export default function NaverMap({
       )}
     </div>
   )
-}
-
-function escapeAttr(s: string) {
-  return s.replace(/[&"<>]/g, (c) => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' }[c]!))
 }

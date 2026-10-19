@@ -1,37 +1,27 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useDrag } from '@use-gesture/react'
-import NaverMap from '@/components/NaverMap'
+import NaverMap, { type Face } from '@/components/NaverMap'
 import SearchBar from '@/components/SearchBar'
-import RestaurantCard from '@/components/RestaurantCard'
 import DetailPanel from '@/components/DetailPanel'
 import { ChannelFace } from '@/components/ChannelFace'
+import { PinRow, PreviewCard } from '@/components/PinCard'
 import Toast from '@/components/Toast'
+import { decodePins, inBounds, type Bounds, type Pin, type PinsPayload } from '@/lib/pins'
 import type { Channel, RestaurantWithVideos } from '@/lib/types'
 
-interface Bounds {
-  sw_lat: number
-  sw_lng: number
-  ne_lat: number
-  ne_lng: number
-}
+// 화면 상태. 지도 위 카드(preview)·목록(list)·상세(detail)는 각각 방문 기록 한 칸이라
+// 브라우저·토스 뒤로가기가 한 단계씩 닫는다
+type Nav =
+  | { v: 'map' }
+  | { v: 'preview'; id: number }
+  | { v: 'list' }
+  | { v: 'detail'; id: number }
 
-type SheetState = 'collapsed' | 'half' | 'full'
-type Sort = 'latest' | 'visitors'
+type Sort = 'near' | 'latest' | 'visitors'
 
-const LIST_LIMIT = 30
-const FETCH_LIMIT = 200
-// 접힌 시트가 보여주는 높이: 손잡이 + 유튜버 얼굴 줄 + 가게 수 줄
-const PEEK = 184
-
-function latestOf(r: RestaurantWithVideos) {
-  return r.videos[0]?.published_at || ''
-}
-
-function visitorCount(r: RestaurantWithVideos) {
-  return new Set(r.videos.map((v) => v.channel_id)).size
-}
+const PAGE = 40
+const CACHE_KEY = 'mukmap:pins:v1'
 
 interface HomeExplorerProps {
   channels: (Channel & { restaurant_count: number })[]
@@ -43,250 +33,212 @@ interface HomeExplorerProps {
   pageLinks?: boolean
 }
 
-function ClearChip({ label, onClear }: { label: string; onClear: () => void }) {
+function readNav(): Nav {
+  const mk = (typeof window !== 'undefined' && window.history.state?.mk) as Nav | undefined
+  return mk && typeof mk === 'object' && 'v' in mk ? mk : { v: 'map' }
+}
+
+function readCache(): Pin[] | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    return raw ? decodePins(JSON.parse(raw)) : null
+  } catch {
+    return null
+  }
+}
+
+function writeCache(p: PinsPayload) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(p)) } catch {}
+}
+
+function BackIcon() {
   return (
-    <button type="button" onClick={onClear} className="inline-flex min-h-[44px] items-center gap-1 px-1.5 text-meta text-sub">
-      {label}
-      <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
-      <span className="sr-only">조건 풀기</span>
-    </button>
+    <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true">
+      <path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function XIcon() {
+  return (
+    <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
   )
 }
 
 export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true }: HomeExplorerProps) {
-  const [focusedRestaurantId, setFocusedRestaurantId] = useState<number | null>(null)
-  const [focused, setFocused] = useState<RestaurantWithVideos | null>(null)
+  const [pins, setPins] = useState<Pin[] | null>(null)
   const [bounds, setBounds] = useState<Bounds | null>(null)
-  const [restaurants, setRestaurants] = useState<RestaurantWithVideos[]>([])
   const [channelId, setChannelId] = useState<string | null>(null)
   const [region, setRegion] = useState('')
   const [city, setCity] = useState('')
+  const [nav, setNav] = useState<Nav>({ v: 'map' })
+  const [sort, setSort] = useState<Sort>('near')
+  const [shown, setShown] = useState(PAGE)
+  const [fitKey, setFitKey] = useState(0)
+  const [focus, setFocus] = useState<{ id: number; seq: number } | null>(null)
+  const [detail, setDetail] = useState<RestaurantWithVideos | null>(null)
   const [toast, setToast] = useState('')
-  const [fitToMarkers, setFitToMarkers] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [sort, setSort] = useState<Sort>('latest')
+  const [desktop, setDesktop] = useState(false)
 
-  const restaurantCache = useRef<Map<string, RestaurantWithVideos[]>>(new Map())
+  const details = useRef<Map<number, Promise<RestaurantWithVideos | null>>>(new Map())
+  const fitWhenLoaded = useRef(false)
+  const listRef = useRef<HTMLDivElement>(null)
 
-  const fitOnFirstLoad = useRef(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const on = () => setDesktop(mq.matches)
+    on()
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
 
-  // 바텀시트(모바일). 데스크톱에서는 같은 패널이 왼쪽 목록이 된다
-  const [, setSheetState] = useState<SheetState>('collapsed')
-  const sheetRef = useRef<HTMLDivElement>(null)
-  const handleRef = useRef<HTMLDivElement>(null)
-  const contentRef = useRef<HTMLDivElement>(null)
-  const snapOffsets = useRef<Record<SheetState, number>>({ full: 0, half: 0, collapsed: 0 })
-  const currentSnapOffset = useRef(0)
+  // 핀은 한 번만 받는다. 전에 받은 게 있으면 먼저 보여주고 뒤에서 새로 받는다
+  useEffect(() => {
+    const cached = readCache()
+    if (cached) setPins(cached)
+    fetch(`${apiBase}/api/pins`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((p: PinsPayload) => {
+        writeCache(p)
+        setPins(decodePins(p))
+      })
+      .catch(() => {
+        if (!cached) setToast('가게 목록을 불러오지 못했어요. 잠시 뒤 다시 열어 보세요.')
+      })
+  }, [apiBase])
+
+  const faces = useMemo(() => {
+    const m: Record<string, Face> = {}
+    for (const c of channels) m[c.id] = { name: c.name, thumbnail: c.thumbnail_url }
+    return m
+  }, [channels])
+
+  const pinById = useMemo(() => new Map((pins || []).map((p) => [p.id, p])), [pins])
+
+  const filtered = useMemo(() => (pins || []).filter((p) =>
+    (!channelId || p.ch.includes(channelId)) && (!region || p.region === region) && (!city || p.city === city)
+  ), [pins, channelId, region, city])
+
+  const inView = useMemo(() => (bounds ? filtered.filter((p) => inBounds(p, bounds)) : filtered), [filtered, bounds])
+
+  const listOpen = desktop || nav.v === 'list'
 
   const sorted = useMemo(() => {
-    const list = [...restaurants]
-    if (sort === 'visitors') {
-      return list.sort((a, b) => visitorCount(b) - visitorCount(a) || latestOf(b).localeCompare(latestOf(a)))
-    }
-    return list.sort((a, b) => latestOf(b).localeCompare(latestOf(a)))
-  }, [restaurants, sort])
+    if (!listOpen) return []
+    const list = [...inView]
+    if (sort === 'latest') return list.sort((a, b) => b.date.localeCompare(a.date))
+    if (sort === 'visitors') return list.sort((a, b) => b.ch.length - a.ch.length || b.date.localeCompare(a.date))
+    if (!bounds) return list
+    const cy = (bounds.sw_lat + bounds.ne_lat) / 2
+    const cx = (bounds.sw_lng + bounds.ne_lng) / 2
+    const k = Math.cos((cy * Math.PI) / 180)
+    const d = (p: Pin) => (p.lat - cy) ** 2 + ((p.lng - cx) * k) ** 2
+    return list.sort((a, b) => d(a) - d(b))
+  }, [inView, sort, bounds, listOpen])
+
+  useEffect(() => { setShown(PAGE) }, [inView, sort])
 
   useEffect(() => {
-    if (!bounds) return
-
-    const boundsKey = [bounds.sw_lat, bounds.sw_lng, bounds.ne_lat, bounds.ne_lng]
-      .map((n) => n.toFixed(3)).join(',')
-    const cacheKey = `${boundsKey}|${channelId || ''}|${region}|${city}`
-
-    const cached = restaurantCache.current.get(cacheKey)
-    if (cached) {
-      setRestaurants(cached)
-      return
+    if (fitWhenLoaded.current && pins) {
+      fitWhenLoaded.current = false
+      setFitKey((k) => k + 1)
     }
+  }, [pins])
 
-    const params = new URLSearchParams({
-      sw_lat: String(bounds.sw_lat),
-      sw_lng: String(bounds.sw_lng),
-      ne_lat: String(bounds.ne_lat),
-      ne_lng: String(bounds.ne_lng),
-      limit: String(FETCH_LIMIT),
-    })
-    if (channelId) params.set('channel_ids', channelId)
-    if (region) params.set('region', region)
-    if (city) params.set('city', city)
-
-    const controller = new AbortController()
-    setLoading(true)
-    fetch(`${apiBase}/api/restaurants?${params}`, { signal: controller.signal })
-      .then((r) => r.json())
-      .then((data) => {
-        const list = data.restaurants || []
-        if (restaurantCache.current.size > 50) restaurantCache.current.clear()
-        restaurantCache.current.set(cacheKey, list)
-        setRestaurants(list)
-        // 주소 조건으로 열었으면 첫 결과가 온 뒤에 지도를 맞춘다(초기 bounds 이벤트가 먼저 풀어버린다)
-        if (fitOnFirstLoad.current && list.length > 0) {
-          fitOnFirstLoad.current = false
-          setFitToMarkers(true)
-        }
-      })
-      .catch((e: unknown) => {
-        if ((e as Error).name !== 'AbortError') {
-          setRestaurants([])
-          setToast('가게 목록을 불러오지 못했어요. 잠시 뒤 지도를 다시 움직여 보세요.')
-        }
-      })
-      .finally(() => setLoading(false))
-
-    return () => controller.abort()
-  }, [bounds, channelId, region, city, apiBase])
-
-  const handleBoundsChange = useCallback((b: Bounds) => {
-    setBounds(b)
-    setFitToMarkers(false)
+  // ── 방문 기록 ─────────────────────────────────────────
+  const push = useCallback((n: Nav) => {
+    window.history.pushState({ ...window.history.state, mk: n }, '')
+    setNav(n)
   }, [])
-
-  const goToState = useCallback((state: SheetState) => {
-    const offset = snapOffsets.current[state]
-    currentSnapOffset.current = offset
-    if (sheetRef.current) {
-      sheetRef.current.style.transition = 'transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1)'
-      sheetRef.current.style.transform = `translateY(${offset}px)`
-    }
-    setSheetState(state)
+  const replace = useCallback((n: Nav) => {
+    window.history.replaceState({ ...window.history.state, mk: n }, '')
+    setNav(n)
+  }, [])
+  const back = useCallback(() => {
+    if (readNav().v === 'map') setNav({ v: 'map' })
+    else window.history.back()
   }, [])
 
   useEffect(() => {
-    const el = contentRef.current
-    if (!el) return
-    const onScroll = () => {
-      el.style.touchAction = el.scrollTop > 0 ? 'pan-y' : 'pan-up'
-    }
-    el.addEventListener('scroll', onScroll, { passive: true })
-    el.style.touchAction = 'pan-up'
-    return () => el.removeEventListener('scroll', onScroll)
+    setNav(readNav())
+    const onPop = () => setNav(readNav())
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
   }, [])
 
-  useEffect(() => {
-    const sheet = sheetRef.current
-    if (!sheet) return
-
-    const recalculate = () => {
-      const vh = window.innerHeight
-      snapOffsets.current = { full: 0, half: vh * 0.9 - vh * 0.5, collapsed: vh * 0.9 - PEEK }
-      currentSnapOffset.current = snapOffsets.current.collapsed
-      sheet.style.transition = 'none'
-      sheet.style.transform = `translateY(${snapOffsets.current.collapsed}px)`
-    }
-
-    recalculate()
-    window.addEventListener('resize', recalculate)
-    return () => window.removeEventListener('resize', recalculate)
-  }, [])
-
-  const nearestSnap = useCallback((y: number): SheetState =>
-    (['full', 'half', 'collapsed'] as SheetState[])
-      .sort((a, b) => Math.abs(y - snapOffsets.current[a]) - Math.abs(y - snapOffsets.current[b]))[0]
-  , [])
-
-  // 손잡이: 끄는 만큼 시트가 따라오고, 놓으면 가까운 높이로 붙는다
-  useDrag(
-    ({ movement: [, my], last, first, memo, event }) => {
-      if (event && 'cancelable' in event && (event as Event).cancelable) {
-        try { (event as Event).preventDefault() } catch {}
-      }
-      const startOffset = first ? currentSnapOffset.current : (memo as number)
-      const newY = Math.max(0, Math.min(startOffset + my, snapOffsets.current.collapsed))
-      if (last) {
-        goToState(nearestSnap(newY))
-      } else if (sheetRef.current) {
-        sheetRef.current.style.transition = 'none'
-        sheetRef.current.style.transform = `translateY(${newY}px)`
-      }
-      return startOffset
-    },
-    { target: handleRef, axis: 'y', filterTaps: false, eventOptions: { passive: false } }
-  )
-
-  // 내용: 맨 위에서 끌면 시트가 움직이고, 스크롤된 상태에서 아래로 끌면 스크롤에 양보한다
-  useDrag(
-    ({ movement: [, my], last, first, memo, event, cancel }) => {
-      const content = contentRef.current
-      if (!content) return memo
-      if (window.matchMedia('(min-width: 1024px)').matches) return memo
-
-      if (first) return currentSnapOffset.current
-
-      const startOffset = (memo as number | undefined) ?? currentSnapOffset.current
-      if (Math.abs(my) < 5) return startOffset
-
-      if (my > 5 && content.scrollTop > 0) {
-        cancel()
-        return startOffset
-      }
-
-      if (event && 'cancelable' in event && (event as Event).cancelable) {
-        try { (event as Event).preventDefault() } catch {}
-      }
-
-      const newY = Math.max(0, Math.min(startOffset + my, snapOffsets.current.collapsed))
-      if (last) {
-        goToState(nearestSnap(newY))
-      } else if (sheetRef.current) {
-        sheetRef.current.style.transition = 'none'
-        sheetRef.current.style.transform = `translateY(${newY}px)`
-      }
-      return startOffset
-    },
-    { target: contentRef, axis: 'y', filterTaps: false, eventOptions: { passive: false } }
-  )
-
-  // 응답이 늦게 온 예전 선택이 지금 선택을 덮지 않게 마지막 요청 번호만 받는다
-  const openSeq = useRef(0)
-
-  const openRestaurant = useCallback((id: number) => {
-    const seq = ++openSeq.current
-    setFocusedRestaurantId(id)
-    const hit = restaurants.find((r) => r.id === id)
-    if (hit) {
-      setFocused(hit)
-    } else {
-      // 검색으로 고른 가게는 지금 지도 범위 밖일 수 있다
-      fetch(`${apiBase}/api/restaurants/${id}`)
+  // ── 상세 데이터: 카드가 뜰 때 미리 받아 둔다 ──────────────────
+  const loadDetail = useCallback((id: number) => {
+    let p = details.current.get(id)
+    if (!p) {
+      p = fetch(`${apiBase}/api/restaurants/${id}`)
         .then((r) => (r.ok ? r.json() : null))
-        .then((r) => {
-          if (seq !== openSeq.current) return
-          if (!r) return setToast('이 가게는 지금 볼 수 없어요.')
-          setFocused(r)
-          setRestaurants((prev) => (prev.some((p) => p.id === r.id) ? prev : [...prev, r]))
-        })
-        .catch(() => seq === openSeq.current && setToast('가게 정보를 불러오지 못했어요.'))
+        .catch(() => null)
+      details.current.set(id, p)
     }
-    contentRef.current?.scrollTo({ top: 0 })
-    goToState('full')
-  }, [restaurants, goToState, apiBase])
+    return p
+  }, [apiBase])
 
-  const closeRestaurant = useCallback(() => {
-    openSeq.current++
-    setFocusedRestaurantId(null)
-    setFocused(null)
-    goToState('half')
-  }, [goToState])
+  const previewId = nav.v === 'preview' ? nav.id : null
+  const detailId = nav.v === 'detail' ? nav.id : null
 
-  const toggleChannel = useCallback((id: string) => {
-    setChannelId((prev) => (prev === id ? null : id))
-    setFitToMarkers(true)
+  useEffect(() => { if (previewId) loadDetail(previewId) }, [previewId, loadDetail])
+
+  useEffect(() => {
+    if (!detailId) { setDetail(null); return }
+    let live = true
+    setDetail((d) => (d?.id === detailId ? d : null))
+    loadDetail(detailId).then((r) => {
+      if (!live) return
+      if (r) setDetail(r)
+      else {
+        details.current.delete(detailId)
+        setToast('가게 정보를 불러오지 못했어요.')
+      }
+    })
+    return () => { live = false }
+  }, [detailId, loadDetail])
+
+  // ── 동작 ─────────────────────────────────────────────
+  const openDetail = useCallback((id: number) => {
+    if (readNav().v === 'detail') replace({ v: 'detail', id })
+    else push({ v: 'detail', id })
+  }, [push, replace])
+
+  const selectPin = useCallback((id: number) => {
+    if (desktop) return openDetail(id)
+    const cur = readNav()
+    if (cur.v === 'preview') replace({ v: 'preview', id })
+    else push({ v: 'preview', id })
+  }, [desktop, openDetail, push, replace])
+
+  const onMapClick = useCallback(() => {
+    if (readNav().v === 'preview') window.history.back()
   }, [])
 
-  const pickChannel = useCallback((id: string) => {
+  const searchRestaurant = useCallback((id: number) => {
+    setFocus({ id, seq: Date.now() })
+    if (desktop || readNav().v === 'list') openDetail(id)
+    else selectPin(id)
+  }, [desktop, openDetail, selectPin])
+
+  const pickChannel = useCallback((id: string | null) => {
     setChannelId(id)
-    setFitToMarkers(true)
-    goToState('half')
-  }, [goToState])
+    setFitKey((k) => k + 1)
+  }, [])
 
   const pickRegion = useCallback((name: string) => {
     setRegion(name)
     setCity('')
-    setFitToMarkers(true)
-    goToState('half')
-  }, [goToState])
+    setFitKey((k) => k + 1)
+  }, [])
 
-  // 목록·가게 페이지에서 넘어온 조건(?yt=쯔양&region=서울, ?place=12)으로 지도를 연다
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && readNav().v !== 'map') window.history.back() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // 목록·가게 페이지에서 넘어온 조건(?yt=쯔양&region=서울, ?place=12)으로 연다
   useEffect(() => {
     const q = new URLSearchParams(window.location.search)
     const yt = q.get('yt')
@@ -296,168 +248,241 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     if (ch) setChannelId(ch.id)
     if (reg) setRegion(reg)
     if (reg && q.get('city')) setCity(q.get('city')!)
-    if (ch || reg) {
-      fitOnFirstLoad.current = true
-      goToState('half')
+    if (ch || reg) fitWhenLoaded.current = true
+    if (Number.isInteger(place) && place > 0 && readNav().v === 'map') {
+      push({ v: 'detail', id: place })
+      setFocus({ id: place, seq: Date.now() })
     }
-    if (Number.isInteger(place) && place > 0) openRestaurant(place)
     // 첫 진입 한 번만 읽는다
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 목록 끝에 닿으면 더 그린다
+  const sentinel = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = sentinel.current
+    if (!el || !listOpen) return
+    const io = new IntersectionObserver((es) => {
+      if (es.some((e) => e.isIntersecting)) setShown((n) => n + PAGE)
+    }, { root: listRef.current, rootMargin: '400px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [listOpen, sorted.length])
+
   const handleToastClose = useCallback(() => setToast(''), [])
 
-  const activeChannel = channels.find((c) => c.id === channelId)
   const place = [region, city].filter(Boolean).join(' ')
+  const previewPin = previewId ? pinById.get(previewId) : undefined
+  const detailPin = detailId ? pinById.get(detailId) : undefined
+  const count = pins ? inView.length : null
+
+  const chips = (floating: boolean) => (
+    <nav aria-label="유튜버 고르기" className="no-scrollbar flex gap-2 overflow-x-auto px-4 py-1 lg:px-5">
+      <button
+        type="button"
+        onClick={() => pickChannel(null)}
+        aria-pressed={!channelId}
+        className={`flex h-9 flex-shrink-0 items-center rounded-full px-3.5 text-meta font-bold ${
+          !channelId ? 'bg-ink text-paper' : 'bg-paper text-ink'
+        } ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : 'border border-line'}`}
+      >
+        전체
+      </button>
+      {channels.map((ch) => {
+        const on = ch.id === channelId
+        return (
+          <button
+            key={ch.id}
+            type="button"
+            onClick={() => pickChannel(on ? null : ch.id)}
+            aria-pressed={on}
+            className={`flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full pl-1 pr-3 text-meta font-bold ${
+              on ? 'bg-ink text-paper' : 'bg-paper text-ink'
+            } ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : 'border border-line'}`}
+          >
+            <ChannelFace face={{ id: ch.id, name: ch.name, thumbnail: ch.thumbnail_url }} size={28} />
+            {ch.name}
+          </button>
+        )
+      })}
+      {place && (
+        <button
+          type="button"
+          onClick={() => { setRegion(''); setCity('') }}
+          className={`flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full bg-ink px-3.5 text-meta font-bold text-paper ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : ''}`}
+        >
+          {place}
+          <XIcon />
+          <span className="sr-only">지역 조건 풀기</span>
+        </button>
+      )}
+    </nav>
+  )
 
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-paper">
-      {/* 지도 위 검색(모바일) */}
-      <div className="fixed inset-x-0 top-0 z-20 px-4 pt-[calc(12px+env(safe-area-inset-top))] lg:hidden">
-        <SearchBar apiBase={apiBase} onSelectRestaurant={openRestaurant} onSelectChannel={pickChannel} onSelectRegion={pickRegion} />
+      {/* 지도 위: 검색 + 유튜버 칩(모바일) */}
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-20 pt-[calc(10px+env(safe-area-inset-top))] lg:hidden">
+        <div className="pointer-events-auto px-4">
+          <SearchBar apiBase={apiBase} onSelectRestaurant={searchRestaurant} onSelectChannel={pickChannel} onSelectRegion={pickRegion} />
+        </div>
+        <div className="pointer-events-auto mt-2">{chips(true)}</div>
       </div>
 
-      {/* 목록 패널: 모바일은 바텀시트, 데스크톱은 왼쪽 기둥 */}
-      <div
-        ref={sheetRef}
-        data-testid="bottom-sheet"
-        className="fixed inset-x-0 bottom-0 z-30 flex h-[90vh] flex-col rounded-t-sheet bg-paper shadow-[0_-6px_24px_rgba(0,0,0,0.12)]
-          lg:static lg:z-auto lg:h-full lg:w-[400px] lg:flex-shrink-0 lg:rounded-none lg:border-r lg:border-line lg:shadow-none lg:![transform:none]"
-        style={{ transform: `translateY(calc(90vh - ${PEEK}px))` }}
+      {/* 목록: 모바일은 전체 화면, 데스크톱은 왼쪽 기둥 */}
+      <section
+        data-testid="list-view"
+        aria-label="가게 목록"
+        className={`${nav.v === 'list' ? 'flex' : 'hidden'} fixed inset-0 z-30 flex-col bg-paper
+          lg:static lg:z-auto lg:flex lg:h-full lg:w-[400px] lg:flex-shrink-0 lg:border-r lg:border-line`}
       >
-        <div ref={handleRef} data-testid="sheet-handle" className="flex cursor-grab touch-none justify-center pb-2 pt-3 lg:hidden">
-          <div className="h-1 w-10 rounded-full bg-line" />
-        </div>
-
         <header className="hidden px-5 pb-3 pt-5 lg:block">
           <p className="font-caption text-title text-ink">먹맵</p>
           <p className="mt-0.5 text-meta text-sub">유튜버가 실제로 가서 먹은 집</p>
           <div className="mt-4">
-            <SearchBar apiBase={apiBase} onSelectRestaurant={openRestaurant} onSelectChannel={pickChannel} onSelectRegion={pickRegion} />
+            <SearchBar apiBase={apiBase} onSelectRestaurant={searchRestaurant} onSelectChannel={pickChannel} onSelectRegion={pickRegion} />
           </div>
         </header>
 
-        <div
-          ref={contentRef}
-          data-testid="sheet-content"
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
-        >
-          {focused ? (
-            <div className="sm:px-5 sm:pt-2">
-              <DetailPanel
-                restaurant={focused}
-                onClose={closeRestaurant}
-                closeLabel="목록으로"
-                channelHref={pageLinks ? (slug) => `/youtuber/${encodeURIComponent(slug)}` : undefined}
-              />
-              {pageLinks && (
-                <p className="px-4 pb-6 sm:px-0">
-                  <a href={`/restaurant/${focused.id}`} className="inline-flex min-h-[44px] items-center text-meta text-sub underline underline-offset-2">
-                    이 가게만 따로 보기
-                  </a>
-                </p>
-              )}
-            </div>
-          ) : (
-            <>
-              <nav aria-label="유튜버 고르기" className="no-scrollbar flex gap-3 overflow-x-auto px-4 pb-3 pt-1 lg:px-5">
-                <button
-                  type="button"
-                  onClick={() => setChannelId(null)}
-                  aria-pressed={!channelId}
-                  className="flex w-[60px] flex-shrink-0 flex-col items-center gap-1.5"
-                >
-                  <span className={`rounded-full p-[3px] ${!channelId ? 'ring-2 ring-ink' : ''}`}>
-                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-well text-meta font-bold text-ink">전체</span>
-                  </span>
-                  <span className={`w-full truncate text-center text-meta ${!channelId ? 'font-bold text-ink' : 'text-sub'}`}>모든 유튜버</span>
-                </button>
-                {channels.map((ch) => {
-                  const on = ch.id === channelId
-                  return (
-                    <button
-                      key={ch.id}
-                      type="button"
-                      onClick={() => toggleChannel(ch.id)}
-                      aria-pressed={on}
-                      className="flex w-[60px] flex-shrink-0 flex-col items-center gap-1.5"
-                    >
-                      <span className={`rounded-full p-[3px] ${on ? 'ring-2 ring-ink' : ''}`}>
-                        <ChannelFace face={{ id: ch.id, name: ch.name, thumbnail: ch.thumbnail_url }} size={48} />
-                      </span>
-                      <span className={`w-full truncate text-center text-meta ${on ? 'font-bold text-ink' : 'text-sub'}`}>{ch.name}</span>
-                    </button>
-                  )
-                })}
-              </nav>
-
-              <div className="flex min-h-[44px] items-center justify-between border-b border-line px-4 lg:px-5">
-                <p className="text-body text-ink" aria-live="polite">
-                  {loading ? '찾는 중' : sorted.length >= FETCH_LIMIT
-                    ? <>지금 지도에서 <b>{FETCH_LIMIT}곳</b>까지 보여줘요</>
-                    : <>지금 지도에서 <b>{sorted.length}곳</b></>}
-                </p>
-                <div className="flex items-center">
-                  {place && (
-                    <ClearChip label={place} onClear={() => { setRegion(''); setCity('') }} />
-                  )}
-                  {activeChannel && (
-                    <ClearChip label={activeChannel.name} onClear={() => setChannelId(null)} />
-                  )}
-                  <label className="relative inline-flex min-h-[44px] items-center px-2 text-meta font-bold text-ink">
-                    <span className="sr-only">정렬</span>
-                    <select
-                      value={sort}
-                      onChange={(e) => setSort(e.target.value as typeof sort)}
-                      className="appearance-none bg-transparent pr-4 font-bold text-ink outline-none"
-                    >
-                      <option value="latest">최근 영상순</option>
-                      <option value="visitors">여러 명 간 순</option>
-                    </select>
-                    <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true" className="pointer-events-none absolute right-2"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
-                  </label>
-                </div>
-              </div>
-
-              <div className="px-4 lg:px-5">
-                {sorted.length === 0 && !loading && (
-                  <div className="py-10 text-center">
-                    <p className="text-body text-ink">이 지도 안에는 아직 가게가 없어요.</p>
-                    <p className="mt-1 text-meta text-sub">지도를 줄이거나 다른 지역으로 옮겨 보세요.</p>
-                  </div>
-                )}
-                {sorted.slice(0, LIST_LIMIT).map((r) => (
-                  <RestaurantCard
-                    key={r.id}
-                    restaurant={r}
-                    href={pageLinks ? `/restaurant/${r.id}` : undefined}
-                    onClick={() => openRestaurant(r.id)}
-                    selected={r.id === focusedRestaurantId}
-                  />
-                ))}
-                {sorted.length > LIST_LIMIT && (
-                  <p className="py-4 text-center text-meta text-sub">
-                    {sorted.length - LIST_LIMIT}곳이 더 있어요. 지도를 키우면 좁혀집니다.
-                  </p>
-                )}
-              </div>
-
-              <div className="px-4 pb-[calc(32px+env(safe-area-inset-bottom))] pt-8 lg:px-5">{children}</div>
-            </>
-          )}
+        <div className="border-b border-line bg-paper pt-[env(safe-area-inset-top)] lg:pt-0">
+          <div className="flex h-14 items-center justify-between px-4 lg:px-5">
+            <h2 className="text-lead font-bold text-ink" aria-live="polite">
+              이 지도 안 <span data-testid="list-count">{count ?? 0}</span>곳
+            </h2>
+            <label className="relative inline-flex min-h-[44px] items-center pl-2 text-meta font-bold text-ink">
+              <span className="sr-only">정렬</span>
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as Sort)}
+                className="appearance-none bg-transparent pr-5 font-bold text-ink outline-none"
+              >
+                <option value="near">가까운 순</option>
+                <option value="latest">최근 영상순</option>
+                <option value="visitors">여러 명 간 순</option>
+              </select>
+              <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true" className="pointer-events-none absolute right-0"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+            </label>
+          </div>
+          <div className="pb-3">{chips(false)}</div>
         </div>
-      </div>
+
+        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <div className="px-4 lg:px-5">
+            {pins && sorted.length === 0 && (
+              <div className="py-10 text-center">
+                <p className="text-body text-ink">이 지도 안에는 아직 가게가 없어요.</p>
+                <p className="mt-1 text-meta text-sub">지도를 줄이거나 다른 지역으로 옮겨 보세요.</p>
+              </div>
+            )}
+            {sorted.slice(0, shown).map((p) => (
+              <PinRow key={p.id} pin={p} faces={faces} onOpen={openDetail} selected={p.id === detailId} />
+            ))}
+            <div ref={sentinel} />
+          </div>
+          <div className="px-4 pb-[calc(96px+env(safe-area-inset-bottom))] pt-8 lg:px-5 lg:pb-8">{children}</div>
+        </div>
+
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center pb-[calc(16px+env(safe-area-inset-bottom))] lg:hidden">
+          <button
+            type="button"
+            data-testid="map-pill"
+            onClick={back}
+            className="pointer-events-auto flex h-12 items-center gap-2 rounded-full bg-ink px-5 text-body font-bold text-paper shadow-[0_4px_16px_rgba(27,29,31,0.16)]"
+          >
+            <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true"><path d="M2 4.5 6.5 3l5 1.5L16 3v10.5L11.5 15l-5-1.5L2 15z M6.5 3v10.5 M11.5 4.5V15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
+            지도 보기
+          </button>
+        </div>
+      </section>
 
       <main className="relative isolate z-0 flex-1 overflow-hidden">
         <NaverMap
-          onBoundsChange={handleBoundsChange}
-          restaurants={restaurants}
-          onMarkerClick={openRestaurant}
-          fitToMarkers={fitToMarkers}
-          focusedRestaurantId={focusedRestaurantId}
-          onFitComplete={() => setFitToMarkers(false)}
+          pins={filtered}
+          faces={faces}
+          selectedId={previewId ?? detailId}
+          onPinClick={selectPin}
+          onMapClick={onMapClick}
+          onBoundsChange={setBounds}
+          fitKey={fitKey}
+          focus={focus}
         />
+
+        {/* 지도 아래: 고른 가게 카드, 아니면 목록 보기 */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center px-4 pb-[calc(16px+env(safe-area-inset-bottom))] lg:hidden">
+          {previewPin ? (
+            <div className="pointer-events-auto w-full">
+              <PreviewCard
+                key={previewPin.id}
+                pin={previewPin}
+                faces={faces}
+                onOpen={() => push({ v: 'detail', id: previewPin.id })}
+                onClose={back}
+              />
+            </div>
+          ) : (
+            <button
+              type="button"
+              data-testid="list-pill"
+              onClick={() => push({ v: 'list' })}
+              className="pointer-events-auto flex h-12 items-center gap-2 rounded-full bg-ink px-5 text-body font-bold text-paper shadow-[0_4px_16px_rgba(27,29,31,0.16)]"
+            >
+              <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true"><path d="M3 4.5h12M3 9h12M3 13.5h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+              목록 보기
+              {count !== null && <span data-testid="pill-count" className="font-normal opacity-80">{count}곳</span>}
+            </button>
+          )}
+        </div>
       </main>
+
+      {/* 상세: 모바일은 전체 화면, 데스크톱은 왼쪽 기둥을 덮는다 */}
+      {detailId && (
+        <section
+          data-testid="detail-view"
+          aria-label="가게 정보"
+          className="fixed inset-0 z-40 flex flex-col bg-paper lg:right-auto lg:w-[400px] lg:border-r lg:border-line"
+        >
+          <header className="flex-shrink-0 border-b border-line bg-paper pt-[env(safe-area-inset-top)]">
+            <div className="flex h-14 items-center gap-1 px-2">
+              <button
+                type="button"
+                data-testid="detail-back"
+                onClick={back}
+                aria-label="뒤로"
+                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-ink"
+              >
+                <BackIcon />
+              </button>
+              <p className="truncate text-lead font-bold text-ink">{detail?.name || detailPin?.name || ''}</p>
+            </div>
+          </header>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain sm:px-5">
+            {detail ? (
+              <>
+                <DetailPanel
+                  restaurant={detail}
+                  channelHref={pageLinks ? (slug) => `/youtuber/${encodeURIComponent(slug)}` : undefined}
+                />
+                {pageLinks && (
+                  <p className="px-4 pb-8 sm:px-0">
+                    <a href={`/restaurant/${detail.id}`} className="inline-flex min-h-[44px] items-center text-meta text-sub underline underline-offset-2">
+                      이 가게만 따로 보기
+                    </a>
+                  </p>
+                )}
+              </>
+            ) : (
+              <div aria-busy="true" className="px-4 pt-3 sm:px-0">
+                <div className="h-7 w-2/3 rounded bg-well" />
+                <div className="mt-2 h-4 w-1/2 rounded bg-well" />
+                <div className="mt-4 aspect-video overflow-hidden bg-well sm:rounded-card">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- 토스 앱과 같이 쓰는 컴포넌트 */}
+                  {detailPin?.vid && <img src={`https://i.ytimg.com/vi/${detailPin.vid}/hqdefault.jpg`} alt="" className="h-full w-full object-cover" />}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {toast && <Toast message={toast} onClose={handleToastClose} />}
     </div>

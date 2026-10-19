@@ -73,7 +73,10 @@ export async function GET(
     videos.sort((a: { published_at: string | null }, b: { published_at: string | null }) =>
       (b.published_at || '').localeCompare(a.published_at || ''))
     const { videos: _rawVideos, ...rest } = restaurant
-    return NextResponse.json({ ...rest, videos })
+    return NextResponse.json(
+      { ...rest, videos },
+      { headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400' } }
+    )
   } catch {
     return NextResponse.json({ error: 'Restaurant not found' }, { status: 404 })
   }

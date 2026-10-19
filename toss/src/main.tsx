@@ -24,6 +24,18 @@ document.addEventListener('click', async (e) => {
   }
 }, true);
 
+// 토스 뒤로가기: 지도 위 카드·목록·상세가 열려 있으면 한 단계 닫고, 지도뿐이면 앱을 닫는다
+import('@apps-in-toss/web-framework').then(({ graniteEvent, closeView }) => {
+  graniteEvent.addEventListener('backEvent', {
+    onEvent: () => {
+      const mk = window.history.state?.mk;
+      if (mk && mk.v !== 'map') window.history.back();
+      else closeView();
+    },
+    onError: (e) => report('back-event-fail', String(e)),
+  });
+}).catch((e) => report('back-event-fail', String(e)));
+
 function App() {
   const [channels, setChannels] = useState<ChannelRow[] | null>(null);
 

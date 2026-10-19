@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: './tests/e2e',
   use: {
-    baseURL: 'http://localhost:4000',
+    baseURL: 'http://localhost:3000',
   },
   projects: [
     {
@@ -16,8 +16,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev -- --port 4000',
-    url: 'http://localhost:4000',
+    command: 'npm run dev -- --port 3000',
+    url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
   },
 })
