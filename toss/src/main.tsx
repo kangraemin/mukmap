@@ -1,3 +1,4 @@
+import { report } from './debug';
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import HomeExplorer from '@/components/HomeExplorer';
@@ -29,8 +30,8 @@ function App() {
   useEffect(() => {
     fetch(`${API}/api/channels`)
       .then((r) => r.json())
-      .then((d) => setChannels(d.channels || []))
-      .catch(() => setChannels([]));
+      .then((d) => { report('channels', d.channels?.length); setChannels(d.channels || []); })
+      .catch((e) => { report('channels-fail', String(e)); setChannels([]); });
   }, []);
 
   if (!channels) return <div className="h-[100dvh] bg-paper" />;

@@ -9,7 +9,7 @@ export function middleware(request: NextRequest) {
 
   const headers = {
     'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
@@ -22,5 +22,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/api/restaurants/:path*', '/api/channels', '/api/search'],
+  matcher: ['/api/restaurants/:path*', '/api/channels', '/api/search', '/api/client-log'],
 }
