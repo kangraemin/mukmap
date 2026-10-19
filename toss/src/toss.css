@@ -2,3 +2,13 @@
 :root {
   --font-caption: 'Black Han Sans';
 }
+
+/* 토스 웹뷰에서 화면 전체가 옆으로 밀리거나 끌려 다니지 않게 한 화면에 고정한다 */
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}

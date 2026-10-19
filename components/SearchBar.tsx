@@ -121,7 +121,7 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
           onBlur={() => setTimeout(() => setOpen(false), 150)}
           placeholder="가게, 메뉴, 유튜버, 지역"
           aria-label="검색"
-          className="min-w-0 flex-1 bg-transparent text-body text-ink placeholder:text-sub focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+          className="min-w-0 flex-1 bg-transparent text-[16px] leading-[22px] text-ink placeholder:text-sub focus:outline-none [&::-webkit-search-cancel-button]:hidden"
         />
         {query && (
           <button
