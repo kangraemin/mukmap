@@ -189,10 +189,12 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
     })
     if (selected) next.set(`p${selected.id}`, { pins: [selected], selected: true })
 
+    // 유튜버 사진이 핀보다 늦게 오면(토스는 채널을 따로 받는다) 이미 그린 핀도 다시 그려야 한다
+    const facesKey = Object.values(faces).filter((f) => f.thumbnail).length
     const current = markersRef.current
     current.forEach((m, key) => {
       const want = next.get(key)
-      if (!want || m.sig !== `${want.selected}`) {
+      if (!want || m.sig !== `${want.selected}:${facesKey}`) {
         naver.maps.Event.removeListener(m.listener)
         m.marker.setMap(null)
         current.delete(key)
@@ -231,7 +233,7 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
           flyToFit(map, lats, lngs, 80)
         })
       }
-      current.set(key, { marker, listener, sig: `${want.selected}` })
+      current.set(key, { marker, listener, sig: `${want.selected}:${facesKey}` })
     })
   }, [pins, faces, selectedId, idleTick])
 

@@ -78,3 +78,34 @@ test('토스: 첫 화면·검색·목록·상세에서 옆으로 밀리지 않�
   await page.waitForTimeout(600)
   await noSideShift(page)
 })
+
+test('토스: 유튜버 목록이 늦게 와도 지도 핀에 얼굴이 그려진다', async ({ page }) => {
+  // 실제 사고: 토스는 채널을 따로 받아서 핀이 먼저 그려지면 확대하기 전까지 얼굴 없이 회색 원만 보였다
+  // 지도 키에 localhost:5174가 없어 지도가 뜨지 않으므로, 키에 등록된 localhost:3000 주소로 토스 번들을 받아 띄운다
+  await page.route('http://localhost:3000/**', async (route) => {
+    try {
+      const res = await route.fetch({ url: route.request().url().replace('localhost:3000', 'localhost:5174') })
+      await route.fulfill({ response: res })
+    } catch {
+      // 테스트가 먼저 끝나 페이지가 닫힌 경우
+    }
+  })
+  await page.route('https://mukmap.kr/api/**', async (route) => {
+    try {
+      if (route.request().url().includes('/api/channels')) await new Promise((r) => setTimeout(r, 5_000))
+      const res = await route.fetch()
+      await route.fulfill({ response: res, headers: { ...res.headers(), 'access-control-allow-origin': '*' } })
+    } catch {
+      // 테스트가 먼저 끝나 페이지가 닫힌 경우
+    }
+  })
+  await page.goto('http://localhost:3000/')
+  await expect(page.getByTestId('intro')).toHaveCount(0, { timeout: 15_000 })
+  const clusters = page.locator('[data-cluster]')
+  await expect(clusters.first()).toBeVisible({ timeout: 10_000 })
+  await expect.poll(async () => {
+    const n = await clusters.count()
+    const withFace = await page.locator('[data-cluster] img').count()
+    return n > 0 && withFace === n
+  }, { timeout: 15_000 }).toBe(true)
+})
