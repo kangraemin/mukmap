@@ -29,6 +29,26 @@ export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫�
 
   return (
     <article className="bg-paper pb-[calc(24px+env(safe-area-inset-bottom))]">
+      <div className="flex items-start gap-2 px-4 pb-4 pt-3 sm:px-0">
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={closeLabel}
+            className="-ml-2 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-ink"
+          >
+            <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true">
+              <path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
+        <div className="min-w-0 pt-1.5">
+          <Title className="text-title font-bold text-ink">{r.name}</Title>
+          <p className="mt-1 text-body text-sub">{[r.category, areaOf(r)].filter(Boolean).join(' ')}</p>
+          {r.address && <p className="mt-0.5 text-meta text-sub">{r.address}</p>}
+        </div>
+      </div>
+
       {lead && (
         <div className="relative aspect-video overflow-hidden bg-well sm:rounded-card">
           <img src={thumbOf(lead)} alt={`${r.name} 영상 장면`} className="h-full w-full object-cover" />
@@ -37,30 +57,11 @@ export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫�
               <CaptionQuote text={lead.quote} size="lg" className="line-clamp-3" />
             </div>
           )}
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label={closeLabel}
-              className="absolute left-3 top-3 flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white"
-            >
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          )}
         </div>
       )}
 
-      <div className="px-4 pt-5 sm:px-0">
-        <Title className="text-title font-bold text-ink">{r.name}</Title>
-        <p className="mt-1 text-body text-sub">
-          {r.category}
-          <span aria-hidden="true">{'  '}</span>
-          {r.address || areaOf(r)}
-        </p>
-
-        <div className="mt-4 flex gap-2">
+      <div className="px-4 pt-4 sm:px-0">
+        <div className="flex gap-2">
           {lead && (
             <a
               href={sceneUrl(lead)}
@@ -69,7 +70,7 @@ export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫�
               className="flex h-12 flex-1 items-center justify-center gap-1.5 rounded-card bg-play text-body font-bold text-white"
             >
               <PlayGlyph />
-              영상에서 보기{lead.timestamp_seconds ? ` ${clock(lead.timestamp_seconds)}` : ''}
+              {lead.timestamp_seconds ? `영상 ${clock(lead.timestamp_seconds)}부터 보기` : '영상 보기'}
             </a>
           )}
           <a
@@ -94,13 +95,13 @@ export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫�
                 <div className="flex items-center gap-2 text-body">
                   <ChannelFace face={face} size={28} />
                   {name}
-                  <span className="ml-auto text-meta text-sub">{dateLabel(v.published_at)}</span>
+                  {v.published_at && <span className="ml-auto text-meta text-sub">영상 게시 {dateLabel(v.published_at)}</span>}
                 </div>
                 {v.quote && v !== lead && <CaptionQuote text={v.quote} size="sm" className="mt-3" />}
                 <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-body">
                   {v.menu && (<><dt className="text-sub">먹은 것</dt><dd className="text-ink">{v.menu}</dd></>)}
-                  {v.price && (<><dt className="text-sub">가격</dt><dd className="text-ink">{v.price}</dd></>)}
-                  {(v.why || v.summary) && (<><dt className="text-sub">한마디</dt><dd className="text-ink">{v.why || v.summary}</dd></>)}
+                  {v.price && (<><dt className="text-sub">영상 속 가격</dt><dd className="text-ink">{v.price}</dd></>)}
+                  {(v.why || v.summary) && (<><dt className="text-sub">방문 요약</dt><dd className="text-ink">{v.why || v.summary}</dd></>)}
                 </dl>
                 <a
                   href={sceneUrl(v)}

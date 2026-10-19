@@ -46,7 +46,7 @@ export default async function CityPage({ params }: Props) {
       answer={answer}
       restaurants={restaurants}
       dateModified={facts.latest}
-      mapHref={mapHrefOf({ region })}
+      mapHref={mapHrefOf({ region, city })}
       limit={120}
       groups={[{
         title: `유튜버별 ${region} 맛집`,

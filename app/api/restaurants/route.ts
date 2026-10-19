@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
 
   const channel_ids = params.get('channel_ids')?.split(',').filter(Boolean)
   const region = params.get('region')
+  const city = params.get('city')
   const category = params.get('category')?.split(',').filter(Boolean)
   const limit = Math.min(Number(params.get('limit') || 200), 200)
   const include_hidden = params.get('include_hidden') === 'true'
@@ -64,6 +65,9 @@ export async function GET(request: NextRequest) {
 
     if (region) {
       query = query.eq('region', region)
+    }
+    if (city) {
+      query = query.eq('city', city)
     }
     // 유튜버 조건은 DB에서 먼저 건다. 200개를 받은 뒤 거르면 그 유튜버 가게가 잘려 0곳이 된다
     if (channel_ids && channel_ids.length > 0) {

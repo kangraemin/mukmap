@@ -17,10 +17,11 @@ export function pathOf(...parts: string[]) {
 }
 
 /** 같은 조건으로 홈 지도를 여는 주소. HomeExplorer가 yt·region·place를 읽는다 */
-export function mapHrefOf(q: { yt?: string; region?: string | null; place?: string | number }) {
+export function mapHrefOf(q: { yt?: string; region?: string | null; city?: string | null; place?: string | number }) {
   const sp = new URLSearchParams()
   if (q.yt) sp.set('yt', q.yt)
   if (q.region) sp.set('region', q.region)
+  if (q.city) sp.set('city', q.city)
   if (q.place != null) sp.set('place', String(q.place))
   const qs = sp.toString()
   return qs ? `/?${qs}` : '/'

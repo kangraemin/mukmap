@@ -7,42 +7,60 @@ import type { Channel, RestaurantWithVideos } from '@/lib/types'
 
 export const DATA_TAG = 'mukmap-data'
 
-const VIDEO_FIELDS = `id, video_id, channel_id, restaurant_id, title, thumbnail_url, rating, summary, is_ad,
-  timestamp_seconds, published_at, created_at, view_count, menu, price, quote, why`
+// Next 데이터 캐시는 항목당 2MB까지다. 넘으면 캐시가 안 돼 요청마다 DB 전체를 다시 읽는다.
+// 그래서 캐시에는 화면에 쓰는 칸만 담고, 채널 이름·얼굴은 캐시 밖에서 붙인다.
+const RESTAURANT_FIELDS = 'id, name, address, lat, lng, category, region, city, naver_place_id, created_at'
+const VIDEO_FIELDS = `id, video_id, channel_id, title, rating, summary, is_ad,
+  timestamp_seconds, published_at, menu, price, quote, why`
 
-async function fetchAll(): Promise<{ channels: Channel[]; restaurants: RestaurantWithVideos[] }> {
+type RawVideo = { channel_id: string; published_at: string | null } & Record<string, unknown>
+type RawRestaurant = Record<string, unknown> & { videos: RawVideo[] }
+
+async function fetchAll(): Promise<{ channels: Channel[]; restaurants: RawRestaurant[] }> {
   // 채널 조회가 실패한 채로 캐시하면 가게가 전부 걸러져 1시간 동안 빈 사이트가 된다
   const { data: channels, error: chError } = await supabase.from('channels').select('*')
   if (chError) throw chError
-  const byId = new Map((channels || []).map((c) => [c.id, c as Channel]))
+  const ids = new Set((channels || []).map((c) => c.id))
 
-  const rows: RestaurantWithVideos[] = []
+  const rows: RawRestaurant[] = []
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabase
       .from('restaurants')
-      .select(`*, videos (${VIDEO_FIELDS})`)
+      .select(`${RESTAURANT_FIELDS}, videos (${VIDEO_FIELDS})`)
       .eq('is_visible', true)
       .not('lat', 'is', null)
       .order('id')
       .range(from, from + 999)
     if (error) throw error
-    for (const r of data || []) {
+    for (const r of (data || []) as unknown as RawRestaurant[]) {
       const videos = (r.videos || [])
-        .filter((v: { channel_id: string }) => byId.has(v.channel_id))
-        .map((v: { channel_id: string }) => {
-          const ch = byId.get(v.channel_id)!
-          return { ...v, channel_name: ch.name, channel_thumbnail: ch.thumbnail_url, channel_slug: ch.slug }
-        })
-        .sort((a: { published_at: string | null }, b: { published_at: string | null }) =>
-          (b.published_at || '').localeCompare(a.published_at || ''))
+        .filter((v) => ids.has(v.channel_id))
+        .sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''))
       if (videos.length) rows.push({ ...r, videos })
     }
     if (!data || data.length < 1000) break
   }
-  return { channels: Array.from(byId.values()), restaurants: rows }
+  return { channels: (channels || []) as Channel[], restaurants: rows }
 }
 
-export const getAll = unstable_cache(fetchAll, ['mukmap-all-v1'], { revalidate: 3600, tags: [DATA_TAG] })
+const getCompact = unstable_cache(fetchAll, ['mukmap-all-v2'], { revalidate: 3600, tags: [DATA_TAG] })
+
+export async function getAll(): Promise<{ channels: Channel[]; restaurants: RestaurantWithVideos[] }> {
+  const { channels, restaurants } = await getCompact()
+  const byId = new Map(channels.map((c) => [c.id, c]))
+  return {
+    channels,
+    restaurants: restaurants.map((r) => ({
+      ...r,
+      needs_review: false,
+      is_visible: true,
+      videos: r.videos.map((v) => {
+        const ch = byId.get(v.channel_id)!
+        return { ...v, thumbnail_url: null, channel_name: ch.name, channel_thumbnail: ch.thumbnail_url, channel_slug: ch.slug }
+      }),
+    })) as unknown as RestaurantWithVideos[],
+  }
+}
 
 /** URL 조각을 사람이 읽는 값으로. Next 14는 한글 params를 퍼센트 인코딩된 채로 넘길 때가 있다. */
 export function decodeParam(s: string): string {

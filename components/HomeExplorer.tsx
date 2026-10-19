@@ -43,6 +43,16 @@ interface HomeExplorerProps {
   pageLinks?: boolean
 }
 
+function ClearChip({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <button type="button" onClick={onClear} className="inline-flex min-h-[44px] items-center gap-1 px-1.5 text-meta text-sub">
+      {label}
+      <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+      <span className="sr-only">조건 풀기</span>
+    </button>
+  )
+}
+
 export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true }: HomeExplorerProps) {
   const [focusedRestaurantId, setFocusedRestaurantId] = useState<number | null>(null)
   const [focused, setFocused] = useState<RestaurantWithVideos | null>(null)
@@ -50,6 +60,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   const [restaurants, setRestaurants] = useState<RestaurantWithVideos[]>([])
   const [channelId, setChannelId] = useState<string | null>(null)
   const [region, setRegion] = useState('')
+  const [city, setCity] = useState('')
   const [toast, setToast] = useState('')
   const [fitToMarkers, setFitToMarkers] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -80,7 +91,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
 
     const boundsKey = [bounds.sw_lat, bounds.sw_lng, bounds.ne_lat, bounds.ne_lng]
       .map((n) => n.toFixed(3)).join(',')
-    const cacheKey = `${boundsKey}|${channelId || ''}|${region}`
+    const cacheKey = `${boundsKey}|${channelId || ''}|${region}|${city}`
 
     const cached = restaurantCache.current.get(cacheKey)
     if (cached) {
@@ -97,6 +108,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     })
     if (channelId) params.set('channel_ids', channelId)
     if (region) params.set('region', region)
+    if (city) params.set('city', city)
 
     const controller = new AbortController()
     setLoading(true)
@@ -122,7 +134,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       .finally(() => setLoading(false))
 
     return () => controller.abort()
-  }, [bounds, channelId, region, apiBase])
+  }, [bounds, channelId, region, city, apiBase])
 
   const handleBoundsChange = useCallback((b: Bounds) => {
     setBounds(b)
@@ -269,6 +281,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
 
   const pickRegion = useCallback((name: string) => {
     setRegion(name)
+    setCity('')
     setFitToMarkers(true)
     goToState('half')
   }, [goToState])
@@ -282,6 +295,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     const place = Number(q.get('place'))
     if (ch) setChannelId(ch.id)
     if (reg) setRegion(reg)
+    if (reg && q.get('city')) setCity(q.get('city')!)
     if (ch || reg) {
       fitOnFirstLoad.current = true
       goToState('half')
@@ -294,7 +308,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   const handleToastClose = useCallback(() => setToast(''), [])
 
   const activeChannel = channels.find((c) => c.id === channelId)
-  const filterLabel = [region, activeChannel?.name].filter(Boolean).join(' · ')
+  const place = [region, city].filter(Boolean).join(' ')
 
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-paper">
@@ -347,6 +361,17 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
           ) : (
             <>
               <nav aria-label="유튜버 고르기" className="no-scrollbar flex gap-3 overflow-x-auto px-4 pb-3 pt-1 lg:px-5">
+                <button
+                  type="button"
+                  onClick={() => setChannelId(null)}
+                  aria-pressed={!channelId}
+                  className="flex w-[60px] flex-shrink-0 flex-col items-center gap-1.5"
+                >
+                  <span className={`rounded-full p-[3px] ${!channelId ? 'ring-2 ring-ink' : ''}`}>
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-well text-meta font-bold text-ink">전체</span>
+                  </span>
+                  <span className={`w-full truncate text-center text-meta ${!channelId ? 'font-bold text-ink' : 'text-sub'}`}>모든 유튜버</span>
+                </button>
                 {channels.map((ch) => {
                   const on = ch.id === channelId
                   return (
@@ -357,7 +382,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                       aria-pressed={on}
                       className="flex w-[60px] flex-shrink-0 flex-col items-center gap-1.5"
                     >
-                      <span className={`rounded-full p-[3px] ${on ? 'bg-caption' : 'bg-transparent'}`}>
+                      <span className={`rounded-full p-[3px] ${on ? 'ring-2 ring-ink' : ''}`}>
                         <ChannelFace face={{ id: ch.id, name: ch.name, thumbnail: ch.thumbnail_url }} size={48} />
                       </span>
                       <span className={`w-full truncate text-center text-meta ${on ? 'font-bold text-ink' : 'text-sub'}`}>{ch.name}</span>
@@ -373,24 +398,24 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                     : <>지금 지도에서 <b>{sorted.length}곳</b></>}
                 </p>
                 <div className="flex items-center">
-                  {filterLabel && (
-                    <button
-                      type="button"
-                      onClick={() => { setRegion(''); setChannelId(null) }}
-                      className="mr-1 inline-flex min-h-[44px] items-center gap-1 px-2 text-meta text-sub"
-                    >
-                      {filterLabel}
-                      <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
-                      <span className="sr-only">조건 풀기</span>
-                    </button>
+                  {place && (
+                    <ClearChip label={place} onClear={() => { setRegion(''); setCity('') }} />
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setSort((s) => (s === 'latest' ? 'visitors' : 'latest'))}
-                    className="inline-flex min-h-[44px] items-center px-2 text-meta font-bold text-ink"
-                  >
-                    {sort === 'latest' ? '최근 영상 순' : '여러 명 간 순'}
-                  </button>
+                  {activeChannel && (
+                    <ClearChip label={activeChannel.name} onClear={() => setChannelId(null)} />
+                  )}
+                  <label className="relative inline-flex min-h-[44px] items-center px-2 text-meta font-bold text-ink">
+                    <span className="sr-only">정렬</span>
+                    <select
+                      value={sort}
+                      onChange={(e) => setSort(e.target.value as typeof sort)}
+                      className="appearance-none bg-transparent pr-4 font-bold text-ink outline-none"
+                    >
+                      <option value="latest">최근 영상순</option>
+                      <option value="visitors">여러 명 간 순</option>
+                    </select>
+                    <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true" className="pointer-events-none absolute right-2"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                  </label>
                 </div>
               </div>
 
