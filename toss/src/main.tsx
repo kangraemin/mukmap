@@ -52,7 +52,7 @@ function App() {
       .catch((e) => { report('channels-fail', String(e)); setChannels([]); });
   }, []);
 
-  return <HomeExplorer channels={channels ?? []} apiBase={API} pageLinks={false} />;
+  return <HomeExplorer channels={channels ?? []} apiBase={API} pageLinks={false} hostNav />;
 }
 
 createRoot(document.getElementById('root')!).render(

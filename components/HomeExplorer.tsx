@@ -33,6 +33,8 @@ interface HomeExplorerProps {
   apiBase?: string
   /** 가게·유튜버 페이지 링크를 걸지. 토스 앱에는 그 페이지가 없어 끈다 */
   pageLinks?: boolean
+  /** 앱이 위에 뒤로가기와 제목을 이미 그린다(토스 상단바). 상세의 자체 머리줄을 뺀다 */
+  hostNav?: boolean
 }
 
 function readNav(): Nav {
@@ -78,7 +80,7 @@ function XIcon() {
   )
 }
 
-export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true }: HomeExplorerProps) {
+export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true, hostNav = false }: HomeExplorerProps) {
   const [pins, setPins] = useState<Pin[] | null>(null)
   const [bounds, setBounds] = useState<Bounds | null>(null)
   const [channelId, setChannelId] = useState<string | null>(null)
@@ -505,7 +507,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
             detailP.leaving ? 'pointer-events-none animate-slide-out lg:animate-none' : 'animate-slide-in lg:animate-none'
           }`}
         >
-          <header className="flex-shrink-0 border-b border-line bg-paper pt-[env(safe-area-inset-top)]">
+          <header className={`${hostNav ? 'hidden' : ''} flex-shrink-0 border-b border-line bg-paper pt-[env(safe-area-inset-top)]`}>
             <div className="flex h-14 items-center gap-1 px-2">
               <button
                 type="button"

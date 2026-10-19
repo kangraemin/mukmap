@@ -67,6 +67,8 @@ test('토스: 첫 화면·검색·목록·상세에서 옆으로 밀리지 않�
 
   await card.getByRole('button', { name: /자세히 보기/ }).click()
   await expect(page.getByTestId('detail-view')).toBeVisible({ timeout: 10_000 })
+  // 토스 상단바에 뒤로가기가 있으니 상세의 자체 뒤로가기는 겹쳐 보이지 않아야 한다
+  await expect(page.getByTestId('detail-back')).toBeHidden()
   await page.waitForTimeout(600)
   await noSideShift(page)
 
