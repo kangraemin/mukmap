@@ -2,6 +2,7 @@ import { report } from './debug';
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import HomeExplorer from '@/components/HomeExplorer';
+import AdBanner from './AdBanner';
 import { preloadMapSdk } from '@/components/NaverMap';
 import { loadPins } from '@/lib/pins';
 import type { Channel } from '@/lib/types';
@@ -52,7 +53,7 @@ function App() {
       .catch((e) => { report('channels-fail', String(e)); setChannels([]); });
   }, []);
 
-  return <HomeExplorer channels={channels ?? []} apiBase={API} pageLinks={false} hostNav />;
+  return <HomeExplorer channels={channels ?? []} apiBase={API} pageLinks={false} hostNav detailFooter={(id) => <AdBanner key={id} />} />;
 }
 
 createRoot(document.getElementById('root')!).render(

@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && ait build"
+    "build": "vite build && ait build",
+    "build:release": "VITE_ADS=live npm run build"
   },
   "devDependencies": {
     "@apps-in-toss/web-framework": "^3.8.0",

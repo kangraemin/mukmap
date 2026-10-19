@@ -35,6 +35,8 @@ interface HomeExplorerProps {
   pageLinks?: boolean
   /** 앱이 위에 뒤로가기와 제목을 이미 그린다(토스 상단바). 상세의 자체 머리줄을 뺀다 */
   hostNav?: boolean
+  /** 가게 상세 맨 아래에 붙일 것. 토스 앱은 배너 광고를 넘긴다 */
+  detailFooter?: (restaurantId: RestaurantWithVideos['id']) => React.ReactNode
 }
 
 function readNav(): Nav {
@@ -80,7 +82,7 @@ function XIcon() {
   )
 }
 
-export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true, hostNav = false }: HomeExplorerProps) {
+export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true, hostNav = false, detailFooter }: HomeExplorerProps) {
   const [pins, setPins] = useState<Pin[] | null>(null)
   const [bounds, setBounds] = useState<Bounds | null>(null)
   const [channelId, setChannelId] = useState<string | null>(null)
@@ -528,6 +530,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                   restaurant={shownDetail}
                   channelHref={pageLinks ? (slug) => `/youtuber/${encodeURIComponent(slug)}` : undefined}
                 />
+                {detailFooter?.(shownDetail.id)}
                 {pageLinks && (
                   <p className="px-4 pb-8 sm:px-0">
                     <a href={`/restaurant/${shownDetail.id}`} className="inline-flex min-h-[44px] items-center text-meta text-sub underline underline-offset-2">

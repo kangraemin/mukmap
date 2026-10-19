@@ -62,6 +62,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           crossOrigin="anonymous"
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
         />
+        {/* 애드센스 자동 광고. 웹에만 넣는다(토스 앱 번들은 토스 배너를 쓴다) */}
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4785237655148075" crossOrigin="anonymous" />
       </head>
       <body className="antialiased">
         {children}
