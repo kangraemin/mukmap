@@ -19,6 +19,15 @@ export interface Pin {
   quote: boolean
   /** 영상들에서 먹은 메뉴를 이어 붙인 것(검색용) */
   menu: string
+  /** 나온 영상 수 */
+  nv?: number
+  /** 아래는 대표 영상 상세 요약에서 뽑은 것. 요약이 없으면 비어 있다 */
+  rec?: string | null
+  verdict?: string
+  best?: string | null
+  price?: string | null
+  wait?: string | null
+  park?: string | null
 }
 
 export interface Bounds {

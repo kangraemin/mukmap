@@ -143,7 +143,12 @@ export async function getRegionSummaries() {
 
 export async function getRestaurant(id: number) {
   const { restaurants } = await getAll()
-  return restaurants.find((r) => r.id === id) || null
+  const r = restaurants.find((x) => x.id === id)
+  if (!r) return null
+  // 상세 요약은 커서 전체 캐시(2MB 한도)에 넣지 않고 가게 하나만 따로 읽는다
+  const { data } = await supabase.from('videos').select('id, detail').eq('restaurant_id', id)
+  const detail = new Map((data || []).map((v) => [v.id as number, v.detail as RestaurantWithVideos['videos'][number]['detail']]))
+  return { ...r, videos: r.videos.map((v) => ({ ...v, detail: detail.get(v.id) || null })) }
 }
 
 /** 목록 페이지 첫 문단용 사실 문장 재료. LLM 없이 데이터로만 만든다. */

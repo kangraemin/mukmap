@@ -31,9 +31,9 @@ export function areaOf(r: Pick<RestaurantWithVideos, 'region' | 'city'>) {
   return [r.region, r.city].filter(Boolean).join(' ')
 }
 
-/** 대표 장면: 자막 인용이 있는 가장 최근 영상, 없으면 가장 최근 영상 */
+/** 대표 장면: 상세 요약이 있는 가장 최근 영상, 다음은 자막 인용이 있는 영상, 없으면 가장 최근 영상 */
 export function leadVideo(r: RestaurantWithVideos): VisitVideo | undefined {
-  return r.videos.find((v) => v.quote) || r.videos[0]
+  return r.videos.find((v) => v.detail?.verdict) || r.videos.find((v) => v.quote) || r.videos[0]
 }
 
 /** 다녀간 유튜버(중복 없이, 최근 방문 순) */

@@ -31,6 +31,7 @@ export async function GET(
           price,
           quote,
           why,
+          detail,
           channels (
             name,
             thumbnail_url,
@@ -64,6 +65,7 @@ export async function GET(
         price: v.price,
         quote: v.quote,
         why: v.why,
+        detail: v.detail || null,
         channel_name: channel?.name || '',
         channel_thumbnail: channel?.thumbnail_url || null,
         channel_slug: channel?.slug || null,

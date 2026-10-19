@@ -40,6 +40,38 @@ export interface Video {
   price: string | null
   quote: string | null
   why: string | null
+  /** 영상에서 말한 것만 뽑은 상세 요약. 안 말한 칸은 없다 */
+  detail?: VideoDetail | null
+}
+
+export interface VideoDish {
+  name: string
+  comment?: string
+  best?: boolean
+  ts?: string
+}
+
+export interface VideoDetail {
+  recommend?: '강추' | '추천' | '보통' | '아쉬움' | string
+  verdict?: string
+  dishes?: VideoDish[]
+  pros?: string[]
+  cons?: string[]
+  price?: string
+  wait?: string
+  hours?: string
+  parking?: string
+  reserve?: string
+  solo_ok?: string
+  taste?: string
+  portion?: string
+  spicy_salty?: string
+  vibe?: string
+  service?: string
+  revisit?: string
+  good_for?: string
+  value?: string
+  tips?: string[]
 }
 
 export interface RestaurantWithVideos extends Restaurant {

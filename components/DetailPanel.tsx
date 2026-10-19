@@ -1,7 +1,8 @@
 /* eslint-disable @next/next/no-img-element -- 토스 앱과 같이 쓰는 컴포넌트라 next/image를 쓰지 않는다 */
-import type { RestaurantWithVideos } from '@/lib/types'
-import { areaOf, dateLabel, leadVideo, placeUrl, sceneUrl, thumbOf } from '@/lib/format'
+import type { RestaurantWithVideos, VideoDetail } from '@/lib/types'
+import { areaOf, dateLabel, leadVideo, placeUrl, sceneUrl, thumbOf, type VisitVideo } from '@/lib/format'
 import { ChannelFace } from './ChannelFace'
+import { RecBadge } from './RecBadge'
 
 interface DetailPanelProps {
   restaurant: RestaurantWithVideos
@@ -23,8 +24,109 @@ function PlayGlyph() {
   )
 }
 
+// 영상에서 안 말한 칸은 아예 그리지 않는다
+const has = (v: string | null | undefined): v is string => Boolean(v && v.trim())
+const listOf = (xs: string[] | undefined, n: number) => (xs || []).filter(has).slice(0, n)
+
+const CHIPS: [keyof VideoDetail, string][] = [
+  ['price', '가격'], ['wait', '웨이팅'], ['parking', '주차'], ['reserve', '예약'], ['hours', '영업'], ['solo_ok', '혼밥'],
+]
+const MORE: [keyof VideoDetail, string][] = [
+  ['taste', '맛 표현'], ['portion', '양'], ['spicy_salty', '간 세기'], ['vibe', '가게 분위기'], ['service', '서비스'],
+  ['revisit', '다시 갈지'], ['good_for', '이런 자리에 좋아요'], ['value', '가성비'],
+]
+
+function NameOf({ v, channelHref }: { v: VisitVideo; channelHref?: (slug: string) => string }) {
+  return channelHref && v.channel_slug
+    ? <a href={channelHref(v.channel_slug)} className="font-bold text-ink underline-offset-2 hover:underline">{v.channel_name}</a>
+    : <span className="font-bold text-ink">{v.channel_name}</span>
+}
+
+/** 유튜버 한 명이 영상에서 말한 평. 늘 같은 순서: 총평 → 메뉴 → 좋았던/아쉬운 점 → 방문 정보 → 나머지 */
+function Review({ v, d, channelHref, Sub }: { v: VisitVideo; d: VideoDetail; channelHref?: (slug: string) => string; Sub: 'h2' | 'h3' }) {
+  const dishes = (d.dishes || []).filter((x) => has(x.name))
+  const best = dishes.findIndex((x) => x.best)
+  const ordered = (best > 0 ? [dishes[best], ...dishes.filter((_, i) => i !== best)] : dishes).slice(0, 3)
+  const pros = listOf(d.pros, 3)
+  const cons = listOf(d.cons, 3)
+  const chips = CHIPS.filter(([k]) => has(d[k] as string))
+  const more = MORE.filter(([k]) => has(d[k] as string))
+  const tips = listOf(d.tips, 3)
+  const face = { id: v.channel_id, name: v.channel_name, thumbnail: v.channel_thumbnail }
+  return (
+    <section data-testid="detail-review" className="border-b border-line py-6 last:border-0">
+      <Sub className="flex items-center gap-2 text-body">
+        <ChannelFace face={face} size={28} />
+        <span><NameOf v={v} channelHref={channelHref} /><span className="text-ink">의 평</span></span>
+        <RecBadge rec={d.recommend} />
+      </Sub>
+      {has(d.verdict) && <p className="mt-3 text-lead font-bold leading-[1.45] text-ink">“{d.verdict}”</p>}
+
+      {ordered.length > 0 && (
+        <ul className="mt-5 space-y-3">
+          {ordered.map((x) => (
+            <li key={x.name} className="text-body">
+              <span className="flex items-center gap-1.5">
+                <span className="font-bold text-ink">{x.name}</span>
+                {x.best && <span className="rounded-[6px] bg-[#FFEBEE] px-1.5 py-0.5 text-[12px] font-bold leading-4 text-[#D22030]">최고</span>}
+              </span>
+              {has(x.comment) && <span className="mt-0.5 block text-sub">{x.comment}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {(pros.length > 0 || cons.length > 0) && (
+        <div className={`mt-5 grid gap-2 ${pros.length && cons.length ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          {[['좋았던 점', pros], ['아쉬운 점', cons]].map(([label, xs]) =>
+            (xs as string[]).length ? (
+              <div key={label as string} className="rounded-card bg-well px-3 py-3">
+                <p className="text-meta font-bold text-sub">{label as string}</p>
+                <ul className="mt-1.5 space-y-1 text-meta text-ink">
+                  {(xs as string[]).map((x) => <li key={x}>{x}</li>)}
+                </ul>
+              </div>
+            ) : null,
+          )}
+        </div>
+      )}
+
+      {chips.length > 0 && (
+        <dl className="mt-5 grid grid-cols-2 gap-2">
+          {chips.map(([k, label]) => (
+            <div key={k} className="rounded-card border border-line px-3 py-2.5">
+              <dt className="text-meta text-sub">{label}</dt>
+              <dd className="mt-0.5 text-body font-semibold text-ink">{d[k] as string}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {(more.length > 0 || tips.length > 0) && (
+        // 짧은 이름표를 왼쪽에 세우면 "맛/양/간"처럼 어색해서, 이름표를 위에 작게 두고 내용을 아래에 쓴다
+        <dl className="mt-5 divide-y divide-line border-y border-line">
+          {more.map(([k, label]) => (
+            <div key={k} className="py-3">
+              <dt className="text-meta text-sub">{label}</dt>
+              <dd className="mt-0.5 text-body text-ink">{d[k] as string}</dd>
+            </div>
+          ))}
+          {tips.length > 0 && (
+            <div className="py-3">
+              <dt className="text-meta text-sub">알아두면 좋은 팁</dt>
+              <dd className="mt-0.5 text-body text-ink"><ul className="list-disc space-y-1 pl-4">{tips.map((t) => <li key={t}>{t}</li>)}</ul></dd>
+            </div>
+          )}
+        </dl>
+      )}
+    </section>
+  )
+}
+
 export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫기', channelHref, asPage, adSlot }: DetailPanelProps) {
   const lead = leadVideo(r)
+  // 상세 요약이 있는 영상만, 최근 순(videos는 이미 최근 순)
+  const reviewed = r.videos.filter((v) => v.detail && (has(v.detail.verdict) || (v.detail.dishes || []).length))
   const Title = asPage ? 'h1' : 'h2'
   const Sub = asPage ? 'h2' : 'h3'
 
@@ -80,40 +182,50 @@ export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫�
         </div>
         {adSlot}
 
-        <Sub className="mt-8 text-lead font-bold text-ink">다녀간 유튜버 {new Set(r.videos.map((v) => v.channel_id)).size}명</Sub>
-        <ol className="mt-1">
-          {r.videos.map((v) => {
-            const face = { id: v.channel_id, name: v.channel_name, thumbnail: v.channel_thumbnail }
-            const name = channelHref && v.channel_slug
-              ? <a href={channelHref(v.channel_slug)} className="font-bold text-ink underline-offset-2 hover:underline">{v.channel_name}</a>
-              : <span className="font-bold text-ink">{v.channel_name}</span>
-            return (
-              <li key={v.id} className="border-b border-line py-4 last:border-0">
-                <div className="flex items-center gap-2 text-body">
-                  <ChannelFace face={face} size={28} />
-                  {name}
-                  {v.published_at && <span className="ml-auto text-meta text-sub">영상 게시 {dateLabel(v.published_at)}</span>}
-                </div>
-                <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-body">
-                  {v.menu && (<><dt className="text-sub">먹은 것</dt><dd className="text-ink">{v.menu}</dd></>)}
-                  {v.price && (<><dt className="text-sub">영상 속 가격</dt><dd className="text-ink">{v.price}</dd></>)}
-                  {(v.why || v.summary) && (<><dt className="text-sub">방문 요약</dt><dd className="text-ink">{v.why || v.summary}</dd></>)}
-                </dl>
-                <a
-                  href={sceneUrl(v)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-3 inline-flex min-h-[44px] items-center text-meta text-sub underline underline-offset-2"
-                >
-                  {v.title || '영상 보기'}
-                </a>
-              </li>
-            )
-          })}
-        </ol>
-        <p className="mt-6 text-meta text-sub">
-          메뉴·가격·인용은 영상 자막에서 자동으로 뽑았습니다. 정확한 내용은 원본 영상에서 확인하세요.
-        </p>
+        {reviewed.length > 0 ? (
+          <div className="mt-2">
+            {reviewed.map((v) => <Review key={v.id} v={v} d={v.detail!} channelHref={channelHref} Sub={Sub} />)}
+          </div>
+        ) : (
+          <>
+            <Sub className="mt-8 text-lead font-bold text-ink">다녀간 유튜버 {new Set(r.videos.map((v) => v.channel_id)).size}명</Sub>
+            <ol className="mt-1">
+              {r.videos.map((v) => {
+                const face = { id: v.channel_id, name: v.channel_name, thumbnail: v.channel_thumbnail }
+                return (
+                  <li key={v.id} className="border-b border-line py-4 last:border-0">
+                    <div className="flex items-center gap-2 text-body">
+                      <ChannelFace face={face} size={28} />
+                      <NameOf v={v} channelHref={channelHref} />
+                    </div>
+                    <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-body">
+                      {v.menu && (<><dt className="text-sub">먹은 것</dt><dd className="text-ink">{v.menu}</dd></>)}
+                      {v.price && (<><dt className="text-sub">영상 속 가격</dt><dd className="text-ink">{v.price}</dd></>)}
+                      {(v.why || v.summary) && (<><dt className="text-sub">방문 요약</dt><dd className="text-ink">{v.why || v.summary}</dd></>)}
+                    </dl>
+                  </li>
+                )
+              })}
+            </ol>
+          </>
+        )}
+
+        <Sub className="mt-6 text-lead font-bold text-ink">나온 영상 {r.videos.length}개</Sub>
+        <ul data-testid="detail-videos" className="mt-2">
+          {r.videos.map((v) => (
+            <li key={v.id}>
+              <a href={sceneUrl(v)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 py-2.5">
+                <span className="h-[54px] w-[96px] flex-shrink-0 overflow-hidden rounded-[8px] bg-well">
+                  <img src={`https://i.ytimg.com/vi/${v.video_id}/mqdefault.jpg`} alt="" loading="lazy" className="h-full w-full object-cover" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="line-clamp-2 text-body text-ink">{v.title || '영상 보기'}</span>
+                  <span className="mt-0.5 block text-meta text-sub">{[v.channel_name, dateLabel(v.published_at)].filter(Boolean).join(' · ')}</span>
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
       </div>
     </article>
   )

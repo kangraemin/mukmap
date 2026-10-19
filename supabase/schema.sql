@@ -47,6 +47,7 @@ CREATE TABLE videos (
   price TEXT,  -- 영상에서 말한 가격
   quote TEXT,  -- 유튜버 발언 원문 (자막에 있는 문장만)
   why TEXT,    -- 추천 이유 / 아쉬운 점
+  detail JSONB, -- 상세 요약(추천 정도·한 줄 평·메뉴·좋았던/아쉬운 점·방문 정보). 영상에서 말한 칸만
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(video_id, restaurant_id)
 );
