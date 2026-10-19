@@ -25,12 +25,15 @@ console.error = (...a: unknown[]) => { report('console.error', a.map(String).joi
 for (const s of [3, 8, 15]) {
   setTimeout(() => {
     const w = window as unknown as { naver?: { maps?: unknown } };
-    const map = document.querySelector('[class*="map"], #map') as HTMLElement | null;
+    const map = document.querySelector('[data-testid="map"]') as HTMLElement | null;
     report(`snap${s}`, {
       naver: !!w.naver?.maps,
       imgs: document.querySelectorAll('img').length,
       map: map ? `${map.offsetWidth}x${map.offsetHeight}` : null,
-      vh: innerHeight, text: document.body.innerText.slice(0, 120),
+      vw: innerWidth, vh: innerHeight,
+      pill: document.querySelector('[data-testid="list-pill"]')?.textContent ?? null,
+      clusters: document.querySelectorAll('[data-cluster]').length,
+      text: document.body.innerText.slice(0, 120),
     });
   }, s * 1000);
 }

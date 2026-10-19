@@ -168,6 +168,22 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
     naver.maps.Event.addListener(map, 'click', () => cb.current.onMapClick())
   }, [sdkLoaded])
 
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapElRef.current) return
+    // 지도는 만들 때의 틀 크기로 굳는다. 토스 웹뷰는 처음에 틀이 작다가 커져서 위쪽만 그려지고 0곳이 됐다
+    const el = mapElRef.current
+    const ro = new ResizeObserver(() => {
+      const s = map.getSize()
+      if (!el.clientWidth || !el.clientHeight || (s.width === el.clientWidth && s.height === el.clientHeight)) return
+      map.setSize({ width: el.clientWidth, height: el.clientHeight })
+      cb.current.onBoundsChange(readBounds(map))
+      setIdleTick((t) => t + 1)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [sdkLoaded])
+
   // 화면 안 핀만 묶어서 그린다. 바뀐 마커만 갈아 끼워 깜빡이지 않게 한다
   useEffect(() => {
     const map = mapRef.current

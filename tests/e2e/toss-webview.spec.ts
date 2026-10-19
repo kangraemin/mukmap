@@ -79,9 +79,8 @@ test('토스: 첫 화면·검색·목록·상세에서 옆으로 밀리지 않�
   await noSideShift(page)
 })
 
-test('토스: 유튜버 목록이 늦게 와도 지도 핀에 얼굴이 그려진다', async ({ page }) => {
-  // 실제 사고: 토스는 채널을 따로 받아서 핀이 먼저 그려지면 확대하기 전까지 얼굴 없이 회색 원만 보였다
-  // 지도 키에 localhost:5174가 없어 지도가 뜨지 않으므로, 키에 등록된 localhost:3000 주소로 토스 번들을 받아 띄운다
+// 지도 키에 localhost:5174가 없어 지도가 뜨지 않으므로, 키에 등록된 localhost:3000 주소로 토스 번들을 받아 띄운다
+async function openWithMap(page: Page, channelsDelay = 0) {
   await page.route('http://localhost:3000/**', async (route) => {
     try {
       const res = await route.fetch({ url: route.request().url().replace('localhost:3000', 'localhost:5174') })
@@ -92,7 +91,7 @@ test('토스: 유튜버 목록이 늦게 와도 지도 핀에 얼굴이 그려�
   })
   await page.route('https://mukmap.kr/api/**', async (route) => {
     try {
-      if (route.request().url().includes('/api/channels')) await new Promise((r) => setTimeout(r, 5_000))
+      if (channelsDelay && route.request().url().includes('/api/channels')) await new Promise((r) => setTimeout(r, channelsDelay))
       const res = await route.fetch()
       await route.fulfill({ response: res, headers: { ...res.headers(), 'access-control-allow-origin': '*' } })
     } catch {
@@ -101,6 +100,11 @@ test('토스: 유튜버 목록이 늦게 와도 지도 핀에 얼굴이 그려�
   })
   await page.goto('http://localhost:3000/')
   await expect(page.getByTestId('intro')).toHaveCount(0, { timeout: 15_000 })
+}
+
+test('토스: 유튜버 목록이 늦게 와도 지도 핀에 얼굴이 그려진다', async ({ page }) => {
+  // 실제 사고: 토스는 채널을 따로 받아서 핀이 먼저 그려지면 확대하기 전까지 얼굴 없이 회색 원만 보였다
+  await openWithMap(page, 5_000)
   const clusters = page.locator('[data-cluster]')
   await expect(clusters.first()).toBeVisible({ timeout: 10_000 })
   await expect.poll(async () => {
@@ -108,4 +112,23 @@ test('토스: 유튜버 목록이 늦게 와도 지도 핀에 얼굴이 그려�
     const withFace = await page.locator('[data-cluster] img').count()
     return n > 0 && withFace === n
   }, { timeout: 15_000 }).toBe(true)
+})
+
+test('토스: 지도 틀이 처음에 작다가 커져도 지도가 화면을 다 채운다', async ({ page }) => {
+  // 실제 사고: 토스 웹뷰가 처음엔 틀을 작게 잡았다가 키워서 지도가 위쪽만 그려지고 아래는 빈 회색, 목록 0곳이 됐다
+  await page.addInitScript(() => {
+    const st = document.createElement('style')
+    st.id = 'shrink'
+    st.textContent = 'main{max-height:300px!important}'
+    document.addEventListener('DOMContentLoaded', () => document.head.appendChild(st))
+  })
+  await openWithMap(page)
+  const pill = page.getByTestId('list-pill')
+  const places = async () => Number((await pill.textContent())?.match(/([\d,]+)곳/)?.[1].replace(/,/g, '') ?? 0)
+  await expect.poll(places, { timeout: 10_000 }).toBeGreaterThan(0)
+  await page.waitForTimeout(1500)
+  const before = await places()
+  await page.evaluate(() => document.getElementById('shrink')?.remove())
+  // 지도가 커진 틀만큼 더 넓게 보여야 한다(예전엔 작은 크기로 굳어 개수가 그대로였다)
+  await expect.poll(places, { timeout: 10_000 }).toBeGreaterThan(before)
 })
