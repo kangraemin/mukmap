@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- 토스 앱과 같이 쓰는 컴포넌트라 next/image를 쓰지 않는다 */
 import type { RestaurantWithVideos } from '@/lib/types'
-import { areaOf, clock, dateLabel, leadVideo, placeUrl, sceneUrl, thumbOf } from '@/lib/format'
+import { areaOf, dateLabel, leadVideo, placeUrl, sceneUrl, thumbOf } from '@/lib/format'
 import CaptionQuote from './CaptionQuote'
 import { ChannelFace } from './ChannelFace'
 
@@ -70,7 +70,7 @@ export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫�
               className="flex h-12 flex-1 items-center justify-center gap-1.5 rounded-card bg-play text-body font-bold text-white"
             >
               <PlayGlyph />
-              {lead.timestamp_seconds ? `영상 ${clock(lead.timestamp_seconds)}부터 보기` : '영상 보기'}
+              영상 보기
             </a>
           )}
           <a
