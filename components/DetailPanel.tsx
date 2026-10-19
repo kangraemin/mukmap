@@ -32,8 +32,8 @@ const CHIPS: [keyof VideoDetail, string][] = [
   ['price', '가격'], ['wait', '웨이팅'], ['parking', '주차'], ['reserve', '예약'], ['hours', '영업'], ['solo_ok', '혼밥'],
 ]
 const MORE: [keyof VideoDetail, string][] = [
-  ['taste', '맛 표현'], ['portion', '양'], ['spicy_salty', '간 세기'], ['vibe', '가게 분위기'], ['service', '서비스'],
-  ['revisit', '다시 갈지'], ['good_for', '이런 자리에 좋아요'], ['value', '가성비'],
+  // 맛·양·간은 좋았던/아쉬운 점과 겹쳐서 보여주지 않는다(사용자 지시 2026-10-20)
+  ['vibe', '분위기'], ['service', '서비스'], ['revisit', '재방문'], ['good_for', '이럴 때'], ['value', '가성비'],
 ]
 
 function NameOf({ v, channelHref }: { v: VisitVideo; channelHref?: (slug: string) => string }) {
@@ -103,19 +103,18 @@ function Review({ v, d, channelHref, Sub }: { v: VisitVideo; d: VideoDetail; cha
       )}
 
       {(more.length > 0 || tips.length > 0) && (
-        // 짧은 이름표를 왼쪽에 세우면 "맛/양/간"처럼 어색해서, 이름표를 위에 작게 두고 내용을 아래에 쓴다
-        <dl className="mt-5 divide-y divide-line border-y border-line">
+        <dl className="mt-5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-body">
           {more.map(([k, label]) => (
-            <div key={k} className="py-3">
-              <dt className="text-meta text-sub">{label}</dt>
-              <dd className="mt-0.5 text-body text-ink">{d[k] as string}</dd>
+            <div key={k} className="contents">
+              <dt className="text-sub">{label}</dt>
+              <dd className="text-ink">{d[k] as string}</dd>
             </div>
           ))}
           {tips.length > 0 && (
-            <div className="py-3">
-              <dt className="text-meta text-sub">알아두면 좋은 팁</dt>
-              <dd className="mt-0.5 text-body text-ink"><ul className="list-disc space-y-1 pl-4">{tips.map((t) => <li key={t}>{t}</li>)}</ul></dd>
-            </div>
+            <>
+              <dt className="text-sub">팁</dt>
+              <dd className="text-ink"><ul className="space-y-1">{tips.map((t) => <li key={t}>{t}</li>)}</ul></dd>
+            </>
           )}
         </dl>
       )}
