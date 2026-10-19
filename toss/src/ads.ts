@@ -20,7 +20,7 @@ function init() {
 }
 
 /** target에 배너를 붙인다. 광고가 없으면 onEmpty로 자리를 접는다. 반환값으로 떼어 낸다 */
-export function attachBanner(target: HTMLElement, onEmpty: () => void) {
+export function attachBanner(target: HTMLElement, onEmpty: () => void, variant: 'card' | 'expanded' = 'card') {
   let detach: (() => void) | undefined;
   let gone = false;
   init().then((ok) => {
@@ -28,7 +28,7 @@ export function attachBanner(target: HTMLElement, onEmpty: () => void) {
     if (!ok) return onEmpty();
     try {
       detach = TossAds.attachBanner(BANNER, target, {
-        variant: 'card',
+        variant,
         callbacks: { onNoFill: onEmpty, onAdFailedToRender: onEmpty },
       }).destroy;
     } catch {

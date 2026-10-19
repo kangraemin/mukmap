@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import NaverMap, { type Face } from '@/components/NaverMap'
 import SearchBar from '@/components/SearchBar'
 import DetailPanel from '@/components/DetailPanel'
@@ -23,6 +23,7 @@ type Nav =
 type Sort = 'near' | 'latest' | 'visitors'
 
 const PAGE = 40
+const LIST_AD_EVERY = 8
 const CACHE_KEY = 'mukmap:pins:v2'
 
 interface HomeExplorerProps {
@@ -35,8 +36,12 @@ interface HomeExplorerProps {
   pageLinks?: boolean
   /** 앱이 위에 뒤로가기와 제목을 이미 그린다(토스 상단바). 상세의 자체 머리줄을 뺀다 */
   hostNav?: boolean
-  /** 가게 상세 맨 아래에 붙일 것. 토스 앱은 배너 광고를 넘긴다 */
-  detailFooter?: (restaurantId: RestaurantWithVideos['id']) => React.ReactNode
+  /** 가게 상세 버튼 줄 아래 광고. 토스 앱은 배너 광고를 넘긴다 */
+  detailAd?: (restaurantId: RestaurantWithVideos['id']) => React.ReactNode
+  /** 목록 사이에 끼울 광고. slot은 몇 번째 광고인지 */
+  listAd?: (slot: number) => React.ReactNode
+  /** 지도 위 가게 카드 맨 아래 광고 */
+  previewAd?: (restaurantId: number) => React.ReactNode
 }
 
 function readNav(): Nav {
@@ -82,7 +87,7 @@ function XIcon() {
   )
 }
 
-export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true, hostNav = false, detailFooter }: HomeExplorerProps) {
+export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true, hostNav = false, detailAd, listAd, previewAd }: HomeExplorerProps) {
   const [pins, setPins] = useState<Pin[] | null>(null)
   const [bounds, setBounds] = useState<Bounds | null>(null)
   const [channelId, setChannelId] = useState<string | null>(null)
@@ -126,6 +131,17 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
 
   // 프로필 사진은 우리 주소를 거쳐 받는다(app/api/face)
   const faceChannels = useMemo(() => channels.map((c) => ({ ...c, thumbnail_url: c.thumbnail_url ? `${apiBase}/api/face/${c.id}` : null })), [channels, apiBase])
+
+  // 지도 핀이 빈 동그라미로 먼저 그려지지 않게 시작 화면이 떠 있는 동안 사진을 받아 둔다
+  const [facesReady, setFacesReady] = useState(false)
+  useEffect(() => {
+    const urls = faceChannels.map((c) => c.thumbnail_url).filter((u): u is string => !!u)
+    if (!urls.length) return
+    let live = true
+    Promise.all(urls.map((u) => new Promise((done) => { const img = new Image(); img.onload = img.onerror = done; img.src = u })))
+      .then(() => { if (live) setFacesReady(true) })
+    return () => { live = false }
+  }, [faceChannels])
   const faces = useMemo(() => {
     const m: Record<string, Face> = {}
     for (const c of faceChannels) m[c.id] = { name: c.name, thumbnail: c.thumbnail_url }
@@ -181,6 +197,9 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     if (readNav().v === 'map') setNav({ v: 'map' })
     else window.history.back()
   }, [])
+
+  // 토스 뒤로가기 처리(toss/src/main.tsx)가 history.state를 못 읽어도 지금 단계를 알 수 있게 둔다
+  useEffect(() => { document.documentElement.dataset.mkNav = nav.v }, [nav])
 
   useEffect(() => {
     setNav(readNav())
@@ -439,8 +458,11 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                 <p className="mt-1 text-meta text-sub">지도를 줄이거나 다른 지역으로 옮겨 보세요.</p>
               </div>
             )}
-            {sorted.slice(0, shown).map((p) => (
-              <PinRow key={p.id} pin={p} faces={faces} onOpen={openDetail} selected={p.id === detailId} />
+            {sorted.slice(0, shown).map((p, i) => (
+              <Fragment key={p.id}>
+                <PinRow pin={p} faces={faces} onOpen={openDetail} selected={p.id === detailId} />
+                {listAd && i >= 2 && (i - 2) % LIST_AD_EVERY === 0 && listAd((i - 2) / LIST_AD_EVERY)}
+              </Fragment>
             ))}
             <div ref={sentinel} />
           </div>
@@ -483,6 +505,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                 leaving={preview.leaving}
                 onOpen={() => push({ v: 'detail', id: preview.shown!.id })}
                 onClose={back}
+                adSlot={previewAd?.(preview.shown.id)}
               />
             </div>
           ) : (
@@ -529,8 +552,8 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                 <DetailPanel
                   restaurant={shownDetail}
                   channelHref={pageLinks ? (slug) => `/youtuber/${encodeURIComponent(slug)}` : undefined}
+                  adSlot={detailAd?.(shownDetail.id)}
                 />
-                {detailFooter?.(shownDetail.id)}
                 {pageLinks && (
                   <p className="px-4 pb-8 sm:px-0">
                     <a href={`/restaurant/${shownDetail.id}`} className="inline-flex min-h-[44px] items-center text-meta text-sub underline underline-offset-2">
@@ -554,7 +577,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       )}
 
       {toast && <Toast message={toast} onClose={handleToastClose} />}
-      <Intro ready={pins !== null && bounds !== null} channels={faceChannels} />
+      <Intro ready={pins !== null && bounds !== null && facesReady} channels={faceChannels} />
     </div>
   )
 }

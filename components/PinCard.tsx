@@ -26,7 +26,7 @@ function meta(pin: Pin) {
 }
 
 /** 핀을 누르면 지도 아래에 뜨는 카드. 누르면 상세로 간다 */
-export function PreviewCard({ pin, faces, onOpen, onClose, leaving }: { pin: Pin; faces: Faces; onOpen: () => void; onClose: () => void; leaving?: boolean }) {
+export function PreviewCard({ pin, faces, onOpen, onClose, leaving, adSlot }: { pin: Pin; faces: Faces; onOpen: () => void; onClose: () => void; leaving?: boolean; adSlot?: React.ReactNode }) {
   return (
     <div
       data-testid="preview-card"
@@ -63,6 +63,7 @@ export function PreviewCard({ pin, faces, onOpen, onClose, leaving }: { pin: Pin
           </span>
         </span>
       </button>
+      {adSlot}
       <button
         type="button"
         onClick={onClose}

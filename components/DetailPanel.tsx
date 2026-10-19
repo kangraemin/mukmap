@@ -12,6 +12,8 @@ interface DetailPanelProps {
   channelHref?: (slug: string) => string
   /** 페이지(가게 상세)에서는 이름을 h1로 */
   asPage?: boolean
+  /** 버튼 줄 아래에 둘 광고 자리. 토스 앱만 넘긴다 */
+  adSlot?: React.ReactNode
 }
 
 function PlayGlyph() {
@@ -22,7 +24,7 @@ function PlayGlyph() {
   )
 }
 
-export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫기', channelHref, asPage }: DetailPanelProps) {
+export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫기', channelHref, asPage, adSlot }: DetailPanelProps) {
   const lead = leadVideo(r)
   const Title = asPage ? 'h1' : 'h2'
   const Sub = asPage ? 'h2' : 'h3'
@@ -82,6 +84,7 @@ export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫�
             길찾기
           </a>
         </div>
+        {adSlot}
 
         <Sub className="mt-8 text-lead font-bold text-ink">다녀간 유튜버 {new Set(r.videos.map((v) => v.channel_id)).size}명</Sub>
         <ol className="mt-1">

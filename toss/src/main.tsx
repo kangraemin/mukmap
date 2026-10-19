@@ -32,15 +32,18 @@ document.addEventListener('click', async (e) => {
 }, true);
 
 // 토스 뒤로가기: 지도 위 카드·목록·상세가 열려 있으면 한 단계 닫고, 지도뿐이면 앱을 닫는다
+// (토스 출시 기준: 첫 화면 뒤로가기는 바로 종료, 종료를 막는 확인 창 금지)
 import('@apps-in-toss/web-framework').then(({ graniteEvent, closeView }) => {
   graniteEvent.addEventListener('backEvent', {
     onEvent: () => {
-      const mk = window.history.state?.mk;
-      if (mk && mk.v !== 'map') window.history.back();
+      const v = window.history.state?.mk?.v ?? document.documentElement.dataset.mkNav ?? 'map';
+      report('back', { v, state: !!window.history.state?.mk, len: window.history.length });
+      if (v !== 'map') window.history.back();
       else closeView();
     },
     onError: (e) => report('back-event-fail', String(e)),
   });
+  report('back-registered');
 }).catch((e) => report('back-event-fail', String(e)));
 
 function App() {
@@ -53,7 +56,19 @@ function App() {
       .catch((e) => { report('channels-fail', String(e)); setChannels([]); });
   }, []);
 
-  return <HomeExplorer channels={channels ?? []} apiBase={API} pageLinks={false} hostNav detailFooter={(id) => <AdBanner key={id} />} />;
+  return (
+    <>
+      <HomeExplorer
+        channels={channels ?? []}
+        apiBase={API}
+        pageLinks={false}
+        hostNav
+        detailAd={(id) => <AdBanner key={id} />}
+        listAd={(slot) => <AdBanner key={`list-${slot}`} className="my-3" />}
+        previewAd={(id) => <AdBanner key={`pv-${id}`} variant="expanded" className="border-t border-line" />}
+      />
+    </>
+  );
 }
 
 createRoot(document.getElementById('root')!).render(
