@@ -117,6 +117,16 @@ test('토스: 검색 조건으로 들어오면 공유 버튼이 그 조건을 �
   await expect(btn).toHaveCount(0)
 })
 
+test('토스: 유튜버로 거른 지도 공유는 한글 이름 대신 채널 id(영문)를 넣는다', async ({ page }) => {
+  const res = await page.request.get('/api/channels')
+  const ch = (await res.json()).channels.find((c: { id: string; slug: string | null }) => c.slug && /[^\x00-\x7f]/.test(c.slug))!
+  await openToss(page, `?yt=${encodeURIComponent(ch.slug)}`)
+  const btn = page.getByTestId('share-filter')
+  await expect(btn).toBeVisible({ timeout: 30_000 })
+  await btn.click()
+  await expect.poll(() => shared(page)).toBe(`yt=${ch.id}`)
+})
+
 // 토스 번들을 지도 키가 허용된 주소(localhost:3000)로 띄운다. 실제 지도가 그려진다
 async function openTossMap(page: Page, query = '', fail: { channels?: number; pins?: number } = {}) {
   const left = { ...fail }

@@ -401,7 +401,8 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     const ch = channelId ? channels.find((c) => c.id === channelId) : undefined
     if (!pins || (!ch && !region && !text)) return null
     const sp = new URLSearchParams()
-    if (ch) sp.set('yt', ch.slug || ch.id)
+    // 한글 이름은 토스 공유 링크를 거치며 깨질 수 있어 영문 채널 id를 넣는다(받는 쪽은 id도 읽는다)
+    if (ch) sp.set('yt', ch.id)
     if (region) sp.set('region', region)
     if (city) sp.set('city', city)
     if (text) sp.set('q', text)
