@@ -1,7 +1,8 @@
 // 서버 전용 데이터 조회. 검색 노출 페이지(유튜버·지역·가게)와 sitemap이 같은 한 벌을 쓴다.
-// 가게 수가 수천 개 수준이라 보이는 가게 전체를 한 번에 읽어 1시간 캐시한다.
+// 가게 수가 수천 개 수준이라 보이는 가게 전체를 500곳씩 나눠 읽어 1시간 캐시한다.
 // 파이프라인이 /api/revalidate를 부르면 'mukmap-data' 태그로 바로 갱신된다.
 import { unstable_cache } from 'next/cache'
+import { cache } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Channel, RestaurantWithVideos, VideoDetail } from '@/lib/types'
 import { DATA_KEY, channelName, cityName, regionName, type Lang } from '@/lib/i18n'
@@ -17,36 +18,58 @@ const VIDEO_FIELDS = `id, video_id, channel_id, title, rating, summary, is_ad,
 type RawVideo = { channel_id: string; published_at: string | null } & Record<string, unknown>
 type RawRestaurant = Record<string, unknown> & { videos: RawVideo[] }
 
-async function fetchAll(): Promise<{ channels: Channel[]; restaurants: RawRestaurant[] }> {
-  // 채널 조회가 실패한 채로 캐시하면 가게가 전부 걸러져 1시간 동안 빈 사이트가 된다
-  const { data: channels, error: chError } = await supabase.from('channels').select('*')
-  if (chError) throw chError
-  const ids = new Set((channels || []).map((c) => c.id))
+// 채널 조회가 실패한 채로 캐시하면 가게가 전부 걸러져 1시간 동안 빈 사이트가 된다
+const getChannels = unstable_cache(
+  async (): Promise<Channel[]> => {
+    const { data, error } = await supabase.from('channels').select('*')
+    if (error) throw error
+    return (data || []) as Channel[]
+  },
+  ['mukmap-channels-v1'],
+  { revalidate: 3600, tags: [DATA_TAG] },
+)
 
-  const rows: RawRestaurant[] = []
-  for (let from = 0; ; from += 1000) {
+// 가게 전체를 한 항목으로 담으면 2MB를 넘어 캐시가 안 된다. 500곳씩 따로 담는다
+const CHUNK = 500
+const getChunk = unstable_cache(
+  async (from: number): Promise<{ rows: RawRestaurant[]; full: boolean }> => {
     const { data, error } = await supabase
       .from('restaurants')
       .select(`${RESTAURANT_FIELDS}, videos (${VIDEO_FIELDS})`)
       .eq('is_visible', true)
       .not('lat', 'is', null)
       .order('id')
-      .range(from, from + 999)
+      .range(from, from + CHUNK - 1)
     if (error) throw error
-    for (const r of (data || []) as unknown as RawRestaurant[]) {
+    return { rows: (data || []) as unknown as RawRestaurant[], full: (data || []).length === CHUNK }
+  },
+  ['mukmap-all-chunk-v1'],
+  { revalidate: 3600, tags: [DATA_TAG] },
+)
+
+async function getCompact(): Promise<{ channels: Channel[]; restaurants: RawRestaurant[] }> {
+  const channels = await getChannels()
+  const ids = new Set(channels.map((c) => c.id))
+  const rows: RawRestaurant[] = []
+  const seen = new Set<unknown>()
+  for (let from = 0; ; from += CHUNK) {
+    const chunk = await getChunk(from)
+    for (const r of chunk.rows) {
+      // 덩어리마다 저장 시각이 달라 경계에서 같은 가게가 두 번 올 수 있다
+      if (seen.has(r.id)) continue
+      seen.add(r.id)
       const videos = (r.videos || [])
         .filter((v) => ids.has(v.channel_id))
         .sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''))
       if (videos.length) rows.push({ ...r, videos })
     }
-    if (!data || data.length < 1000) break
+    if (!chunk.full) break
   }
-  return { channels: (channels || []) as Channel[], restaurants: rows }
+  return { channels, restaurants: rows }
 }
 
-const getCompact = unstable_cache(fetchAll, ['mukmap-all-v2'], { revalidate: 3600, tags: [DATA_TAG] })
-
-export async function getAll(): Promise<{ channels: Channel[]; restaurants: RestaurantWithVideos[] }> {
+// 한 요청 안에서 메타데이터와 본문이 같이 불러도 한 번만 만든다
+export const getAll = cache(async (): Promise<{ channels: Channel[]; restaurants: RestaurantWithVideos[] }> => {
   const { channels, restaurants } = await getCompact()
   const byId = new Map(channels.map((c) => [c.id, c]))
   return {
@@ -61,7 +84,7 @@ export async function getAll(): Promise<{ channels: Channel[]; restaurants: Rest
       }),
     })) as unknown as RestaurantWithVideos[],
   }
-}
+})
 
 /** URL 조각을 사람이 읽는 값으로. Next 14는 한글 params를 퍼센트 인코딩된 채로 넘길 때가 있다. */
 export function decodeParam(s: string): string {
