@@ -3,6 +3,17 @@
 import { REGIONS } from './constants'
 import type { Pin } from './pins'
 
+export interface Station {
+  name: string
+  lat: number
+  lng: number
+}
+
+/** 가게·메뉴 검색에는 외부 API를 쓰지 않는다. 역명 뒤 노선명도 허용한다. */
+export function isStationQuery(q: string): boolean {
+  return q.length <= 80 && /^.+역(?:\s+\S*(?:선|철도|전철))?$/.test(q.trim())
+}
+
 const REGION_ALIAS: Record<string, string> = {
   서울특별시: '서울', 서울시: '서울', 경기도: '경기', 인천광역시: '인천', 인천시: '인천',
   부산광역시: '부산', 부산시: '부산', 대구광역시: '대구', 대구시: '대구', 대전광역시: '대전', 대전시: '대전',

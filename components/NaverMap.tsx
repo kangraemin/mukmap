@@ -9,6 +9,8 @@ export interface Face {
   thumbnail: string | null
 }
 
+export type MapFocus = { seq: number } & ({ id: number } | { lat: number; lng: number })
+
 interface NaverMapProps {
   /** 거르기가 끝난 핀 전체. 화면 안에 든 것만 그린다 */
   pins: Pin[]
@@ -20,7 +22,7 @@ interface NaverMapProps {
   /** 값이 바뀌면 pins 전체가 보이게 맞춘다 */
   fitKey: number
   /** 값이 바뀌면 이 핀으로 지도를 옮긴다 */
-  focus: { id: number; seq: number } | null
+  focus: MapFocus | null
   /** 카드가 떠 있을 때 지도 위·아래가 가려지는 높이(px). 고른 핀을 그 사이 가운데로 옮긴다 */
   insets?: { top: number; bottom: number } | null
 }
@@ -285,9 +287,9 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
   useEffect(() => {
     const map = mapRef.current
     if (!map || !focus) return
-    const p = pins.find((x) => x.id === focus.id)
+    const p = 'id' in focus ? pins.find((x) => x.id === focus.id) : focus
     if (!p) return
-    map.morph(new naver.maps.LatLng(p.lat, p.lng), Math.max(map.getZoom(), 15), { duration: 500, easing: 'easeOutCubic' })
+    map.morph(new naver.maps.LatLng(p.lat, p.lng), 'id' in focus ? Math.max(map.getZoom(), 15) : 16, { duration: 500, easing: 'easeOutCubic' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus, sdkLoaded])
 

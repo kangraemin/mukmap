@@ -1,9 +1,9 @@
 'use client'
 
-import { useDeferredValue, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { REGIONS } from '@/lib/constants'
 import type { Pin } from '@/lib/pins'
-import { norm, searchPins, tokensOf, type SearchIndex } from '@/lib/search'
+import { isStationQuery, norm, searchPins, tokensOf, type SearchIndex, type Station } from '@/lib/search'
 import { ChannelFace } from './ChannelFace'
 
 interface SearchChannel {
@@ -19,6 +19,8 @@ interface SearchBarProps {
   onSelectRestaurant: (id: number) => void
   onSelectChannel: (id: string) => void
   onSelectRegion: (name: string) => void
+  onSelectStation: (station: Station) => void
+  apiBase?: string
   /** 검색어에 맞는 가게 전부를 지도에 띄운다 */
   onSearchAll: (q: string) => void
   /** 검색창을 누르면 */
@@ -26,6 +28,7 @@ interface SearchBarProps {
 }
 
 type Item =
+  | { type: 'station'; station: Station }
   | { type: 'all'; q: string; n: number }
   | { type: 'channel'; ch: SearchChannel }
   | { type: 'region'; name: string }
@@ -59,12 +62,32 @@ function PinIcon() {
 
 const MAX_SHOPS = 8
 
-export default function SearchBar({ index, channels, onSelectRestaurant, onSelectChannel, onSelectRegion, onSearchAll, onFocus }: SearchBarProps) {
+export default function SearchBar({ index, channels, onSelectRestaurant, onSelectChannel, onSelectRegion, onSelectStation, apiBase = '', onSearchAll, onFocus }: SearchBarProps) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
   const q = useDeferredValue(query.trim())
+  const [stationResult, setStationResult] = useState<{ q: string; rows: Station[] } | null>(null)
+
+  useEffect(() => {
+    const term = query.trim()
+    if (!open || !isStationQuery(term)) return
+    const controller = new AbortController()
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch(`${apiBase}/api/station?q=${encodeURIComponent(term)}`, { signal: controller.signal })
+        const rows: Station[] = response.ok ? await response.json() : []
+        if (!controller.signal.aborted) {
+          setStationResult({ q: term, rows })
+          setActive(-1)
+        }
+      } catch {
+        if (!controller.signal.aborted) setStationResult({ q: term, rows: [] })
+      }
+    }, 250)
+    return () => { clearTimeout(timer); controller.abort() }
+  }, [query, open, apiBase])
 
   const items = useMemo<Item[]>(() => {
     if (!q) return []
@@ -74,12 +97,13 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
     const regs = single ? REGIONS.filter((r) => r.includes(toks[0])).slice(0, 3) : []
     const shops = index ? searchPins(index, q) : []
     return [
+      ...(stationResult?.q === query.trim() ? stationResult.rows.map((station) => ({ type: 'station' as const, station })) : []),
       ...(shops.length > 1 ? [{ type: 'all' as const, q, n: shops.length }] : []),
       ...chs.map((ch) => ({ type: 'channel' as const, ch })),
       ...regs.map((name) => ({ type: 'region' as const, name })),
       ...shops.slice(0, MAX_SHOPS).map((pin) => ({ type: 'restaurant' as const, pin })),
     ]
-  }, [q, index, channels])
+  }, [q, query, index, channels, stationResult])
 
   const close = () => {
     setOpen(false)
@@ -90,7 +114,8 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
   const choose = (it: Item) => {
     close()
     setQuery('')
-    if (it.type === 'all') onSearchAll(it.q)
+    if (it.type === 'station') onSelectStation(it.station)
+    else if (it.type === 'all') onSearchAll(it.q)
     else if (it.type === 'channel') onSelectChannel(it.ch.id)
     else if (it.type === 'region') onSelectRegion(it.name)
     else onSelectRestaurant(it.pin.id)
@@ -120,8 +145,11 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
           onChange={(e) => { setQuery(e.target.value); setOpen(true); setActive(-1) }}
           onKeyDown={onKeyDown}
           onFocus={() => { setOpen(true); onFocus?.() }}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
-          placeholder="가게, 메뉴, 유튜버, 지역"
+          onBlur={() => setTimeout(() => {
+            // 결과 선택 직후 다시 입력하면 앞선 blur가 새 검색까지 닫지 않게 한다.
+            if (document.activeElement !== inputRef.current) setOpen(false)
+          }, 150)}
+          placeholder="가게, 메뉴, 유튜버, 지역, 역"
           aria-label="검색"
           className="min-w-0 flex-1 bg-transparent text-[16px] leading-[22px] text-ink placeholder:text-sub focus:outline-none [&::-webkit-search-cancel-button]:hidden"
         />
@@ -153,10 +181,13 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
             {items.map((it, i) => {
               const on = i === active
               const base = `flex min-h-[52px] w-full items-center gap-3 px-4 py-2 text-left ${on ? 'bg-well' : 'active:bg-well lg:hover:bg-well'}`
-              const key = it.type === 'restaurant' ? `r${it.pin.id}` : it.type === 'channel' ? `c${it.ch.id}` : it.type === 'region' ? `g${it.name}` : 'all'
+              const key = it.type === 'station' ? `s${it.station.name}` : it.type === 'restaurant' ? `r${it.pin.id}` : it.type === 'channel' ? `c${it.ch.id}` : it.type === 'region' ? `g${it.name}` : 'all'
               return (
                 <li key={key}>
                   <button type="button" data-testid={`search-${it.type}`} onMouseDown={(e) => e.preventDefault()} onClick={() => choose(it)} className={base}>
+                    {it.type === 'station' && (
+                      <span className="min-w-0 flex-1 truncate text-body text-ink">📍 <b>{it.station.name}</b> — 지도 이동</span>
+                    )}
                     {it.type === 'all' && (
                       <>
                         <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-caption text-ink"><SearchIcon /></span>

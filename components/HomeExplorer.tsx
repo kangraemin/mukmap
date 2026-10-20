@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import NaverMap, { type Face } from '@/components/NaverMap'
+import NaverMap, { type Face, type MapFocus } from '@/components/NaverMap'
 import SearchBar from '@/components/SearchBar'
 import DetailPanel from '@/components/DetailPanel'
 import { ChannelFace } from '@/components/ChannelFace'
@@ -10,7 +10,7 @@ import { ShareIcon } from '@/components/ShareIcon'
 import { listMessage, placeMessage, type ShareMessage } from '@/lib/share'
 import Toast from '@/components/Toast'
 import { decodePins, inBounds, loadPins, type Bounds, type Pin, type PinsPayload } from '@/lib/pins'
-import { buildIndex, searchPins } from '@/lib/search'
+import { buildIndex, searchPins, type Station } from '@/lib/search'
 import Intro from '@/components/Intro'
 import type { Channel, RestaurantWithVideos } from '@/lib/types'
 
@@ -102,7 +102,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   const [sort, setSort] = useState<Sort>('near')
   const [shown, setShown] = useState(PAGE)
   const [fitKey, setFitKey] = useState(0)
-  const [focus, setFocus] = useState<{ id: number; seq: number } | null>(null)
+  const [focus, setFocus] = useState<MapFocus | null>(null)
   const [detail, setDetail] = useState<RestaurantWithVideos | null>(null)
   const [toast, setToast] = useState('')
   const [desktop, setDesktop] = useState(false)
@@ -318,6 +318,11 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     else selectPin(id)
   }, [desktop, openDetail, selectPin, filtered])
 
+  const searchStation = useCallback((station: Station) => {
+    replace({ v: 'map' })
+    setFocus({ lat: station.lat, lng: station.lng, seq: Date.now() })
+  }, [replace])
+
   const pickChannel = useCallback((id: string | null) => {
     closePreview()
     setChannelId(id)
@@ -431,6 +436,8 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       onSelectRestaurant={searchRestaurant}
       onSelectChannel={searchChannel}
       onSelectRegion={searchRegion}
+      onSelectStation={searchStation}
+      apiBase={apiBase}
       onSearchAll={searchAll}
       onFocus={closePreview}
     />

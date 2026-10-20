@@ -218,6 +218,58 @@ test('검색에서 가게를 누르면 지도가 그 가게로 가고 카드가 
   }, { timeout: 10_000 }).toBe(true)
 })
 
+test('역 이름을 검색해 누르면 필터를 유지하고 지도가 그 역으로 간다', async ({ page }) => {
+  const station = { name: '강남역 2호선', lat: 37.4979526, lng: 127.0276242 }
+  await page.route('**/api/station?*', (route) => route.fulfill({ json: [station] }))
+  await ready(page)
+  await searchBox(page).fill('쯔양 서울')
+  await page.getByTestId('search-all').click()
+  const filter = page.locator('[data-testid="text-chip"]:visible').first()
+  await expect(filter).toBeVisible()
+  // 실제 SDK 인스턴스를 관찰한다. 이동 요청만이 아니라 끝난 뒤 중심·줌을 확인한다.
+  await page.evaluate(() => {
+    const original = naver.maps.Map.prototype.morph
+    naver.maps.Map.prototype.morph = function (...args) {
+      ;(window as Window & { searchedMap?: naver.maps.Map }).searchedMap = this
+      return original.apply(this, args)
+    }
+  })
+  await searchBox(page).fill('강남역')
+  const row = page.getByTestId('search-station')
+  await expect(row).toHaveText(/강남역 2호선.*지도 이동/)
+  await row.click()
+  await expect(page.getByTestId('search-results')).toBeHidden()
+  await expect(filter).toHaveText(/쯔양 서울/)
+  await expect(page.getByTestId('preview-card')).toHaveCount(0)
+  await expect.poll(() => page.evaluate(({ lat, lng }) => {
+    const map = (window as Window & { searchedMap?: naver.maps.Map }).searchedMap
+    if (!map) return false
+    return Math.abs(map.getCenter().lat() - lat) < 0.0001
+      && Math.abs(map.getCenter().lng() - lng) < 0.0001 && map.getZoom() === 16
+  }, station), { timeout: 10_000 }).toBe(true)
+})
+
+test('역 검색은 역명·노선에만 요청하고 검색어를 바꾸면 이전 결과를 숨긴다', async ({ page }) => {
+  const queries: string[] = []
+  await page.route('**/api/station?*', async (route) => {
+    const q = new URL(route.request().url()).searchParams.get('q')!
+    queries.push(q)
+    await route.fulfill({ json: [{ name: q, lat: 37.4979526, lng: 127.0276242 }] })
+  })
+  await ready(page)
+  await searchBox(page).fill('강남역 맛집')
+  await page.waitForTimeout(400)
+  expect(queries).toEqual([])
+  await searchBox(page).fill('강남역 2호선')
+  await expect(page.getByTestId('search-station')).toHaveText(/강남역 2호선/)
+  expect(queries).toEqual(['강남역 2호선'])
+  await searchBox(page).fill('국밥')
+  await expect(page.getByTestId('search-station')).toHaveCount(0)
+  await expect(page.getByTestId('search-restaurant').first()).toBeVisible()
+  await page.waitForTimeout(400)
+  expect(queries).toEqual(['강남역 2호선'])
+})
+
 test('다른 지역 검색 필터가 걸린 채로 가게를 고르면 지도가 그 가게로 간다', async ({ page }) => {
   await ready(page)
   // '영등포' 전체 보기로 필터를 건다
