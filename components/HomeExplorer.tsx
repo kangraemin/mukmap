@@ -6,6 +6,7 @@ import SearchBar from '@/components/SearchBar'
 import DetailPanel from '@/components/DetailPanel'
 import { ChannelFace } from '@/components/ChannelFace'
 import { PinRow, PreviewCard } from '@/components/PinCard'
+import { ShareIcon } from '@/components/ShareIcon'
 import Toast from '@/components/Toast'
 import { decodePins, inBounds, loadPins, type Bounds, type Pin, type PinsPayload } from '@/lib/pins'
 import { buildIndex, searchPins } from '@/lib/search'
@@ -42,6 +43,8 @@ interface HomeExplorerProps {
   listAd?: (slot: number) => React.ReactNode
   /** 지도 위 가게 카드 맨 아래 광고 */
   previewAd?: (restaurantId: number) => React.ReactNode
+  /** 공유 버튼을 누르면 부른다. query는 받은 사람이 열 주소 쿼리(place=12, yt=쯔양&region=서울), title은 공유 문구. 토스 앱만 넘긴다 */
+  onShare?: (query: string, title: string) => void
 }
 
 function readNav(): Nav {
@@ -87,7 +90,7 @@ function XIcon() {
   )
 }
 
-export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true, hostNav = false, detailAd, listAd, previewAd }: HomeExplorerProps) {
+export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true, hostNav = false, detailAd, listAd, previewAd, onShare }: HomeExplorerProps) {
   const [pins, setPins] = useState<Pin[] | null>(null)
   const [bounds, setBounds] = useState<Bounds | null>(null)
   const [channelId, setChannelId] = useState<string | null>(null)
@@ -314,12 +317,19 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     const q = new URLSearchParams(window.location.search)
     const reg = q.get('region')
     const place = Number(q.get('place'))
+    // 지도 카드에서 공유한 링크(?pin=12)는 그 가게 카드를 띄운다
+    const pin = Number(q.get('pin'))
     if (reg) setRegion(reg)
     if (reg && q.get('city')) setCity(q.get('city')!)
-    if (q.get('yt') || reg) fitWhenLoaded.current = true
+    if (q.get('q')) setText(q.get('q')!)
+    if (q.get('yt') || reg || q.get('q')) fitWhenLoaded.current = true
     if (Number.isInteger(place) && place > 0 && readNav().v === 'map') {
       push({ v: 'detail', id: place })
       setFocus({ id: place, seq: Date.now() })
+    } else if (Number.isInteger(pin) && pin > 0 && readNav().v === 'map') {
+      if (window.matchMedia('(min-width: 1024px)').matches) push({ v: 'detail', id: pin })
+      else push({ v: 'preview', id: pin })
+      setFocus({ id: pin, seq: Date.now() })
     }
     // 첫 진입 한 번만 읽는다
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -379,6 +389,18 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   const detailPin = shownDetailId ? pinById.get(shownDetailId) : undefined
   const shownDetail = detail && detail.id === shownDetailId ? detail : null
   const count = pins ? inView.length : null
+  // 유튜버·지역·검색으로 거른 지도는 그 조건 그대로 공유한다
+  const share = useMemo(() => {
+    const ch = channelId ? channels.find((c) => c.id === channelId) : undefined
+    if (!pins || (!ch && !region && !text)) return null
+    const sp = new URLSearchParams()
+    if (ch) sp.set('yt', ch.slug || ch.id)
+    if (region) sp.set('region', region)
+    if (city) sp.set('city', city)
+    if (text) sp.set('q', text)
+    const what = [ch?.name, city ? `${region} ${city}` : region, text && `‘${text}’`].filter(Boolean).join(' ')
+    return { query: sp.toString(), title: `${what} 맛집 ${filtered.length}곳` }
+  }, [pins, channelId, channels, region, city, text, filtered.length])
   const search = (
     <SearchBar
       index={index}
@@ -549,6 +571,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                 leaving={preview.leaving}
                 onOpen={() => push({ v: 'detail', id: preview.shown!.id })}
                 onClose={back}
+                onShare={onShare && (() => onShare(`pin=${preview.shown!.id}`, preview.shown!.name))}
                 adSlot={previewAd?.(preview.shown.id)}
               />
             </div>
@@ -564,6 +587,17 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
               {count !== null
                 ? <span data-testid="pill-count" className="font-normal opacity-80">{count}곳</span>
                 : pins === null && <span data-testid="pins-loading" className="font-normal opacity-80">불러오는 중</span>}
+            </button>
+          )}
+          {!preview.shown && onShare && share && (
+            <button
+              type="button"
+              data-testid="share-filter"
+              onClick={() => onShare(share.query, share.title)}
+              className="pointer-events-auto ml-2 flex h-12 animate-sheet-in items-center gap-1.5 rounded-full bg-paper px-4 text-body font-bold text-ink shadow-[0_4px_16px_rgba(27,29,31,0.16)] transition-transform active:scale-95"
+            >
+              <ShareIcon />
+              공유
             </button>
           )}
         </div>
@@ -599,6 +633,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                   restaurant={shownDetail}
                   channelHref={pageLinks ? (slug) => `/youtuber/${encodeURIComponent(slug)}` : undefined}
                   adSlot={detailAd?.(shownDetail.id)}
+                  onShare={onShare && (() => onShare(`place=${shownDetail.id}`, shownDetail.name))}
                 />
                 {pageLinks && (
                   <p className="px-4 pb-8 sm:px-0">

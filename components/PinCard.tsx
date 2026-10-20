@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- 토스 앱과 같이 쓰는 컴포넌트라 next/image를 쓰지 않는다 */
+import { ShareIcon } from './ShareIcon'
 import React from 'react'
 import type { Pin } from '@/lib/pins'
 import { VisitorLine } from './ChannelFace'
@@ -58,7 +59,7 @@ function PlayBadge() {
 }
 
 /** 핀을 누르면 지도 아래에 뜨는 카드. 누르면 상세로 간다 */
-export function PreviewCard({ pin, faces, onOpen, onClose, leaving, adSlot }: { pin: Pin; faces: Faces; onOpen: () => void; onClose: () => void; leaving?: boolean; adSlot?: React.ReactNode }) {
+export function PreviewCard({ pin, faces, onOpen, onClose, onShare, leaving, adSlot }: { pin: Pin; faces: Faces; onOpen: () => void; onClose: () => void; onShare?: () => void; leaving?: boolean; adSlot?: React.ReactNode }) {
   return (
     <div
       data-testid="preview-card"
@@ -67,7 +68,7 @@ export function PreviewCard({ pin, faces, onOpen, onClose, leaving, adSlot }: { 
       }`}
     >
       <button type="button" onClick={onOpen} className="block w-full px-4 pb-3.5 pt-4 text-left active:opacity-90" aria-label={`${pin.name} 자세히 보기`}>
-        <span className="flex items-center gap-3 pr-8">
+        <span className={`flex items-center gap-3 ${onShare ? 'pr-20' : 'pr-8'}`}>
           <span className="relative h-[72px] w-[128px] flex-shrink-0 overflow-hidden rounded-[10px] bg-well">
             {pin.vid && <img src={thumb(pin.vid)} alt="" className="h-full w-full object-cover" />}
             {pin.vid && <PlayBadge />}
@@ -102,6 +103,17 @@ export function PreviewCard({ pin, faces, onOpen, onClose, leaving, adSlot }: { 
         </span>
       </button>
       {adSlot}
+      {onShare && (
+        <button
+          type="button"
+          onClick={onShare}
+          aria-label="공유"
+          data-testid="share-place"
+          className="absolute right-12 top-1 flex h-11 w-11 items-center justify-center text-ink"
+        >
+          <ShareIcon />
+        </button>
+      )}
       <button
         type="button"
         onClick={onClose}

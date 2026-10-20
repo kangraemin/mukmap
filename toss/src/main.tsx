@@ -46,6 +46,19 @@ import('@apps-in-toss/web-framework').then(({ graniteEvent, closeView }) => {
   report('back-registered');
 }).catch((e) => report('back-event-fail', String(e)));
 
+// 공유: 받은 사람이 누르면 토스 앱에서 같은 가게·같은 조건으로 열린다(HomeExplorer가 ?pin·?place·?yt·?q를 읽는다)
+async function shareLink(query: string, title: string) {
+  document.documentElement.dataset.mkShare = query;
+  try {
+    const { getTossShareLink, share } = await import('@apps-in-toss/web-framework');
+    const link = await getTossShareLink(`intoss://mukmap-kr?${query}`);
+    report('share', { query, link });
+    await share({ message: `${title}\n${link}` });
+  } catch (e) {
+    report('share-fail', String(e));
+  }
+}
+
 function App() {
   const [channels, setChannels] = useState<ChannelRow[] | null>(null);
 
@@ -66,6 +79,7 @@ function App() {
         detailAd={(id) => <AdBanner key={id} kind="strip" className="mt-6" />}
         listAd={(slot) => <AdBanner key={`list-${slot}`} kind="feed" className="my-3" />}
         previewAd={(id) => <AdBanner key={`pv-${id}`} kind="strip" variant="expanded" className="border-t border-line" />}
+        onShare={shareLink}
       />
     </>
   );

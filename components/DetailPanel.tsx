@@ -3,6 +3,7 @@ import type { RestaurantWithVideos, VideoDetail } from '@/lib/types'
 import { areaOf, dateLabel, leadVideo, placeUrl, sceneUrl, thumbOf, type VisitVideo } from '@/lib/format'
 import { ChannelFace } from './ChannelFace'
 import { RecBadge } from './RecBadge'
+import { ShareIcon } from './ShareIcon'
 
 interface DetailPanelProps {
   restaurant: RestaurantWithVideos
@@ -14,6 +15,8 @@ interface DetailPanelProps {
   asPage?: boolean
   /** 버튼 줄 아래에 둘 광고 자리. 토스 앱만 넘긴다 */
   adSlot?: React.ReactNode
+  /** 공유 버튼을 누르면 부른다. 토스 앱만 넘긴다 */
+  onShare?: () => void
 }
 
 function PlayGlyph() {
@@ -122,7 +125,7 @@ function Review({ v, d, channelHref, Sub }: { v: VisitVideo; d: VideoDetail; cha
   )
 }
 
-export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫기', channelHref, asPage, adSlot }: DetailPanelProps) {
+export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫기', channelHref, asPage, adSlot, onShare }: DetailPanelProps) {
   const lead = leadVideo(r)
   // 상세 요약이 있는 영상만, 최근 순(videos는 이미 최근 순)
   const reviewed = r.videos.filter((v) => v.detail && (has(v.detail.verdict) || (v.detail.dishes || []).length))
@@ -178,6 +181,17 @@ export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫�
           >
             길찾기
           </a>
+          {onShare && (
+            <button
+              type="button"
+              onClick={onShare}
+              aria-label="공유"
+              data-testid="share-detail"
+              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-card border border-line text-ink"
+            >
+              <ShareIcon />
+            </button>
+          )}
         </div>
         {adSlot}
 
