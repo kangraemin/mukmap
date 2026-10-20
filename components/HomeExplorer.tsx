@@ -7,6 +7,7 @@ import DetailPanel from '@/components/DetailPanel'
 import { ChannelFace } from '@/components/ChannelFace'
 import { PinRow, PreviewCard } from '@/components/PinCard'
 import { ShareIcon } from '@/components/ShareIcon'
+import { listMessage, placeMessage, type ShareMessage } from '@/lib/share'
 import Toast from '@/components/Toast'
 import { decodePins, inBounds, loadPins, type Bounds, type Pin, type PinsPayload } from '@/lib/pins'
 import { buildIndex, searchPins } from '@/lib/search'
@@ -43,8 +44,8 @@ interface HomeExplorerProps {
   listAd?: (slot: number) => React.ReactNode
   /** 지도 위 가게 카드 맨 아래 광고 */
   previewAd?: (restaurantId: number) => React.ReactNode
-  /** 공유 버튼을 누르면 부른다. query는 받은 사람이 열 주소 쿼리(place=12, yt=쯔양&region=서울), title은 공유 문구. 토스 앱만 넘긴다 */
-  onShare?: (query: string, title: string) => void
+  /** 공유 버튼을 누르면 부른다. 받은 사람이 열 주소 쿼리와 공유 글·미리보기 그림. 토스 앱만 넘긴다 */
+  onShare?: (msg: ShareMessage) => void
 }
 
 function readNav(): Nav {
@@ -122,14 +123,19 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   useEffect(() => {
     const cached = readCache()
     if (cached) setPins(cached)
-    loadPins(apiBase)
+    // 토스 앱을 막 띄운 순간엔 요청이 바로 실패하곤 해서 몇 번 더 받아 본다
+    let live = true
+    const load = (n: number) => loadPins(apiBase)
       .then((p: PinsPayload) => {
         writeCache(p)
-        setPins(decodePins(p))
+        if (live) setPins(decodePins(p))
       })
       .catch(() => {
-        if (!cached) setToast('가게 목록을 불러오지 못했어요. 잠시 뒤 다시 열어 보세요.')
+        if (live && n < 5) setTimeout(() => load(n + 1), 500 * 2 ** n)
+        else if (live && !cached) setToast('가게 목록을 불러오지 못했어요. 잠시 뒤 다시 열어 보세요.')
       })
+    load(0)
+    return () => { live = false }
   }, [apiBase])
 
   // 프로필 사진은 우리 주소를 거쳐 받는다(app/api/face)
@@ -152,6 +158,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   }, [faceChannels])
 
   const pinById = useMemo(() => new Map((pins || []).map((p) => [p.id, p])), [pins])
+  const nameOf = useCallback((id: string) => faces[id]?.name || '', [faces])
 
   const index = useMemo(() => (pins ? buildIndex(pins, (id) => faces[id]?.name || '') : null), [pins, faces])
   const textHits = useMemo(() => (index && text ? new Set(searchPins(index, text).map((p) => p.id)) : null), [index, text])
@@ -399,8 +406,12 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     if (city) sp.set('city', city)
     if (text) sp.set('q', text)
     const what = [ch?.name, city ? `${region} ${city}` : region, text && `‘${text}’`].filter(Boolean).join(' ')
-    return { query: sp.toString(), title: `${what} 맛집 ${filtered.length}곳` }
-  }, [pins, channelId, channels, region, city, text, filtered.length])
+    return listMessage(sp.toString(), what, filtered, nameOf)
+  }, [pins, channelId, channels, region, city, text, filtered, nameOf])
+  const sharePlace = (id: number, query: string) => {
+    const p = pinById.get(id)
+    if (onShare && p) onShare(placeMessage(p, query, nameOf))
+  }
   const search = (
     <SearchBar
       index={index}
@@ -571,7 +582,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                 leaving={preview.leaving}
                 onOpen={() => push({ v: 'detail', id: preview.shown!.id })}
                 onClose={back}
-                onShare={onShare && (() => onShare(`pin=${preview.shown!.id}`, preview.shown!.name))}
+                onShare={onShare && (() => sharePlace(preview.shown!.id, `pin=${preview.shown!.id}`))}
                 adSlot={previewAd?.(preview.shown.id)}
               />
             </div>
@@ -593,7 +604,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
             <button
               type="button"
               data-testid="share-filter"
-              onClick={() => onShare(share.query, share.title)}
+              onClick={() => onShare(share)}
               className="pointer-events-auto ml-2 flex h-12 animate-sheet-in items-center gap-1.5 rounded-full bg-paper px-4 text-body font-bold text-ink shadow-[0_4px_16px_rgba(27,29,31,0.16)] transition-transform active:scale-95"
             >
               <ShareIcon />
@@ -633,7 +644,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                   restaurant={shownDetail}
                   channelHref={pageLinks ? (slug) => `/youtuber/${encodeURIComponent(slug)}` : undefined}
                   adSlot={detailAd?.(shownDetail.id)}
-                  onShare={onShare && (() => onShare(`place=${shownDetail.id}`, shownDetail.name))}
+                  onShare={onShare && (() => sharePlace(shownDetail.id, `place=${shownDetail.id}`))}
                 />
                 {pageLinks && (
                   <p className="px-4 pb-8 sm:px-0">

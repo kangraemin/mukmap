@@ -6,6 +6,7 @@ import AdBanner from './AdBanner';
 import { preloadMapSdk } from '@/components/NaverMap';
 import { loadPins } from '@/lib/pins';
 import type { Channel } from '@/lib/types';
+import type { ShareMessage } from '@/lib/share';
 import '@/app/globals.css';
 import './toss.css';
 
@@ -47,13 +48,15 @@ import('@apps-in-toss/web-framework').then(({ graniteEvent, closeView }) => {
 }).catch((e) => report('back-event-fail', String(e)));
 
 // 공유: 받은 사람이 누르면 토스 앱에서 같은 가게·같은 조건으로 열린다(HomeExplorer가 ?pin·?place·?yt·?q를 읽는다)
-async function shareLink(query: string, title: string) {
+async function shareLink({ query, text, image }: ShareMessage) {
   document.documentElement.dataset.mkShare = query;
+  document.documentElement.dataset.mkShareText = text;
   try {
     const { getTossShareLink, share } = await import('@apps-in-toss/web-framework');
-    const link = await getTossShareLink(`intoss://mukmap-kr?${query}`);
+    // 미리보기 그림을 넣어야 카톡 등에서 링크가 카드로 보인다
+    const link = await getTossShareLink(`intoss://mukmap-kr?${query}`, image);
     report('share', { query, link });
-    await share({ message: `${title}\n${link}` });
+    await share({ message: `${text}\n${link}` });
   } catch (e) {
     report('share-fail', String(e));
   }
@@ -62,11 +65,25 @@ async function shareLink(query: string, title: string) {
 function App() {
   const [channels, setChannels] = useState<ChannelRow[] | null>(null);
 
+  // 토스 앱을 막 띄운 순간에는 요청이 바로 실패하곤 한다(실기기 'Load failed', 2026-10-20). 실패하거나 비어 오면 다시 받는다
   useEffect(() => {
-    fetch(`${API}/api/channels`)
-      .then((r) => r.json())
-      .then((d) => { report('channels', d.channels?.length); setChannels(d.channels || []); })
-      .catch((e) => { report('channels-fail', String(e)); setChannels([]); });
+    let live = true;
+    const load = (n: number) => {
+      fetch(`${API}/api/channels`)
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then((d) => {
+          if (!d.channels?.length) throw new Error('empty');
+          report('channels', d.channels.length);
+          if (live) setChannels(d.channels);
+        })
+        .catch((e) => {
+          report('channels-fail', { n, e: String(e) });
+          if (live && n < 6) setTimeout(() => load(n + 1), 500 * 2 ** n);
+          else if (live) setChannels([]);
+        });
+    };
+    load(0);
+    return () => { live = false; };
   }, []);
 
   return (

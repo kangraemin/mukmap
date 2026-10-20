@@ -116,3 +116,79 @@ test('토스: 검색 조건으로 들어오면 공유 버튼이 그 조건을 �
   await page.getByTestId('text-chip').first().click()
   await expect(btn).toHaveCount(0)
 })
+
+// 토스 번들을 지도 키가 허용된 주소(localhost:3000)로 띄운다. 실제 지도가 그려진다
+async function openTossMap(page: Page, query = '', fail: { channels?: number; pins?: number } = {}) {
+  const left = { ...fail }
+  await page.route('http://localhost:3000/**', async (route) => {
+    try {
+      const res = await route.fetch({ url: route.request().url().replace('localhost:3000', 'localhost:5174') })
+      await route.fulfill({ response: res })
+    } catch {
+      // 테스트가 먼저 끝나 페이지가 닫힌 경우
+    }
+  })
+  await page.route('https://mukmap.kr/api/**', async (route) => {
+    const url = route.request().url()
+    // 토스 앱을 막 띄운 순간처럼 처음 몇 번은 요청이 바로 실패한다
+    for (const k of ['channels', 'pins'] as const) {
+      if (url.includes(`/api/${k}`) && left[k]) { left[k]!--; return route.abort('failed') }
+    }
+    try {
+      const res = await route.fetch()
+      await route.fulfill({ response: res, headers: { ...res.headers(), 'access-control-allow-origin': '*' } })
+    } catch {
+      // 테스트가 먼저 끝나 페이지가 닫힌 경우
+    }
+  })
+  await page.goto(`http://localhost:3000/${query}`)
+}
+
+test('토스: 지도 카드 공유 링크로 열면 지도가 그 가게로 가서 카드가 뜨고, 뒤로가면 카드만 닫힌다', async ({ page }) => {
+  await openTossMap(page, `?pin=${ID}`)
+  const card = page.getByTestId('preview-card')
+  await expect(card).toBeVisible({ timeout: 30_000 })
+  const pin = page.locator(`[data-pin="${ID}"]`)
+  await expect(pin).toBeVisible({ timeout: 30_000 })
+  // 그 가게가 지도 가로 가운데 근처, 카드 위에 있다
+  await expect.poll(async () => {
+    const b = await pin.boundingBox()
+    const c = await card.boundingBox()
+    const vw = page.viewportSize()!.width
+    return b && c ? Math.abs(b.x + b.width / 2 - vw / 2) < 40 && b.y + b.height <= c.y : false
+  }, { timeout: 10_000 }).toBe(true)
+  await page.goBack()
+  await expect(card).toHaveCount(0)
+  await expect(pin).toBeVisible()
+})
+
+test('토스: 앱을 막 띄워 첫 요청이 실패해도 다시 받아 가게와 유튜버 얼굴이 뜬다', async ({ page }) => {
+  await openTossMap(page, '', { channels: 2, pins: 1 })
+  await expect(page.getByTestId('pill-count')).toHaveText(/\d+곳/, { timeout: 30_000 })
+  const clusters = page.locator('[data-cluster]')
+  await expect(clusters.first()).toBeVisible({ timeout: 30_000 })
+  await expect.poll(async () => {
+    const n = await clusters.count()
+    return n > 0 && (await page.locator('[data-cluster] img').count()) === n
+  }, { timeout: 20_000 }).toBe(true)
+})
+
+test('토스: 공유 글에 가게 이름·다녀간 유튜버·평이 들어가 눌러 보고 싶게 나간다', async ({ page }) => {
+  await openTossMap(page, `?pin=${ID}`)
+  await page.getByTestId('share-place').click({ timeout: 30_000 })
+  const text = await page.evaluate(() => document.documentElement.dataset.mkShareText || '')
+  const name = (await page.getByTestId('preview-card').locator('.text-lead.font-bold').first().textContent())!.trim()
+  expect(text).toContain(name)
+  expect(text).toMatch(/다녀간/)
+  expect(text).toMatch(/“.+”|먹은 것: .+/)
+  expect(text).toMatch(/먹맵에서/)
+  expect(text.split('\n').length).toBeGreaterThanOrEqual(3)
+})
+
+test('토스: 검색 결과 공유 글에 개수와 가게 이름들이 들어간다', async ({ page }) => {
+  await openTossMap(page, `?q=${encodeURIComponent('국밥')}`)
+  await page.getByTestId('share-filter').click({ timeout: 30_000 })
+  const text = await page.evaluate(() => document.documentElement.dataset.mkShareText || '')
+  expect(text).toMatch(/‘국밥’ 맛집 \d+곳/)
+  expect(text).toMatch(/\n· .+/)
+})
