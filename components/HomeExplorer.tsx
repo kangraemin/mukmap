@@ -170,6 +170,17 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
 
   const inView = useMemo(() => (bounds ? filtered.filter((p) => inBounds(p, bounds)) : filtered), [filtered, bounds])
 
+  // 지금 보이는 지도(지역·검색 조건 포함)에 가게가 하나도 없는 유튜버 칩은 흐리게 보인다. 눌러도 되고, 누르면 그 유튜버 가게로 지도를 옮긴다
+  const viewCount = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const p of pins || []) {
+      if ((region && p.region !== region) || (city && p.city !== city) || (textHits && !textHits.has(p.id))) continue
+      if (bounds && !inBounds(p, bounds)) continue
+      for (const c of p.ch) m.set(c, (m.get(c) || 0) + 1)
+    }
+    return m
+  }, [pins, region, city, textHits, bounds])
+
   const listOpen = desktop || nav.v === 'list'
 
   const sorted = useMemo(() => {
@@ -439,18 +450,23 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       </button>
       {channels.map((ch) => {
         const on = ch.id === channelId
+        const empty = !on && pins !== null && !viewCount.get(ch.id)
         return (
           <button
             key={ch.id}
             type="button"
             onClick={() => pickChannel(on ? null : ch.id)}
             aria-pressed={on}
+            data-empty={empty || undefined}
             className={`flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full pl-1 pr-3 text-meta font-bold ${
-              on ? 'bg-ink text-paper' : 'bg-paper text-ink'
+              on ? 'bg-ink text-paper' : empty ? 'bg-well text-sub' : 'bg-paper text-ink'
             } ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : 'border border-line'}`}
           >
-            <ChannelFace face={{ id: ch.id, name: ch.name, thumbnail: faces[ch.id]?.thumbnail ?? null }} size={28} />
+            <span className={`flex ${empty ? 'opacity-40 grayscale' : ''}`}>
+              <ChannelFace face={{ id: ch.id, name: ch.name, thumbnail: faces[ch.id]?.thumbnail ?? null }} size={28} />
+            </span>
             {ch.name}
+            {empty && <span className="sr-only">(이 화면엔 가게 없음)</span>}
           </button>
         )
       })}

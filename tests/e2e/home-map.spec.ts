@@ -279,3 +279,21 @@ test('가게 목록이 늦으면 빈 지도 대신 소개나 불러오는 중이
   await expect(page.locator('[data-cluster], [data-pin]').first()).toBeVisible({ timeout: 20_000 })
   await expect(page.getByTestId('pins-loading')).toHaveCount(0)
 })
+
+test('지금 보이는 지도에 가게가 없는 유튜버 칩은 흐리게 보이고, 누르면 그 유튜버 가게로 지도가 옮겨간다', async ({ page }) => {
+  // 한 가게로 확대해 들어오면 근처에 가게가 없는 유튜버가 생긴다
+  await page.goto('/?pin=142')
+  await expect(page.getByTestId('preview-card')).toBeVisible({ timeout: 30_000 })
+  const nav = page.getByRole('navigation', { name: '유튜버 고르기' }).first()
+  const empty = nav.locator('button[data-empty]')
+  await expect.poll(() => empty.count(), { timeout: 15_000 }).toBeGreaterThan(0)
+  // 가게가 있는 칩은 흐리지 않다
+  expect(await nav.locator('button[aria-pressed]:not([data-empty])').count()).toBeGreaterThan(1)
+  const name = (await empty.first().innerText()).split('(')[0].trim()
+  const chip = nav.getByRole('button', { name, exact: false }).first()
+  await chip.scrollIntoViewIfNeeded()
+  await chip.click()
+  await expect(chip).toHaveAttribute('aria-pressed', 'true')
+  await expect(chip).not.toHaveAttribute('data-empty', /.*/)
+  await expect.poll(async () => Number((await page.getByTestId('pill-count').textContent())!.replace(/\D/g, '')), { timeout: 15_000 }).toBeGreaterThan(0)
+})
