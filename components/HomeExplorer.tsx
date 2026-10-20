@@ -647,13 +647,6 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                   adSlot={detailAd?.(shownDetail.id)}
                   onShare={onShare && (() => sharePlace(shownDetail.id, `place=${shownDetail.id}`))}
                 />
-                {pageLinks && (
-                  <p className="px-4 pb-8 sm:px-0">
-                    <a href={`/restaurant/${shownDetail.id}`} className="inline-flex min-h-[44px] items-center text-meta text-sub underline underline-offset-2">
-                      이 가게만 따로 보기
-                    </a>
-                  </p>
-                )}
               </>
             ) : (
               <div aria-busy="true" className="px-4 pt-3 sm:px-0">

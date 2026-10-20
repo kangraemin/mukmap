@@ -202,3 +202,12 @@ test('토스: 검색 결과 공유 글에 개수와 가게 이름들이 들어�
   expect(text).toMatch(/‘국밥’ 맛집 \d+곳/)
   expect(text).toMatch(/\n· .+/)
 })
+
+test('같은 내용을 다시 여는 중복 링크가 없다: 지도 상세엔 "따로 보기", 가게 페이지엔 아래쪽 지도 링크 대신 위 "지도 보기" 하나', async ({ page }) => {
+  await page.goto(`/?place=${ID}`)
+  await expect(page.getByTestId('detail-view').getByRole('link', { name: /길찾기/ })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('link', { name: /따로 보기/ })).toHaveCount(0)
+  await page.goto(`/restaurant/${ID}`)
+  await expect(page.getByRole('link', { name: /주변 맛집/ })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: '지도 보기' })).toHaveAttribute('href', new RegExp(`place=${ID}`))
+})
