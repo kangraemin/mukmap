@@ -71,8 +71,26 @@ function App() {
   );
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+// 웹 목록 페이지의 '토스 앱으로 열기'는 intoss://mukmap-kr?region=..&yt=.. 로 들어온다.
+// 웹뷰 주소에 쿼리가 안 붙어 올 수 있어 진입 스킴에서 읽어 주소에 옮긴 뒤 화면을 그린다(HomeExplorer가 주소 쿼리를 읽는다)
+async function applyEntryQuery() {
+  try {
+    const { getSchemeUri, Share } = await import('@apps-in-toss/web-framework');
+    const scheme = getSchemeUri();
+    report('entry', scheme);
+    const q = new URL(scheme.replace(/^intoss(-private)?:\/\//, 'https://x/')).search;
+    if (q && !location.search) history.replaceState(history.state, '', `${location.pathname}${q}${location.hash}`);
+    // 웹이 쓸 기본 공유 링크 형식을 로그로 받는다(공개 문서에 형식이 없다)
+    Share.createLink({ path: 'intoss://mukmap-kr' }).then((l) => report('share-link', l)).catch((e) => report('share-link-fail', String(e)));
+  } catch (e) {
+    report('entry-fail', String(e));
+  }
+}
+
+Promise.race([applyEntryQuery(), new Promise((r) => setTimeout(r, 800))]).then(() => {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+});

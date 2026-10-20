@@ -6,6 +6,8 @@ import { ChannelFace } from './ChannelFace'
 const SEEN_KEY = 'mukmap:intro'
 const MIN_MS = 900
 const MAX_MS = 4000
+// 가게 목록이 아직 안 왔으면 MAX_MS가 지나도 빈 지도를 보이지 않고 이때까지 기다린다
+const HARD_MS = 12000
 
 interface IntroChannel {
   id: string
@@ -14,22 +16,24 @@ interface IntroChannel {
 }
 
 /** 처음 들어왔을 때 지도가 준비될 때까지 덮어 두는 화면. 세션당 한 번만 */
-export default function Intro({ ready, channels }: { ready: boolean; channels: IntroChannel[] }) {
+export default function Intro({ ready, loaded, channels }: { ready: boolean; loaded: boolean; channels: IntroChannel[] }) {
   const [phase, setPhase] = useState<'show' | 'leaving' | 'gone'>('show')
   const [minDone, setMinDone] = useState(false)
+  const [maxDone, setMaxDone] = useState(false)
 
   useEffect(() => {
     let seen = false
     try { seen = sessionStorage.getItem(SEEN_KEY) === '1'; sessionStorage.setItem(SEEN_KEY, '1') } catch {}
     if (seen) { setPhase('gone'); return }
     const a = setTimeout(() => setMinDone(true), MIN_MS)
-    const b = setTimeout(() => setPhase((p) => (p === 'show' ? 'leaving' : p)), MAX_MS)
-    return () => { clearTimeout(a); clearTimeout(b) }
+    const b = setTimeout(() => setMaxDone(true), MAX_MS)
+    const c = setTimeout(() => setPhase((p) => (p === 'show' ? 'leaving' : p)), HARD_MS)
+    return () => { clearTimeout(a); clearTimeout(b); clearTimeout(c) }
   }, [])
 
   useEffect(() => {
-    if (ready && minDone) setPhase((p) => (p === 'show' ? 'leaving' : p))
-  }, [ready, minDone])
+    if ((ready && minDone) || (maxDone && loaded)) setPhase((p) => (p === 'show' ? 'leaving' : p))
+  }, [ready, minDone, maxDone, loaded])
 
   useEffect(() => {
     if (phase !== 'leaving') return

@@ -312,14 +312,11 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   // 목록·가게 페이지에서 넘어온 조건(?yt=쯔양&region=서울, ?place=12)으로 연다
   useEffect(() => {
     const q = new URLSearchParams(window.location.search)
-    const yt = q.get('yt')
-    const ch = yt ? channels.find((c) => c.slug === yt || c.id === yt) : undefined
     const reg = q.get('region')
     const place = Number(q.get('place'))
-    if (ch) setChannelId(ch.id)
     if (reg) setRegion(reg)
     if (reg && q.get('city')) setCity(q.get('city')!)
-    if (ch || reg) fitWhenLoaded.current = true
+    if (q.get('yt') || reg) fitWhenLoaded.current = true
     if (Number.isInteger(place) && place > 0 && readNav().v === 'map') {
       push({ v: 'detail', id: place })
       setFocus({ id: place, seq: Date.now() })
@@ -327,6 +324,16 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     // 첫 진입 한 번만 읽는다
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ?yt=는 유튜버 목록이 와야 풀 수 있다. 토스 앱은 목록을 늦게 받아서 도착했을 때 한 번 적용한다
+  const ytApplied = useRef(false)
+  useEffect(() => {
+    if (ytApplied.current || !channels.length) return
+    ytApplied.current = true
+    const yt = new URLSearchParams(window.location.search).get('yt')
+    const ch = yt ? channels.find((c) => c.slug === yt || c.id === yt) : undefined
+    if (ch) setChannelId(ch.id)
+  }, [channels])
 
   // 목록 끝에 닿으면 더 그린다
   const sentinel = useRef<HTMLDivElement>(null)
@@ -554,7 +561,9 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
             >
               <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true"><path d="M3 4.5h12M3 9h12M3 13.5h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
               목록 보기
-              {count !== null && <span data-testid="pill-count" className="font-normal opacity-80">{count}곳</span>}
+              {count !== null
+                ? <span data-testid="pill-count" className="font-normal opacity-80">{count}곳</span>
+                : pins === null && <span data-testid="pins-loading" className="font-normal opacity-80">불러오는 중</span>}
             </button>
           )}
         </div>
@@ -614,7 +623,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       )}
 
       {toast && <Toast message={toast} onClose={handleToastClose} />}
-      <Intro ready={pins !== null && bounds !== null && facesReady} channels={faceChannels} />
+      <Intro ready={pins !== null && bounds !== null && facesReady} loaded={pins !== null} channels={faceChannels} />
     </div>
   )
 }

@@ -239,3 +239,43 @@ test('다른 지역 검색 필터가 걸린 채로 가게를 고르면 지도가
     return !!b && !!c && b.x > 0 && b.x + b.width < vp.width && b.y > 100 && b.y + b.height < c.y
   }, { timeout: 10_000 }).toBe(true)
 })
+
+test('가게 목록이 늦게 와도 지도를 건드리지 않고 핀이 뜬다', async ({ page }) => {
+  // 배포 직후 캐시가 비면 /api/pins가 몇 초 늦게 온다(토스에서 첫 화면이 빈 지도로 남았다)
+  await page.route('**/api/pins*', async (route) => {
+    await new Promise((r) => setTimeout(r, 5000))
+    await route.continue()
+  })
+  await page.goto('/')
+  await expect(page.locator('[data-cluster], [data-pin]').first()).toBeVisible({ timeout: 20_000 })
+})
+
+test('지도 틀이 처음에 0 크기였다가 커져도 건드리지 않고 핀이 뜬다', async ({ page }) => {
+  // 토스 웹뷰는 첫 화면에서 틀 크기가 0이었다가 늦게 잡힌다. 그사이 가게 목록이 오면 핀이 안 그려졌다
+  await page.addInitScript(() => {
+    const s = document.createElement('style')
+    s.id = 'squash'
+    s.textContent = '[data-testid="map"]{width:0!important;height:0!important}'
+    document.documentElement.appendChild(s)
+  })
+  await page.goto('/')
+  await expect(page.getByTestId('pill-count')).toHaveText(/\d+곳/, { timeout: 30_000 })
+  await page.waitForTimeout(2000)
+  await page.evaluate(() => document.getElementById('squash')?.remove())
+  await expect(page.locator('[data-cluster], [data-pin]').first()).toBeVisible({ timeout: 8_000 })
+})
+
+test('가게 목록이 늦으면 빈 지도 대신 소개나 불러오는 중이 보인다', async ({ page }) => {
+  // 토스 첫 실행: 목록이 4초 넘게 걸리자 소개가 걷히고 핀 없는 빈 지도만 남았다
+  await page.route('**/api/pins*', async (route) => {
+    await new Promise((r) => setTimeout(r, 7000))
+    await route.continue()
+  })
+  await page.goto('/')
+  await page.waitForTimeout(5500)
+  const intro = await page.getByTestId('intro').count()
+  const loading = await page.getByTestId('pins-loading').count()
+  expect(intro + loading).toBeGreaterThan(0)
+  await expect(page.locator('[data-cluster], [data-pin]').first()).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByTestId('pins-loading')).toHaveCount(0)
+})
