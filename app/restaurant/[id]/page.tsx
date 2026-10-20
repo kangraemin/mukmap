@@ -5,6 +5,7 @@ import SiteHeader from '@/components/page/SiteHeader'
 import { getRestaurant } from '@/lib/data'
 import { areaOf, leadVideo, thumbOf, visitorsOf } from '@/lib/format'
 import { iGa } from '@/lib/josa'
+import { tossHref } from '@/lib/tossLink'
 import { breadcrumbJsonLd, jsonLdScript, mapHrefOf, pageMetadata, pathOf, restaurantJsonLd } from '@/lib/seo'
 
 export const revalidate = 3600
@@ -59,6 +60,11 @@ export default async function RestaurantPage({ params }: Props) {
         <section aria-label="더 보기" className="px-4 pb-[calc(40px+env(safe-area-inset-bottom))] pt-2 sm:px-0">
           <h2 className="text-body font-bold text-ink">이 지역 더 보기</h2>
           <ul className="mt-2 flex flex-wrap gap-2">
+            <li>
+              <a href={tossHref({ place: r.id })} data-testid="open-toss" className="inline-flex min-h-[40px] items-center rounded-full border border-line px-3.5 text-body text-ink">
+                토스 앱으로 열기
+              </a>
+            </li>
             {r.region && r.city && (
               <li>
                 <a href={pathOf('region', r.region, r.city)} className="inline-flex min-h-[40px] items-center rounded-full border border-line px-3.5 text-body text-ink">

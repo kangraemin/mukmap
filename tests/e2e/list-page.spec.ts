@@ -40,3 +40,35 @@ test('지도로 보기 버튼이 스크롤해도 화면 안에 있다', async ({
   await page.evaluate(() => window.scrollTo(0, 3000))
   await expect(btn).toBeInViewport()
 })
+
+// 토스 앱으로 열기: 토스 링크를 받는 쪽처럼 풀면 웹에서 고른 조건이 미니앱에 그대로 넘어간다
+function intossQuery(href: string) {
+  const supertoss = new URL(href).searchParams.get('af_dp')!
+  const intoss = new URLSearchParams(supertoss.split('?')[1]).get('redirect')!
+  expect(intoss.startsWith('intoss://mukmap-kr')).toBe(true)
+  return new URLSearchParams(intoss.slice(intoss.indexOf('?')))
+}
+
+test('목록의 토스 앱으로 열기는 지도 버튼 옆에 보이고, 고른 지역·구를 실어 토스 미니앱을 연다', async ({ page, request }) => {
+  await page.goto(SEOUL)
+  await page.getByTestId('facet-city').getByRole('button', { name: /^강남구/ }).click()
+  const toss = page.getByTestId('open-toss')
+  await expect(toss).toBeInViewport()
+  // 지도 버튼과 겹치지 않고 화면 밖으로 잘리지 않는다
+  const m = (await page.getByTestId('open-map').boundingBox())!
+  const t = (await toss.boundingBox())!
+  expect(t.x).toBeGreaterThanOrEqual(m.x + m.width)
+  expect(t.x + t.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+  const q = intossQuery((await toss.getAttribute('href'))!)
+  expect([q.get('region'), q.get('city')]).toEqual(['서울', '강남구'])
+  // 토스 링크 서버가 이 주소를 받아 준다
+  const res = await request.get((await toss.getAttribute('href'))!, { maxRedirects: 0 })
+  expect(res.status()).toBeLessThan(400)
+})
+
+test('가게 페이지의 토스 앱으로 열기는 그 가게 상세(place=)로 미니앱을 연다', async ({ page }) => {
+  await page.goto('/restaurant/142')
+  const toss = page.getByTestId('open-toss')
+  await expect(toss).toBeVisible()
+  expect(intossQuery((await toss.getAttribute('href'))!).get('place')).toBe('142')
+})

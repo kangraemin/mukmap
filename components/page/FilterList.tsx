@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import type { RestaurantWithVideos } from '@/lib/types'
 import { SceneCard } from '@/components/RestaurantCard'
+import { tossHref } from '@/lib/tossLink'
 
 export type Facet = 'region' | 'city' | 'channel'
 export type ChannelInfo = Record<string, { name: string; thumbnail: string | null; slug?: string | null }>
@@ -71,11 +72,12 @@ export default function FilterList({ restaurants: slimmed, channels, facets, bas
     setShown(pageSize)
   }
 
-  const href = mapHref({
+  const q = {
     yt: picked.channel || base.yt,
     region: picked.region || base.region,
     city: picked.city || base.city,
-  })
+  }
+  const href = mapHref(q)
 
   return (
     <>
@@ -123,11 +125,12 @@ export default function FilterList({ restaurants: slimmed, channels, facets, bas
         </button>
       )}
 
-      {/* 화면 아래에 늘 떠 있는 지도 버튼. 고른 칩 조건 그대로 지도를 연다 */}
+      {/* 화면 아래에 늘 떠 있는 지도 버튼. 고른 칩 조건 그대로 지도를 연다. 옆에 같은 조건으로 토스 미니앱을 여는 작은 버튼 */}
+      <div className="fixed bottom-[calc(16px+env(safe-area-inset-bottom))] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap">
       <a
         href={href}
         data-testid="open-map"
-        className="fixed bottom-[calc(16px+env(safe-area-inset-bottom))] left-1/2 z-30 inline-flex min-h-[48px] -translate-x-1/2 items-center gap-2 rounded-full bg-ink px-5 text-body font-bold text-paper shadow-[0_4px_16px_rgba(0,0,0,0.2)]"
+        className="inline-flex min-h-[48px] items-center gap-2 rounded-full bg-ink px-5 text-body font-bold text-paper shadow-[0_4px_16px_rgba(0,0,0,0.2)]"
       >
         <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
           <path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21Z" />
@@ -135,6 +138,14 @@ export default function FilterList({ restaurants: slimmed, channels, facets, bas
         </svg>
         지도로 보기
       </a>
+      <a
+        href={tossHref(q)}
+        data-testid="open-toss"
+        className="inline-flex min-h-[48px] items-center rounded-full border border-line bg-paper px-4 text-meta font-bold text-ink shadow-[0_4px_16px_rgba(0,0,0,0.12)]"
+      >
+        토스 앱으로 열기
+      </a>
+      </div>
     </>
   )
 }
