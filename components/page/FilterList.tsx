@@ -1,6 +1,7 @@
 'use client'
 // 목록 페이지의 가게 카드 + 구·시·유튜버 칩 거르기. 칩은 페이지를 옮기지 않고 그 자리에서 거른다.
 import { useMemo, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import type { RestaurantWithVideos } from '@/lib/types'
 import { SceneCard } from '@/components/RestaurantCard'
 import { tossHref } from '@/lib/tossLink'
@@ -27,7 +28,7 @@ function keyOf(r: RestaurantWithVideos, f: Facet): string[] {
 
 function mapHref(q: Record<string, string | undefined>) {
   const sp = new URLSearchParams()
-  for (const k of ['yt', 'region', 'city'] as const) if (q[k]) sp.set(k, q[k]!)
+  for (const k of ['yt', 'region', 'city', 'from'] as const) if (q[k]) sp.set(k, q[k]!)
   const qs = sp.toString()
   return qs ? `/?${qs}` : '/'
 }
@@ -41,6 +42,7 @@ export default function FilterList({ restaurants: slimmed, channels, facets, bas
       return { ...v, channel_name: c?.name || '', channel_thumbnail: c?.thumbnail || null, channel_slug: c?.slug }
     }),
   })) as RestaurantWithVideos[], [slimmed, channels])
+  const pathname = usePathname()
   const [picked, setPicked] = useState<Partial<Record<Facet, string>>>({})
   const [shown, setShown] = useState(pageSize)
 
@@ -77,7 +79,8 @@ export default function FilterList({ restaurants: slimmed, channels, facets, bas
     region: picked.region || base.region,
     city: picked.city || base.city,
   }
-  const href = mapHref(q)
+  // 지도에서 '목록으로'를 누르면 이 페이지로 돌아온다
+  const href = mapHref({ ...q, from: pathname || undefined })
 
   return (
     <>

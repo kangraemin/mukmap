@@ -59,7 +59,7 @@ export default async function YoutuberPage({ params }: Props) {
       answer={answer}
       restaurants={restaurants}
       dateModified={facts.latest}
-      mapHref={mapHrefOf({ yt: slug })}
+      mapHref={mapHrefOf({ yt: slug, from: path })}
       facets={['region']}
       base={{ yt: slug }}
       groups={[{

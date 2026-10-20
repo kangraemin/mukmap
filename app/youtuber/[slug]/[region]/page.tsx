@@ -58,7 +58,7 @@ export default async function YoutuberRegionPage({ params }: Props) {
       answer={answer}
       restaurants={restaurants}
       dateModified={facts.latest}
-      mapHref={mapHrefOf({ yt: slug, region })}
+      mapHref={mapHrefOf({ yt: slug, region, from: path })}
       facets={['city']}
       base={{ yt: slug, region }}
       more={{ href: pathOf('region', region), label: `${region}의 다른 유튜버 맛집` }}

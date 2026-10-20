@@ -72,3 +72,42 @@ test('가게 페이지의 토스 앱으로 열기는 그 가게 상세(place=)�
   await expect(toss).toBeVisible()
   expect(intossQuery((await toss.getAttribute('href'))!).get('place')).toBe('142')
 })
+
+test('목록에서 구를 골라 지도로 가면 그 구만 보는 중이라고 알리고, 목록으로 돌아갈 수 있다', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.goto(SEOUL)
+  await page.getByTestId('facet-city').getByRole('button', { name: /^강남구/ }).click()
+  await page.getByTestId('open-map').click()
+  await expect(page).toHaveURL(/city=/)
+  await expect(page.getByTestId('pill-count')).toHaveText(/\d+곳/, { timeout: 30_000 })
+  // 지역 칩이 스크롤 줄 밖 왼쪽에 고정돼 늘 보인다
+  const chip = page.getByTestId('place-chip').locator('visible=true')
+  await expect(chip).toContainText('서울 강남구만')
+  await expect(chip).toBeInViewport()
+
+  // 칩을 누르면 지역 조건이 풀리고 다른 구 가게도 나온다
+  const before = Number((await page.getByTestId('pill-count').textContent())!.replace(/\D/g, ''))
+  await chip.click()
+  await expect(page.getByTestId('place-chip')).toHaveCount(0)
+  await expect.poll(async () => Number((await page.getByTestId('pill-count').textContent())!.replace(/\D/g, ''))).toBeGreaterThan(before)
+
+  // 목록으로 = 뒤로가기: 왔던 서울 목록 페이지로 돌아가고, 앞으로 가면 다시 지도다
+  await page.getByTestId('back-to-list').locator('visible=true').click()
+  await expect(page).toHaveURL(new RegExp(`${SEOUL}$`))
+  await expect(page.getByTestId('open-map')).toBeVisible()
+  await page.goForward()
+  await expect(page).toHaveURL(/city=/)
+})
+
+test('지도 링크로 바로 들어오면 목록으로는 그 목록 주소로 간다', async ({ page }) => {
+  await page.goto(`/?region=${encodeURIComponent('서울')}&from=${encodeURIComponent(SEOUL)}`)
+  await page.getByTestId('back-to-list').locator('visible=true').click()
+  await expect(page).toHaveURL(new RegExp(`${SEOUL}$`))
+})
+
+test('홈에서 바로 연 지도엔 목록으로 버튼이 없다', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByTestId('pill-count')).toHaveText(/\d+곳/, { timeout: 30_000 })
+  await expect(page.getByTestId('back-to-list')).toHaveCount(0)
+  await expect(page.getByTestId('place-chip')).toHaveCount(0)
+})

@@ -97,6 +97,17 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   const [channelId, setChannelId] = useState<string | null>(null)
   const [region, setRegion] = useState('')
   const [city, setCity] = useState('')
+  // 웹 목록 페이지에서 '지도로 보기'로 왔으면 그 페이지로 돌아가는 버튼을 띄운다
+  const [from, setFrom] = useState('')
+  const historyStart = useRef(0)
+  // 목록으로 = 뒤로가기. 지도 안에서 쌓은 카드·상세 단계까지 한 번에 건너 목록 페이지로 돌아간다
+  const backToList = (e: React.MouseEvent) => {
+    let ref: URL | null = null
+    try { ref = new URL(document.referrer) } catch { /* 없으면 주소로 간다 */ }
+    if (!ref || ref.origin !== window.location.origin || decodeURIComponent(ref.pathname) !== decodeURIComponent(from)) return
+    e.preventDefault()
+    window.history.go(-(window.history.length - historyStart.current + 1))
+  }
   const [text, setText] = useState('')
   const [nav, setNav] = useState<Nav>({ v: 'map' })
   const [sort, setSort] = useState<Sort>('near')
@@ -345,6 +356,9 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     if (reg) setRegion(reg)
     if (reg && q.get('city')) setCity(q.get('city')!)
     if (q.get('q')) setText(q.get('q')!)
+    const f = q.get('from')
+    if (f && f.startsWith('/') && !f.startsWith('//')) setFrom(f)
+    historyStart.current = window.history.length
     if (q.get('yt') || reg || q.get('q')) fitWhenLoaded.current = true
     if (Number.isInteger(place) && place > 0 && readNav().v === 'map') {
       push({ v: 'detail', id: place })
@@ -444,7 +458,21 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   )
 
   const chips = (floating: boolean) => (
-    <nav aria-label="유튜버 고르기" className="no-scrollbar flex gap-2 overflow-x-auto px-4 py-1 lg:px-5">
+    <div className="flex items-center">
+    {/* 지역으로 거른 지도는 그 칩을 스크롤 밖 왼쪽에 고정해 늘 보이게 한다. 안 그러면 다른 가게가 없는 줄 안다 */}
+    {place && (
+      <button
+        type="button"
+        data-testid="place-chip"
+        onClick={() => { closePreview(); setRegion(''); setCity('') }}
+        className={`ml-4 flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full bg-ink px-3.5 text-meta font-bold text-paper lg:ml-5 ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : ''}`}
+      >
+        {place}만
+        <XIcon />
+        <span className="sr-only">지역 조건 풀기</span>
+      </button>
+    )}
+    <nav aria-label="유튜버 고르기" className={`no-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto py-1 pr-4 lg:pr-5 ${place ? 'pl-2' : 'pl-4 lg:pl-5'}`}>
       <button
         type="button"
         onClick={() => { setText(''); pickChannel(null) }}
@@ -489,25 +517,29 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
           <span className="sr-only">검색 조건 풀기</span>
         </button>
       )}
-      {place && (
-        <button
-          type="button"
-          onClick={() => { closePreview(); setRegion(''); setCity('') }}
-          className={`flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full bg-ink px-3.5 text-meta font-bold text-paper ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : ''}`}
-        >
-          {place}
-          <XIcon />
-          <span className="sr-only">지역 조건 풀기</span>
-        </button>
-      )}
     </nav>
+    </div>
+  )
+
+  // 웹 목록 페이지에서 왔으면 검색창 왼쪽에 뒤로 버튼
+  const backBtn = from && (
+    <a
+      href={from}
+      onClick={backToList}
+      data-testid="back-to-list"
+      aria-label="목록으로"
+      className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-paper text-ink shadow-[0_2px_12px_rgba(27,29,31,0.12)] lg:shadow-none"
+    >
+      <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M12.5 4 6.5 10l6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+    </a>
   )
 
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-paper">
       {/* 지도 위: 검색 + 유튜버 칩(모바일) */}
       <div ref={topBarRef} className="pointer-events-none fixed inset-x-0 top-0 z-20 pt-[calc(10px+env(safe-area-inset-top))] lg:hidden">
-        <div className="pointer-events-auto px-4">
+        <div className="pointer-events-auto flex items-center gap-2 px-4">
+          {backBtn}
           {search}
         </div>
         <div className="pointer-events-auto mt-2">{chips(true)}</div>
@@ -523,7 +555,8 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
         <header className="hidden px-5 pb-3 pt-5 lg:block">
           <p className="font-caption text-title text-ink">먹맵</p>
           <p className="mt-0.5 text-meta text-sub">유튜버가 실제로 가서 먹은 집</p>
-          <div className="mt-4">
+          <div className="mt-4 flex items-center gap-2">
+            {backBtn}
             {search}
           </div>
         </header>

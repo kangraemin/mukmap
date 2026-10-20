@@ -48,7 +48,7 @@ export default async function RegionPage({ params }: Props) {
       answer={answer}
       restaurants={restaurants}
       dateModified={facts.latest}
-      mapHref={mapHrefOf({ region })}
+      mapHref={mapHrefOf({ region, from: path })}
       facets={['city', 'channel']}
       base={{ region }}
       groups={[
