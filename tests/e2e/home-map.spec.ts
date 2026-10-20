@@ -27,14 +27,27 @@ async function emptySpot(page: Page) {
 async function zoomToSinglePin(page: Page) {
   // 묶음을 눌러 들어가다 보면 낱개 핀이 나온다
   for (let i = 0; i < 8; i++) {
-    const pin = page.locator('[data-pin]').first()
-    if (await pin.isVisible().catch(() => false)) return pin
+    const pin = await uncoveredPin(page)
+    if (pin) return pin
     await page.locator('[data-cluster]').first().tap()
     await page.waitForTimeout(900)
   }
-  const pin = page.locator('[data-pin]').first()
-  await expect(pin).toBeVisible()
-  return pin
+  const pin = await uncoveredPin(page)
+  expect(pin).not.toBeNull()
+  return pin!
+}
+
+// 가게가 늘면 핀끼리 겹친다. 가운데를 다른 핀이 덮지 않은 핀만 고른다
+async function uncoveredPin(page: Page) {
+  const id = await page.locator('[data-pin]').evaluateAll((els) => {
+    for (const el of els) {
+      const r = el.getBoundingClientRect()
+      const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+      if (r.width && top && el.contains(top)) return el.getAttribute('data-pin')
+    }
+    return null
+  })
+  return id ? page.locator(`[data-pin="${id}"]`) : null
 }
 
 test('핀 개수가 바로 나오고 "찾는 중"이 없다', async ({ page }) => {
@@ -67,10 +80,10 @@ test('첫 화면에서 낱개 핀을 누르면 그 가게로 확대해 카드에
   await ready(page)
   // 첫 화면의 전체 맞춤 이동이 끝난 뒤에 누른다
   await page.waitForTimeout(1200)
-  const pin = page.locator('[data-pin]').first()
-  test.skip(!(await pin.isVisible().catch(() => false)), '첫 화면에 낱개 핀이 없다')
-  const id = await pin.getAttribute('data-pin')
-  await pin.tap()
+  const pin = await uncoveredPin(page)
+  test.skip(!pin, '첫 화면에 낱개 핀이 없다')
+  const id = await pin!.getAttribute('data-pin')
+  await pin!.tap()
   await expect(page.getByTestId('preview-card')).toBeVisible()
   // 확대가 끝나면 고른 핀이 위 검색·칩과 카드 사이 빈 곳 가운데에 온다(카드에 가려지지 않는다)
   const map = (await page.getByTestId('map').boundingBox())!

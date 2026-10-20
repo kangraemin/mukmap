@@ -6,6 +6,8 @@ import { regionAnswer } from '@/lib/region-page'
 import { abs, mapHrefOf, pageMetadata, pathOf } from '@/lib/seo'
 
 export const revalidate = 3600
+// 요청마다 다시 그리면 첫 바이트가 5초 넘게 걸렸다. 한 번 그린 페이지를 1시간 동안 그대로 준다
+export const dynamic = 'force-static'
 
 interface Props {
   params: { region: string; city: string }
@@ -47,7 +49,8 @@ export default async function CityPage({ params }: Props) {
       restaurants={restaurants}
       dateModified={facts.latest}
       mapHref={mapHrefOf({ region, city })}
-      limit={120}
+      facets={['channel']}
+      base={{ region, city }}
       groups={[{
         title: `유튜버별 ${region} 맛집`,
         items: youtubers.filter((y) => y.slug).map((y) => ({ href: pathOf('youtuber', y.slug!, region), label: y.name, count: y.n })),
