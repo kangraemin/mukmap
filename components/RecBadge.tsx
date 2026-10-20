@@ -6,7 +6,7 @@ const BADGE: Record<string, string> = {
 }
 
 /** 유튜버의 추천 정도(강추/추천/보통/아쉬움) */
-export function RecBadge({ rec }: { rec?: string | null }) {
+export function RecBadge({ rec, label }: { rec?: string | null; label?: string }) {
   if (!rec || !BADGE[rec]) return null
-  return <span className={`flex-shrink-0 rounded-[6px] px-1.5 py-0.5 text-[12px] font-bold leading-4 ${BADGE[rec]}`}>{rec}</span>
+  return <span className={`flex-shrink-0 rounded-[6px] px-1.5 py-0.5 text-[12px] font-bold leading-4 ${BADGE[rec]}`}>{label || rec}</span>
 }

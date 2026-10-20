@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { HREFLANG, LANGS } from '@/lib/i18n'
 import ReactDOM from 'react-dom'
 import HomeExplorer from '@/components/HomeExplorer'
 import { getAll, getChannelSummaries, getRegionSummaries } from '@/lib/data'
@@ -13,7 +14,11 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title,
     description,
-    alternates: { canonical: SITE_URL, types: { 'application/rss+xml': `${SITE_URL}/feed.xml` } },
+    alternates: {
+      canonical: SITE_URL,
+      types: { 'application/rss+xml': `${SITE_URL}/feed.xml` },
+      languages: { ko: SITE_URL, ...Object.fromEntries(LANGS.map((l) => [HREFLANG[l], `${SITE_URL}/${l}`])), 'x-default': SITE_URL },
+    },
     openGraph: { type: 'website', siteName: SITE_NAME, locale: 'ko_KR', title, description, url: SITE_URL },
   }
 }

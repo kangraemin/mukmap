@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next'
-import { MIN_INDEXABLE, getAll } from '@/lib/data'
+import { MIN_INDEXABLE, getAll, translatedNames } from '@/lib/data'
+import { LANGS, REGIONS, langPath } from '@/lib/i18n'
 import { abs, pathOf } from '@/lib/seo'
 import type { RestaurantWithVideos } from '@/lib/types'
 
@@ -35,6 +36,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
   for (const r of restaurants) {
     out.push({ url: abs(`/restaurant/${r.id}`), lastModified: latest([r]), changeFrequency: 'monthly' })
+  }
+  // 외국어판: 번역된 가게와 그 가게가 있는 지역만
+  for (const lang of LANGS) {
+    const names = await translatedNames(lang)
+    const rs = restaurants.filter((r) => names[r.id])
+    if (!rs.length) continue
+    out.push({ url: abs(langPath(lang)), lastModified: latest(rs), changeFrequency: 'daily' })
+    const byRegion = new Map<string, RestaurantWithVideos[]>()
+    for (const r of rs) if (r.region && REGIONS[r.region]) byRegion.set(r.region, [...(byRegion.get(r.region) || []), r])
+    for (const [region, list] of Array.from(byRegion.entries())) {
+      if (list.length >= MIN_INDEXABLE) out.push({ url: abs(langPath(lang, 'region', REGIONS[region].slug)), lastModified: latest(list), changeFrequency: 'weekly' })
+    }
+    for (const r of rs) out.push({ url: abs(langPath(lang, 'restaurant', String(r.id))), lastModified: latest([r]), changeFrequency: 'monthly' })
   }
   return out
 }

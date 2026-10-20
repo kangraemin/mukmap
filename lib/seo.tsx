@@ -1,6 +1,7 @@
 // 검색 노출용 공용 값과 구조화 데이터(JSON-LD). 서버 페이지에서만 쓴다.
 import type { RestaurantWithVideos } from '@/lib/types'
 import { leadVideo, sceneUrl, thumbOf } from '@/lib/format'
+import { HREFLANG, type Lang } from '@/lib/i18n'
 
 export const SITE_URL = 'https://mukmap.kr'
 export const SITE_NAME = '먹맵'
@@ -154,18 +155,40 @@ export function restaurantJsonLd(r: RestaurantWithVideos) {
   }
 }
 
-export function pageMetadata(opts: { title: string; description: string; path: string; index?: boolean; image?: string }) {
+/** hreflang 묶음. ko는 원래 주소, 나머지는 번역 페이지가 있을 때만 넣는다 */
+export function languagesOf(paths: Partial<Record<string, string>>) {
+  const out: Record<string, string> = {}
+  for (const [k, p] of Object.entries(paths)) if (p) out[HREFLANG[k as Lang] || k] = abs(p)
+  if (paths.ko) out['x-default'] = abs(paths.ko)
+  return out
+}
+
+export function pageMetadata(opts: {
+  title: string
+  description: string
+  path: string
+  index?: boolean
+  image?: string
+  /** og:locale. 기본 ko_KR */
+  locale?: string
+  /** languagesOf() 결과 */
+  languages?: Record<string, string>
+}) {
   const url = abs(opts.path)
   return {
     title: opts.title,
     description: opts.description,
     // 페이지의 alternates·openGraph는 layout 값을 통째로 덮으므로 RSS·사이트 이름도 여기서 다시 넣는다
-    alternates: { canonical: url, types: { 'application/rss+xml': abs('/feed.xml') } },
+    alternates: {
+      canonical: url,
+      types: { 'application/rss+xml': abs('/feed.xml') },
+      ...(opts.languages && Object.keys(opts.languages).length > 1 ? { languages: opts.languages } : {}),
+    },
     robots: opts.index === false ? { index: false, follow: true } : undefined,
     openGraph: {
       type: 'website' as const,
       siteName: SITE_NAME,
-      locale: 'ko_KR',
+      locale: opts.locale || 'ko_KR',
       title: opts.title,
       description: opts.description,
       url,

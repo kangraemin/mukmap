@@ -53,6 +53,8 @@ export interface VideoDish {
 
 export interface VideoDetail {
   recommend?: '강추' | '추천' | '보통' | '아쉬움' | string
+  /** 외국어 번역본에만 있다: recommend(한국어 값)를 그 언어로 쓴 것 */
+  recommend_label?: string
   verdict?: string
   dishes?: VideoDish[]
   pros?: string[]

@@ -6,7 +6,9 @@ import { getRestaurant } from '@/lib/data'
 import { areaOf, leadVideo, thumbOf, visitorsOf } from '@/lib/format'
 import { iGa } from '@/lib/josa'
 import { tossHref } from '@/lib/tossLink'
-import { breadcrumbJsonLd, jsonLdScript, mapHrefOf, pageMetadata, pathOf, restaurantJsonLd } from '@/lib/seo'
+import { breadcrumbJsonLd, jsonLdScript, languagesOf, mapHrefOf, pageMetadata, pathOf, restaurantJsonLd } from '@/lib/seo'
+import { DATA_KEY, LANGS, langPath } from '@/lib/i18n'
+import LangLinks from '@/components/page/LangLinks'
 
 export const revalidate = 3600
 
@@ -20,6 +22,13 @@ async function load(raw: string) {
   const r = await getRestaurant(id)
   if (!r) notFound()
   return r
+}
+
+/** 번역본이 있는 언어만 외국어 주소를 단다 */
+function pathsOf(r: Awaited<ReturnType<typeof load>>) {
+  const paths: Record<string, string> = { ko: `/restaurant/${r.id}` }
+  for (const l of LANGS) if (r.videos.some((v) => v.i18n?.[DATA_KEY[l]])) paths[l] = langPath(l, 'restaurant', String(r.id))
+  return paths
 }
 
 function namesOf(r: Awaited<ReturnType<typeof load>>) {
@@ -36,6 +45,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description: `${iGa(names)} 다녀간 ${areaOf(r)} ${r.category} ${r.name}. ${what ? `영상에서 먹은 것: ${what}. ` : ''}${lead?.quote ? `"${lead.quote}" ` : ''}주소와 영상 장면 바로가기를 확인하세요.`.slice(0, 170),
     path: `/restaurant/${r.id}`,
     image: lead ? thumbOf(lead) : undefined,
+    languages: languagesOf(pathsOf(r)),
   })
 }
 
@@ -82,6 +92,7 @@ export default async function RestaurantPage({ params }: Props) {
           </ul>
         </section>
       </main>
+      <LangLinks paths={pathsOf(r)} current="ko" />
       {jsonLdScript([
         restaurantJsonLd(r),
         breadcrumbJsonLd([{ name: '먹맵', path: '/' }, ...crumbs]),

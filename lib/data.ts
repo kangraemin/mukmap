@@ -3,7 +3,8 @@
 // 파이프라인이 /api/revalidate를 부르면 'mukmap-data' 태그로 바로 갱신된다.
 import { unstable_cache } from 'next/cache'
 import { supabase } from '@/lib/supabase'
-import type { Channel, RestaurantWithVideos } from '@/lib/types'
+import type { Channel, RestaurantWithVideos, VideoDetail } from '@/lib/types'
+import { DATA_KEY, channelName, cityName, regionName, type Lang } from '@/lib/i18n'
 
 export const DATA_TAG = 'mukmap-data'
 
@@ -146,10 +147,78 @@ export async function getRestaurant(id: number) {
   const r = restaurants.find((x) => x.id === id)
   if (!r) return null
   // 상세 요약은 커서 전체 캐시(2MB 한도)에 넣지 않고 가게 하나만 따로 읽는다
-  const { data } = await supabase.from('videos').select('id, detail').eq('restaurant_id', id)
-  const detail = new Map((data || []).map((v) => [v.id as number, v.detail as RestaurantWithVideos['videos'][number]['detail']]))
-  return { ...r, videos: r.videos.map((v) => ({ ...v, detail: detail.get(v.id) || null })) }
+  const { data } = await supabase.from('videos').select('id, detail, i18n').eq('restaurant_id', id)
+  const byId = new Map((data || []).map((v) => [v.id as number, v as { detail: VideoDetail | null; i18n: Record<string, VideoI18n> | null }]))
+  return {
+    ...r,
+    videos: r.videos.map((v) => ({ ...v, detail: byId.get(v.id)?.detail || null, i18n: byId.get(v.id)?.i18n || null })),
+  }
 }
+
+/** 영상 하나의 언어별 번역본(videos.i18n[언어]) */
+export interface VideoI18n {
+  title?: string
+  menu?: string
+  price?: string
+  why?: string
+  detail?: VideoDetail
+  store?: string
+  store_label?: string
+  category?: string
+  category_label?: string
+}
+
+type WithI18n = NonNullable<Awaited<ReturnType<typeof getRestaurant>>>
+
+/** 가게를 그 언어로 바꾼다. 번역본이 하나도 없으면 null. 주소·구 이름은 현지에서 찾을 수 있게 한국어로 둔다 */
+export function localize(r: WithI18n, lang: Lang) {
+  const key = DATA_KEY[lang]
+  const tr = r.videos.map((v) => v.i18n?.[key]).filter(Boolean) as VideoI18n[]
+  if (!tr.length) return null
+  const label = tr.find((x) => x.store_label)?.store_label
+  return {
+    ...r,
+    // 현지 간판·지도 검색용으로 한국어 이름을 같이 둔다
+    name: !label || label === r.name ? r.name : label.includes('(') ? `${label} · ${r.name}` : `${label} (${r.name})`,
+    label: label || r.name,
+    category: tr.find((x) => x.category_label)?.category_label || r.category,
+    region: regionName(r.region, lang) || null,
+    regionKo: r.region,
+    city: cityName(r.region, r.city, lang) || null,
+    videos: r.videos.map((v) => {
+      const x = v.i18n?.[key]
+      const base = { ...v, channel_name: channelName(v.channel_name, lang), summary: null, quote: null }
+      // 아직 번역 안 된 영상은 한국어 제목 대신 '영상 보기'로 둔다
+      return x
+        ? { ...base, title: x.title?.replace(/\s*#\S*[가-힣]\S*/g, '').trim() || null, menu: x.menu || null, price: x.price || null, why: x.why || null, detail: x.detail || null }
+        : { ...base, title: null, menu: null, price: null, why: null, detail: null }
+    }),
+  }
+}
+
+/** 언어별로 번역된 가게 id와 영문(그 언어) 이름. 목록·sitemap용이라 이름만 가볍게 읽는다 */
+export const translatedNames = unstable_cache(
+  async (lang: Lang): Promise<Record<number, { label: string; category: string | null }>> => {
+    const key = DATA_KEY[lang]
+    const out: Record<number, { label: string; category: string | null }> = {}
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase
+        .from('videos')
+        .select(`restaurant_id, label:i18n->${key}->>store_label, category:i18n->${key}->>category_label`)
+        .not(`i18n->${key}`, 'is', null)
+        .order('id')
+        .range(from, from + 999)
+      if (error) throw error
+      for (const v of (data || []) as unknown as { restaurant_id: number; label: string | null; category: string | null }[]) {
+        if (v.label && !out[v.restaurant_id]) out[v.restaurant_id] = { label: v.label, category: v.category }
+      }
+      if (!data || data.length < 1000) break
+    }
+    return out
+  },
+  ['mukmap-i18n-names-v1'],
+  { revalidate: 3600, tags: [DATA_TAG] },
+)
 
 /** 목록 페이지 첫 문단용 사실 문장 재료. LLM 없이 데이터로만 만든다. */
 export function factsOf(rs: RestaurantWithVideos[], channelId?: string) {
