@@ -32,6 +32,8 @@ interface NaverMapProps {
   onUserMove?: () => void
   /** 묶음 핀을 눌렀을 때. 주면 작은 지도 안에서 확대하지 않고 이걸 부른다 */
   onClusterClick?: (lats: number[], lngs: number[]) => void
+  /** 지도 아래가 목록 시트로 가려진 높이(px). 핀을 맞출 때 그 위쪽 칸에 맞춘다 */
+  fitBottom?: number
 }
 
 // 핀끼리 이 거리(px) 안이면 묶는다. 줌과 상관없이 같은 기준이라 얼굴이 겹치지 않는다
@@ -104,21 +106,34 @@ function sendBounds(map: naver.maps.Map, on: (b: Bounds) => void) {
 
 /** 지도 스크립트를 미리 붙인다. 토스 앱은 화면을 그리기 전에 부른다 */
 /** 여러 점이 다 보이는 줌. fitBounds는 순간 이동이라, 같은 줌을 구해 morph로 날아간다 */
-function boundsZoom(map: naver.maps.Map, lats: number[], lngs: number[], pad: number): number {
+function boundsZoom(map: naver.maps.Map, lats: number[], lngs: number[], pad: number, bottom = 0): number {
   const merc = (lat: number) => { const s = Math.sin((lat * Math.PI) / 180); return Math.log((1 + s) / (1 - s)) / 2 }
   const size = map.getSize()
   const lngFrac = Math.max((Math.max(...lngs) - Math.min(...lngs)) / 360, 1e-9)
   const latFrac = Math.max((merc(Math.max(...lats)) - merc(Math.min(...lats))) / (2 * Math.PI), 1e-9)
   const z = Math.min(
     Math.log2((size.width - pad * 2) / 256 / lngFrac),
-    Math.log2((size.height - pad * 2) / 256 / latFrac),
+    Math.log2(Math.max(size.height - pad * 2 - bottom, 80) / 256 / latFrac),
   )
   return Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), Math.floor(z)))
 }
 
-function flyToFit(map: naver.maps.Map, lats: number[], lngs: number[], pad: number) {
-  const center = new naver.maps.LatLng((Math.min(...lats) + Math.max(...lats)) / 2, (Math.min(...lngs) + Math.max(...lngs)) / 2)
-  map.morph(center, boundsZoom(map, lats, lngs, pad), { duration: 600, easing: 'easeOutCubic' })
+function flyToFit(map: naver.maps.Map, lats: number[], lngs: number[], pad: number, bottom = 0) {
+  const lat = (Math.min(...lats) + Math.max(...lats)) / 2
+  const lng = (Math.min(...lngs) + Math.max(...lngs)) / 2
+  const zoom = boundsZoom(map, lats, lngs, pad, bottom)
+  // 아래가 가려져 있으면 남은 위쪽 칸 가운데에 둔다
+  map.morph(bottom ? centerAbove(lat, lng, zoom, -bottom / 2) : new naver.maps.LatLng(lat, lng), zoom, { duration: 600, easing: 'easeOutCubic' })
+}
+
+// 앞 움직임이 막 끝난 참에 morph를 부르면 네이버 지도가 가끔 그냥 삼킨다(역을 눌렀는데 전국 지도 그대로).
+// 멈췄을 때 목표 줌에 못 갔으면 한 번 더 보낸다
+function morphSure(map: naver.maps.Map, center: naver.maps.LatLng, zoom: number, duration: number) {
+  map.morph(center, zoom, { duration, easing: 'easeOutCubic' })
+  const l = naver.maps.Event.addListener(map, 'idle', () => {
+    naver.maps.Event.removeListener(l)
+    if (map.getZoom() !== zoom) map.morph(center, zoom, { duration, easing: 'easeOutCubic' })
+  })
 }
 
 export function preloadMapSdk(): boolean {
@@ -133,7 +148,7 @@ export function preloadMapSdk(): boolean {
   return true
 }
 
-export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapClick, onBoundsChange, fitKey, focus, insets, still = false, onUserMove, onClusterClick }: NaverMapProps) {
+export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapClick, onBoundsChange, fitKey, focus, insets, still = false, onUserMove, onClusterClick, fitBottom = 0 }: NaverMapProps) {
   const mapElRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<naver.maps.Map | null>(null)
   const markersRef = useRef<Map<string, { marker: naver.maps.Marker; listener: unknown; sig: string }>>(new Map())
@@ -143,8 +158,8 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
   const [idleTick, setIdleTick] = useState(0)
 
   // 콜백은 바뀌어도 리스너를 다시 달지 않게 ref로 읽는다
-  const cb = useRef({ onPinClick, onMapClick, onBoundsChange, onUserMove, onClusterClick })
-  cb.current = { onPinClick, onMapClick, onBoundsChange, onUserMove, onClusterClick }
+  const cb = useRef({ onPinClick, onMapClick, onBoundsChange, onUserMove, onClusterClick, fitBottom })
+  cb.current = { onPinClick, onMapClick, onBoundsChange, onUserMove, onClusterClick, fitBottom }
 
   useEffect(() => {
     if ((window as Window & { naver?: { maps?: unknown } }).naver?.maps) {
@@ -208,7 +223,8 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
     const map = mapRef.current
     if (!map || !mapElRef.current) return
     // 지도는 만들 때의 틀 크기로 굳는다. 토스 웹뷰는 처음에 틀이 작다가 커져서 위쪽만 그려지고 0곳이 됐다
-    const el = mapElRef.current
+    // 크기는 바깥 틀에서 잰다. 네이버 지도가 setSize 때 이 칸에 px 크기를 박아 넣어, 이 칸만 보면 큰 지도를 닫아도 664px 그대로였다
+    const el = mapElRef.current.parentElement || mapElRef.current
     const ro = new ResizeObserver(() => {
       const s = map.getSize()
       if (!el.clientWidth || !el.clientHeight || (s.width === el.clientWidth && s.height === el.clientHeight)) return
@@ -302,7 +318,7 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
             cb.current.onPinClick(items[0].id)
             return
           }
-          flyToFit(map, lats, lngs, 80)
+          flyToFit(map, lats, lngs, 80, cb.current.fitBottom)
         })
       }
       current.set(key, { marker, listener, sig: `${want.selected}:${facesKey}` })
@@ -312,13 +328,19 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
   useEffect(() => {
     const map = mapRef.current
     if (!map || !fitKey || pins.length === 0) return
+    // 틀 크기가 막 바뀌었으면(큰 지도 → 작은 지도) 맞추기 전에 크기부터 맞춘다. 안 그러면 큰 화면 기준으로 맞춰 작은 틀엔 왼쪽 위만 보였다
+    const el = mapElRef.current?.parentElement
+    if (el && el.clientWidth && el.clientHeight) {
+      const s = map.getSize()
+      if (s.width !== el.clientWidth || s.height !== el.clientHeight) map.setSize({ width: el.clientWidth, height: el.clientHeight })
+    }
     const lats = pins.map((p) => p.lat)
     const lngs = pins.map((p) => p.lng)
     if (pins.length === 1) {
-      map.morph(new naver.maps.LatLng(lats[0], lngs[0]), 15, { duration: 500, easing: 'easeOutCubic' })
+      map.morph(fitBottom ? centerAbove(lats[0], lngs[0], 15, -fitBottom / 2) : new naver.maps.LatLng(lats[0], lngs[0]), 15, { duration: 500, easing: 'easeOutCubic' })
       return
     }
-    flyToFit(map, lats, lngs, 60)
+    flyToFit(map, lats, lngs, 60, fitBottom)
     // pins가 바뀔 때마다 맞추지 않는다. fitKey가 바뀔 때만
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey, sdkLoaded])
@@ -327,13 +349,13 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
     const map = mapRef.current
     if (!map || !focus) return
     if ('lats' in focus) {
-      if (focus.lats.length) flyToFit(map, focus.lats, focus.lngs, 60)
+      if (focus.lats.length) flyToFit(map, focus.lats, focus.lngs, 60, fitBottom)
       return
     }
     const p = 'id' in focus ? pins.find((x) => x.id === focus.id) : focus
     if (!p) return
     const zoom = 'id' in focus ? Math.max(map.getZoom(), 15) : 'zoom' in focus && focus.zoom ? focus.zoom : 16
-    map.morph(new naver.maps.LatLng(p.lat, p.lng), zoom, { duration: 500, easing: 'easeOutCubic' })
+    morphSure(map, fitBottom ? centerAbove(p.lat, p.lng, zoom, -fitBottom / 2) : new naver.maps.LatLng(p.lat, p.lng), zoom, 500)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus, sdkLoaded])
 

@@ -7,6 +7,27 @@ const REGION = `/region/${encodeURIComponent('서울')}`
 const box = (page: Page) => page.getByTestId('list-map')
 const marks = (page: Page) => box(page).locator('[data-pin], [data-cluster]')
 
+/** 목록 시트가 지도 위에 반쯤(화면 30~60%) 올라와 있고 가게 줄이 보인다 */
+async function expectHalf(page: Page, id: string) {
+  const sheet = page.getByTestId(id)
+  await expect(sheet).toHaveAttribute('data-snap', 'half')
+  const vp = page.viewportSize()!
+  await expect.poll(async () => {
+    const b = (await sheet.boundingBox())!
+    return b.height > vp.height * 0.3 && b.height < vp.height * 0.6 && Math.abs(b.y + b.height - vp.height) < 2
+  }).toBe(true)
+  await expect(sheet.getByTestId('list-item').first()).toBeVisible()
+}
+
+/** 시트 머리줄을 손가락으로 위로 끈다 */
+async function pullUp(page: Page, grip: ReturnType<Page['getByTestId']>) {
+  const b = (await grip.boundingBox())!
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2)
+  await page.mouse.down()
+  for (let i = 1; i <= 10; i++) await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 - i * 30)
+  await page.mouse.up()
+}
+
 /** 지도 위 지점을 누른 것처럼 그 위치 맨 위 요소를 돌려준다 */
 const topAt = (page: Page, x: number, y: number) => page.evaluate(([x, y]) => {
   const el = document.elementFromPoint(x, y)
@@ -81,7 +102,7 @@ test('구 칩을 고르면 지도 핀 개수도 같이 준다', async ({ page })
   await expect.poll(async () => Number((await bar.innerText()).match(/(\d+)곳/)![1])).toBeLessThan(before)
 })
 
-test('핀을 누르면 지도가 화면을 다 채우고 그 가게 카드가 뜨며 목록은 가려진다. 닫으면 목록으로 돌아온다', async ({ page }) => {
+test('핀을 누르면 지도가 화면을 다 채우고 그 가게 카드가 뜨며 목록은 가려진다. 카드 ✕는 카드만 닫고, 목록으로를 눌러야 목록으로 돌아온다', async ({ page }) => {
   await page.goto(STATION)
   await openPin(page)
   await expect(box(page)).toHaveAttribute('data-full', '1')
@@ -94,13 +115,18 @@ test('핀을 누르면 지도가 화면을 다 채우고 그 가게 카드가 �
   expect(await mapOpts(page)).toEqual({ drag: true, pinch: true })
   await expect(page.getByTestId('map-back')).toContainText('목록으로')
 
+  // 카드 ✕는 카드만 닫는다. 큰 지도는 그대로고, 지도 위에 이 목록이 반쯤 올라온다(사용자 지적 2026-10-21)
   await page.getByTestId('preview-card').getByRole('button', { name: '닫기' }).click()
-  await expect(box(page)).toHaveAttribute('data-full', '0')
   await expect(page.getByTestId('preview-card')).toHaveCount(0)
+  await expect(box(page)).toHaveAttribute('data-full', '1')
+  await expect(page.getByTestId('map-back')).toBeVisible()
+  await expectHalf(page, 'map-list')
+
+  // 목록으로는 위 '‹ 목록으로'와 휴대폰 뒤로 가기로 돌아간다
+  await page.getByTestId('map-back').click()
+  await expect(box(page)).toHaveAttribute('data-full', '0')
   await expect(page.getByTestId('list-count')).toBeVisible()
   expect((await page.getByTestId('map-preview').boundingBox())!.height).toBeLessThan(260)
-
-  // 위 '‹ 목록으로'와 휴대폰 뒤로 가기도 같다
   await openPin(page)
   await page.getByTestId('map-back').click()
   await expect(box(page)).toHaveAttribute('data-full', '0')
@@ -110,10 +136,12 @@ test('핀을 누르면 지도가 화면을 다 채우고 그 가게 카드가 �
   await expect(page).toHaveURL(new RegExp(encodeURIComponent('홍대입구')))
 })
 
-test('큰 지도를 밀면 카드가 닫히고 위쪽에 "이 지역에서 다시 찾기"가 뜬다. 누르면 목록이 빈 자리 → 그 지역 가게로 통째 바뀌고, 원래 목록으로 돌아갈 수 있다', async ({ page }) => {
+test('큰 지도를 밀면 카드가 닫히고 위 가운데 "이 지역에서 다시 찾기"가 뜬다. 누르면 홈 지도처럼 지도에 남은 채 그 지역 핀을 다시 찍고, 목록은 그대로다', async ({ page }) => {
+  // 사용자 지시(2026-10-21): 다시 찾기로 목록을 통째 바꾸지 말고, 기존 지도에서 옮기면 핀을 다시 보여 주듯 한다
   await page.goto(STATION)
   const firstOld = await page.getByTestId('list-count').innerText()
   await openPin(page)
+  const pinIds = () => marks(page).evaluateAll((els) => els.map((e) => e.getAttribute('data-pin') ?? `c${e.textContent}`).sort().join(','))
   await drag(page)
   await expect(page.getByTestId('preview-card')).toHaveCount(0)
   const again = page.getByTestId('search-here')
@@ -122,25 +150,51 @@ test('큰 지도를 밀면 카드가 닫히고 위쪽에 "이 지역에서 다�
   await page.waitForTimeout(400)
   const ab = (await again.boundingBox())!
   expect(ab.y).toBeLessThan(page.viewportSize()!.height / 4)
-  expect(Math.abs(ab.x + ab.width / 2 - page.viewportSize()!.width / 2)).toBeLessThan(2)
   expect(ab.y).toBeGreaterThan((await page.getByTestId('map-back').boundingBox())!.y)
+  expect(Math.abs(ab.x + ab.width / 2 - page.viewportSize()!.width / 2)).toBeLessThan(2)
 
+  // 역 1km 밖으로 밀었으니 이 목록에 없던 가게 핀이 생긴다
+  const before = await pinIds()
   await again.click()
-  await expect(box(page)).toHaveAttribute('data-full', '0')
-  // 옛 목록은 바로 사라지고 빈 자리가 보인다
-  await expect(page.getByTestId('area-skeleton')).toBeVisible()
-  await expect(page.getByTestId('card-skeleton').first()).toBeVisible()
-  await expect(page.getByText('홍대입구역 맛집', { exact: false }).locator('xpath=self::h1')).toHaveCount(0)
-  // 새 지역 목록
-  await expect(page.locator('h1')).toHaveText(/지도에서 찾은 맛집 \d+곳/, { timeout: 5_000 })
-  const n = Number((await page.locator('h1').innerText()).match(/(\d+)곳/)![1])
-  await expect(page.getByTestId('area-item')).toHaveCount(Math.min(n, 30))
-  await expect(page.getByTestId('list-count')).toHaveText(`${n}곳`)
-  await expect(page.getByTestId('walk')).toHaveCount(0)
+  await expect(again).toHaveCount(0)
+  await expect(box(page)).toHaveAttribute('data-full', '1')
+  await expect.poll(pinIds, { timeout: 10_000 }).not.toBe(before)
+  await expect(page.getByTestId('area-skeleton')).toHaveCount(0)
 
-  await page.getByTestId('area-back').click()
+  // 목록으로 돌아가면 원래 목록 그대로
+  await page.getByTestId('map-back').click()
+  await expect(box(page)).toHaveAttribute('data-full', '0')
   await expect(page.locator('h1')).toContainText('홍대입구역 맛집')
   await expect(page.getByTestId('list-count')).toHaveText(firstOld)
+  // 작은 지도는 다시 이 목록 가게에 맞춰진다(큰 화면 크기로 맞춰 엉뚱한 동네만 보이면 안 된다): 지도 가운데가 홍대입구역 근처
+  await expect.poll(() => box(page).getByTestId('map').evaluate((el) => {
+    const m = (el as HTMLElement & { __map?: { getCenter: () => { lat: () => number; lng: () => number }; getSize: () => { width: number; height: number } } }).__map!
+    const c = m.getCenter()
+    return Math.abs(c.lat() - 37.557) < 0.02 && Math.abs(c.lng() - 126.924) < 0.025 && m.getSize().height === el.parentElement!.clientHeight
+  }), { timeout: 10_000 }).toBe(true)
+})
+
+test('큰 지도에서 카드 ✕를 누르면 지도 위에 이 목록이 반쯤 올라오고, 위로 끌면 화면을 다 채우며, 지도 보기로 다시 반쯤 내려온다', async ({ page }) => {
+  // 사용자 지시(2026-10-21): ✕ 눌렀을 때 지도만 남지 말고 목록이 반쯤 보이고, 위로 올리면 풀화면
+  await page.goto(STATION)
+  await openPin(page)
+  const sheet = page.getByTestId('map-list')
+  await expect(sheet).toHaveAttribute('data-snap', 'hidden')
+  await page.getByTestId('preview-card').getByRole('button', { name: '닫기' }).click()
+  await expectHalf(page, 'map-list')
+  await expect(page.getByTestId('map-list-count')).toHaveText(/\d+곳/)
+  // 위로 끌면 위 막대 아래를 다 채운다
+  await pullUp(page, page.getByTestId('map-list-head'))
+  await expect(sheet).toHaveAttribute('data-snap', 'full')
+  const bar = (await page.getByTestId('map-back').boundingBox())!
+  await expect.poll(async () => (await sheet.boundingBox())!.y).toBeLessThan(bar.y + bar.height + 20)
+  await expect(box(page)).toHaveAttribute('data-full', '1')
+  // 지도 보기로 다시 반쯤
+  await page.getByTestId('map-list-map').click()
+  await expectHalf(page, 'map-list')
+  // 머리줄을 누르기만 해도 다 펼친다
+  await page.getByTestId('map-list-head').click()
+  await expect(sheet).toHaveAttribute('data-snap', 'full')
 })
 
 test('역 페이지 지도 위 크게 보기를 누르면 큰 지도로 열린다', async ({ page }) => {
@@ -149,6 +203,32 @@ test('역 페이지 지도 위 크게 보기를 누르면 큰 지도로 열린�
   await page.getByTestId('map-expand').click()
   await expect(box(page)).toHaveAttribute('data-full', '1')
   await expect(page.getByTestId('preview-card')).toHaveCount(0)
+  await expectHalf(page, 'map-list')
+})
+
+test('홈 지도는 처음부터 목록이 반쯤 올라와 있고, 위로 끌면 전체 목록, 지도 보기로 다시 반쯤, 핀 카드가 뜨면 내려간다', async ({ page }) => {
+  // 사용자 지시(2026-10-21): 먹맵 웹 홈도 리스트 바텀시트가 반쯤 보이고 위로 올리면 풀화면
+  await page.goto('/')
+  await expect(page.getByTestId('pill-count')).toHaveText(/\d+곳/, { timeout: 30_000 })
+  await expectHalf(page, 'list-view')
+  const sheet = page.getByTestId('list-view')
+  await pullUp(page, page.getByTestId('list-pill'))
+  await expect(sheet).toHaveAttribute('data-snap', 'full')
+  await expect.poll(async () => (await sheet.boundingBox())!.y).toBeLessThan(2)
+  await expect(page.getByTestId('list-count')).toHaveText(/\d+/)
+  await page.getByTestId('map-pill').click()
+  await expectHalf(page, 'list-view')
+  // 휴대폰 뒤로 가기도 전체 목록 → 반쯤
+  await page.getByTestId('list-pill').click()
+  await expect(sheet).toHaveAttribute('data-snap', 'full')
+  await page.goBack()
+  await expectHalf(page, 'list-view')
+  // 핀을 누르면 시트는 내려가고 카드가 뜬다. 카드 ✕면 다시 반쯤
+  await page.goto('/?pin=142')
+  await expect(page.getByTestId('preview-card')).toBeVisible({ timeout: 30_000 })
+  await expect(sheet).toHaveAttribute('data-snap', 'hidden')
+  await page.getByTestId('preview-card').getByRole('button', { name: '닫기' }).click()
+  await expectHalf(page, 'list-view')
 })
 
 test('자바스크립트 없이도 h1과 가게 목록 글은 그대로 HTML에 있다', async ({ request }) => {

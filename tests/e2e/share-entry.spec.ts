@@ -41,7 +41,7 @@ test('상세 공유 링크(?place)로 열면 상세가 뜨고, 뒤로가면 지�
   await page.getByTestId('list-pill').click()
   await expect(page.getByTestId('list-view')).toBeVisible()
   await page.goBack()
-  await expect(page.getByTestId('list-view')).toBeHidden()
+  await expect(page.getByTestId('list-view')).toHaveAttribute('data-snap', 'half')
 })
 
 test('검색 공유 링크(?q)로 열면 검색 조건이 걸려 있고, 풀면 전체로 돌아간다', async ({ page }) => {
@@ -68,7 +68,7 @@ test('유튜버·지역 공유 링크(?yt&region)로 열면 그 유튜버 칩이
   await page.getByTestId('list-pill').click()
   await expect(page.getByTestId('list-view')).toBeVisible()
   await page.goBack()
-  await expect(page.getByTestId('list-view')).toBeHidden()
+  await expect(page.getByTestId('list-view')).toHaveAttribute('data-snap', 'half')
   expect(await countOf(page)).toBe(n)
 })
 

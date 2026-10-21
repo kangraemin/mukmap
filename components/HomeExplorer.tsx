@@ -6,6 +6,7 @@ import SearchBar from '@/components/SearchBar'
 import DetailPanel from '@/components/DetailPanel'
 import { ChannelFace } from '@/components/ChannelFace'
 import { PinRow, PreviewCard } from '@/components/PinCard'
+import ListSheet, { HALF_RATIO, type SheetSnap } from '@/components/ListSheet'
 import { HeartIcon } from '@/components/HeartIcon'
 import { ShareIcon } from '@/components/ShareIcon'
 import { listMessage, placeMessage, type ShareMessage } from '@/lib/share'
@@ -268,7 +269,13 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     return m
   }, [pins, region, city, textHits, bounds])
 
-  const listOpen = desktop || nav.v === 'list'
+  // 목록 시트: 지도에선 반쯤, 목록 단계에선 전체. 카드가 뜨면 내려 두고, 상세는 열기 전 높이를 기억한다
+  const sheetLast = useRef<SheetSnap>('half')
+  if (nav.v === 'list') sheetLast.current = 'full'
+  else if (nav.v !== 'detail') sheetLast.current = 'half'
+  const sheetSnap = sheetLast.current
+  const sheetHidden = nav.v === 'preview' || (nav.v === 'detail' && sheetSnap === 'half')
+  const listOpen = desktop || !sheetHidden
 
   const sorted = useMemo(() => {
     if (!listOpen) return []
@@ -547,7 +554,6 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   }, [cardShown, preview.shown?.id])
 
   const detailP = usePresence(detailId, 240)
-  const listP = usePresence(nav.v === 'list' ? true : null, 200)
   const shownDetailId = detailP.shown
   const detailPin = shownDetailId ? pinById.get(shownDetailId) : undefined
   const shownDetail = detail && detail.id === shownDetailId ? detail : null
@@ -679,6 +685,76 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     </a>
   )
 
+  const label = text ? `‘${text}’ ` : likedOnly ? '찜한 곳 ' : '이 지도 안 '
+  const halfSheet = !desktop && sheetSnap === 'half' && !sheetHidden
+  // 시트 머리줄: 개수·공유·정렬. 반쯤일 땐 개수를 누르면 목록을 다 펼친다
+  const listHead = (
+    <div className="flex h-14 items-center justify-between gap-2 px-4 lg:px-5">
+      {halfSheet ? (
+        <button type="button" data-testid="list-pill" onClick={() => push({ v: 'list' })} className="flex min-h-[44px] min-w-0 flex-1 items-center text-left text-lead font-bold text-ink">
+          {label}
+          {count !== null
+            ? <span data-testid="pill-count" className="ml-1">{count}곳</span>
+            : pins === null && <span data-testid="pins-loading" className="ml-1 font-normal text-sub">불러오는 중</span>}
+        </button>
+      ) : (
+        <h2 className="text-lead font-bold text-ink" aria-live="polite">
+          {label}<span data-testid="list-count">{count ?? 0}</span>곳
+        </h2>
+      )}
+      <div className="flex flex-shrink-0 items-center gap-1">
+        {share && (
+          <button
+            type="button"
+            data-testid="share-filter"
+            onClick={() => doShare(share)}
+            className="flex min-h-[44px] items-center gap-1 px-2 text-meta font-bold text-ink"
+          >
+            <ShareIcon />
+            공유
+          </button>
+        )}
+        <label className="relative inline-flex min-h-[44px] items-center pl-2 text-meta font-bold text-ink">
+          <span className="sr-only">정렬</span>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as Sort)}
+            className="appearance-none bg-transparent pr-5 font-bold text-ink outline-none"
+          >
+            <option value="near">가까운 순</option>
+            <option value="latest">최근 영상순</option>
+            <option value="visitors">여러 명 간 순</option>
+          </select>
+          <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true" className="pointer-events-none absolute right-0"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+        </label>
+      </div>
+    </div>
+  )
+  const listBody = (
+    <div ref={listRef} className={`h-full ${halfSheet ? 'overflow-hidden' : 'overflow-y-auto overscroll-contain'}`}>
+      <div className="px-4 lg:px-5">
+        {pins && sorted.length === 0 && (
+          <div className="py-10 text-center">
+            <p className="text-body text-ink">
+              {text ? `‘${text}’에 맞는 가게가 이 지도 안에 없어요.`
+                : channelId ? `${iGa(nameOf(channelId) || '고른 유튜버')} 다녀간 가게가 이 지도 안에 없어요.`
+                : '이 지도 안에는 아직 가게가 없어요.'}
+            </p>
+            <p className="mt-1 text-meta text-sub">지도를 줄이거나 다른 지역으로 옮겨 보세요.</p>
+          </div>
+        )}
+        {sorted.slice(0, shown).map((p, i) => (
+          <Fragment key={p.id}>
+            <PinRow pin={p} faces={faces} onOpen={openFromList} selected={p.id === detailId} />
+            {listAd && i >= 2 && (i - 2) % LIST_AD_EVERY === 0 && listAd((i - 2) / LIST_AD_EVERY)}
+          </Fragment>
+        ))}
+        <div ref={sentinel} />
+      </div>
+      <div className="px-4 pb-[calc(96px+env(safe-area-inset-bottom))] pt-8 lg:px-5 lg:pb-8">{children}</div>
+    </div>
+  )
+
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-paper">
       {/* 지도 위: 검색 + 유튜버 칩(모바일) */}
@@ -690,79 +766,56 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
         <div className="pointer-events-auto mt-2">{chips(true)}</div>
       </div>
 
-      {/* 목록: 모바일은 전체 화면, 데스크톱은 왼쪽 기둥 */}
-      <section
-        data-testid="list-view"
-        aria-label="가게 목록"
-        className={`${listP.shown ? 'flex' : 'hidden'} ${listP.leaving ? 'pointer-events-none animate-rise-out' : 'animate-rise-in'} fixed inset-0 z-30 flex-col bg-paper lg:animate-none
-          lg:static lg:z-auto lg:flex lg:h-full lg:w-[400px] lg:flex-shrink-0 lg:border-r lg:border-line`}
-      >
-        <header className="hidden px-5 pb-3 pt-5 lg:block">
-          <p className="font-caption text-title text-ink">먹맵</p>
-          <p className="mt-0.5 text-meta text-sub">유튜버가 실제로 가서 먹은 집</p>
-          <div className="mt-4 flex items-center gap-2">
-            {backBtn}
-            {search}
+      {/* 목록: 모바일은 지도 위에 반쯤 올라온 시트(끌어올리면 전체 화면), 데스크톱은 왼쪽 기둥 */}
+      {desktop ? (
+        <section data-testid="list-view" aria-label="가게 목록" className="static flex h-full w-[400px] flex-shrink-0 flex-col border-r border-line bg-paper">
+          <header className="px-5 pb-3 pt-5">
+            <p className="font-caption text-title text-ink">먹맵</p>
+            <p className="mt-0.5 text-meta text-sub">유튜버가 실제로 가서 먹은 집</p>
+            <div className="mt-4 flex items-center gap-2">
+              {backBtn}
+              {search}
+            </div>
+          </header>
+          <div className="border-b border-line bg-paper">
+            {listHead}
+            <div className="pb-3">{chips(false)}</div>
           </div>
-        </header>
-
-        <div className="border-b border-line bg-paper pt-[env(safe-area-inset-top)] lg:pt-0">
-          <div className="flex h-14 items-center justify-between px-4 lg:px-5">
-            <h2 className="text-lead font-bold text-ink" aria-live="polite">
-              {text ? `‘${text}’ ` : likedOnly ? '찜한 곳 ' : '이 지도 안 '}<span data-testid="list-count">{count ?? 0}</span>곳
-            </h2>
-            <label className="relative inline-flex min-h-[44px] items-center pl-2 text-meta font-bold text-ink">
-              <span className="sr-only">정렬</span>
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as Sort)}
-                className="appearance-none bg-transparent pr-5 font-bold text-ink outline-none"
+          {listBody}
+        </section>
+      ) : (
+        <ListSheet
+          testId="list-view"
+          snap={sheetSnap}
+          hidden={sheetHidden}
+          onSnap={(s) => {
+            if (s === 'full' && readNav().v === 'map') push({ v: 'list' })
+            else if (s === 'half' && readNav().v === 'list') back()
+          }}
+          className="z-30"
+          header={sheetSnap === 'full' ? (
+            <div className="border-b border-line bg-paper pt-[env(safe-area-inset-top)]">
+              {listHead}
+              <div className="pb-3">{chips(false)}</div>
+            </div>
+          ) : listHead}
+        >
+          {listBody}
+          {sheetSnap === 'full' && (
+            <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center pb-[calc(16px+env(safe-area-inset-bottom))]">
+              <button
+                type="button"
+                data-testid="map-pill"
+                onClick={back}
+                className="pointer-events-auto flex h-12 items-center gap-2 rounded-full bg-ink px-5 text-body font-bold text-paper shadow-[0_4px_16px_rgba(27,29,31,0.16)]"
               >
-                <option value="near">가까운 순</option>
-                <option value="latest">최근 영상순</option>
-                <option value="visitors">여러 명 간 순</option>
-              </select>
-              <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true" className="pointer-events-none absolute right-0"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
-            </label>
-          </div>
-          <div className="pb-3">{chips(false)}</div>
-        </div>
-
-        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className="px-4 lg:px-5">
-            {pins && sorted.length === 0 && (
-              <div className="py-10 text-center">
-                <p className="text-body text-ink">
-                  {text ? `‘${text}’에 맞는 가게가 이 지도 안에 없어요.`
-                    : channelId ? `${iGa(nameOf(channelId) || '고른 유튜버')} 다녀간 가게가 이 지도 안에 없어요.`
-                    : '이 지도 안에는 아직 가게가 없어요.'}
-                </p>
-                <p className="mt-1 text-meta text-sub">지도를 줄이거나 다른 지역으로 옮겨 보세요.</p>
-              </div>
-            )}
-            {sorted.slice(0, shown).map((p, i) => (
-              <Fragment key={p.id}>
-                <PinRow pin={p} faces={faces} onOpen={openFromList} selected={p.id === detailId} />
-                {listAd && i >= 2 && (i - 2) % LIST_AD_EVERY === 0 && listAd((i - 2) / LIST_AD_EVERY)}
-              </Fragment>
-            ))}
-            <div ref={sentinel} />
-          </div>
-          <div className="px-4 pb-[calc(96px+env(safe-area-inset-bottom))] pt-8 lg:px-5 lg:pb-8">{children}</div>
-        </div>
-
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center pb-[calc(16px+env(safe-area-inset-bottom))] lg:hidden">
-          <button
-            type="button"
-            data-testid="map-pill"
-            onClick={back}
-            className="pointer-events-auto flex h-12 items-center gap-2 rounded-full bg-ink px-5 text-body font-bold text-paper shadow-[0_4px_16px_rgba(27,29,31,0.16)]"
-          >
-            <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true"><path d="M2 4.5 6.5 3l5 1.5L16 3v10.5L11.5 15l-5-1.5L2 15z M6.5 3v10.5 M11.5 4.5V15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
-            지도 보기
-          </button>
-        </div>
-      </section>
+                <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true"><path d="M2 4.5 6.5 3l5 1.5L16 3v10.5L11.5 15l-5-1.5L2 15z M6.5 3v10.5 M11.5 4.5V15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
+                지도 보기
+              </button>
+            </div>
+          )}
+        </ListSheet>
+      )}
 
       <main className="relative isolate z-0 flex-1 overflow-hidden">
         <NaverMap
@@ -775,11 +828,12 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
           fitKey={fitKey}
           focus={focus}
           insets={insets}
+          fitBottom={!desktop && !sheetHidden && sheetSnap === 'half' && typeof window !== 'undefined' ? Math.round(window.innerHeight * HALF_RATIO) : 0}
         />
 
-        {/* 지도 아래: 고른 가게 카드, 아니면 목록 보기 */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center px-4 pb-[calc(16px+env(safe-area-inset-bottom))] lg:hidden">
-          {preview.shown ? (
+        {/* 지도 아래: 고른 가게 카드. 카드가 없으면 목록 시트가 반쯤 올라와 있다 */}
+        {preview.shown && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center px-4 pb-[calc(16px+env(safe-area-inset-bottom))] lg:hidden">
             <div ref={cardRef} className="pointer-events-auto w-full">
               <PreviewCard
                 key={preview.shown.id}
@@ -794,32 +848,8 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                 adSlot={previewAd?.(preview.shown.id)}
               />
             </div>
-          ) : (
-            <button
-              type="button"
-              data-testid="list-pill"
-              onClick={() => push({ v: 'list' })}
-              className="pointer-events-auto flex h-12 animate-sheet-in items-center gap-2 rounded-full bg-ink px-5 text-body font-bold text-paper shadow-[0_4px_16px_rgba(27,29,31,0.16)] transition-transform active:scale-95"
-            >
-              <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true"><path d="M3 4.5h12M3 9h12M3 13.5h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
-              목록 보기
-              {count !== null
-                ? <span data-testid="pill-count" className="font-normal opacity-80">{count}곳</span>
-                : pins === null && <span data-testid="pins-loading" className="font-normal opacity-80">불러오는 중</span>}
-            </button>
-          )}
-          {!preview.shown && share && (
-            <button
-              type="button"
-              data-testid="share-filter"
-              onClick={() => doShare(share)}
-              className="pointer-events-auto ml-2 flex h-12 animate-sheet-in items-center gap-1.5 rounded-full bg-paper px-4 text-body font-bold text-ink shadow-[0_4px_16px_rgba(27,29,31,0.16)] transition-transform active:scale-95"
-            >
-              <ShareIcon />
-              공유
-            </button>
-          )}
-        </div>
+          </div>
+        )}
       </main>
 
       {/* 상세: 모바일은 전체 화면, 데스크톱은 왼쪽 기둥을 덮는다 */}

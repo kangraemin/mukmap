@@ -29,7 +29,10 @@ async function zoomToSinglePin(page: Page) {
   for (let i = 0; i < 8; i++) {
     const pin = await uncoveredPin(page)
     if (pin) return pin
-    await page.locator('[data-cluster]').first().tap()
+    // 아래 반쯤 시트에 가린 묶음은 못 누른다
+    const cluster = await uncovered(page, 'data-cluster')
+    expect(cluster).not.toBeNull()
+    await cluster!.tap()
     await page.waitForTimeout(900)
   }
   const pin = await uncoveredPin(page)
@@ -37,18 +40,16 @@ async function zoomToSinglePin(page: Page) {
   return pin!
 }
 
-// 가게가 늘면 핀끼리 겹친다. 가운데를 다른 핀이 덮지 않은 핀만 고른다
-async function uncoveredPin(page: Page) {
-  const id = await page.locator('[data-pin]').evaluateAll((els) => {
-    for (const el of els) {
-      const r = el.getBoundingClientRect()
-      const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
-      if (r.width && top && el.contains(top)) return el.getAttribute('data-pin')
-    }
-    return null
-  })
-  return id ? page.locator(`[data-pin="${id}"]`) : null
+// 가게가 늘면 핀끼리 겹치고, 아래는 목록 시트가 덮는다. 가운데를 아무것도 덮지 않은 것만 고른다
+async function uncovered(page: Page, attr: 'data-pin' | 'data-cluster') {
+  const i = await page.locator(`[${attr}]`).evaluateAll((els) => els.findIndex((el) => {
+    const r = el.getBoundingClientRect()
+    const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+    return !!(r.width && top && el.contains(top))
+  }))
+  return i >= 0 ? page.locator(`[${attr}]`).nth(i) : null
 }
+const uncoveredPin = (page: Page) => uncovered(page, 'data-pin')
 
 test('핀 개수가 바로 나오고 "찾는 중"이 없다', async ({ page }) => {
   await ready(page)
@@ -140,8 +141,9 @@ test('목록 보기 → 전체 화면 목록 → 상세 → 뒤로 → 목록 �
   await expect(page.getByTestId('detail-view')).toHaveCount(0)
   await expect(list).toBeVisible()
 
+  // 지도 보기는 목록을 지우지 않고 지도 위 반쯤으로 내린다(2026-10-21 사용자 지시)
   await page.getByTestId('map-pill').click()
-  await expect(list).toBeHidden()
+  await expect(list).toHaveAttribute('data-snap', 'half')
   await expect(page.getByTestId('list-pill')).toBeVisible()
 })
 
@@ -246,8 +248,10 @@ test('역 이름을 검색해 누르면 필터를 유지하고 지도가 그 역
   await expect.poll(() => page.evaluate(({ lat, lng }) => {
     const map = (window as Window & { searchedMap?: naver.maps.Map }).searchedMap
     if (!map) return false
-    return Math.abs(map.getCenter().lat() - lat) < 0.0001
-      && Math.abs(map.getCenter().lng() - lng) < 0.0001 && map.getZoom() === 16
+    // 아래 반쯤 시트에 가리지 않게 역은 화면 가운데보다 위에 둔다: 중심은 역보다 조금 남쪽
+    const c = map.getCenter()
+    return c.lat() < lat && lat - c.lat() < 0.01
+      && Math.abs(c.lng() - lng) < 0.0001 && map.getZoom() === 16
   }, station), { timeout: 10_000 }).toBe(true)
   expect(asked).toBe(false)
 })

@@ -1,13 +1,17 @@
 'use client'
 // 목록 페이지 위 지도. 평소엔 손으로 못 미는 작은 지도이고, 핀을 누르면 화면을 다 채우며 그 가게 카드를 띄운다.
-// 큰 지도에서 손으로 옮기면 위에 '이 지역에서 다시 찾기'가 뜨고, 누르면 목록이 그 지역 가게로 통째 바뀐다(onSearch)
+// 큰 지도에서 손으로 옮기면 위에 '이 지역에서 다시 찾기'가 뜨고, 누르면 홈 지도처럼 그 화면 안 가게 핀을 다시 찍는다(목록은 그대로)
+// 카드가 없을 땐 지도 위에 이 목록 가게가 반쯤 올라와 있고, 끌어올리면 화면을 다 채운다(홈 지도와 같다)
 import { useCallback, useEffect, useRef, useState } from 'react'
 import NaverMap, { type Face, type MapFocus } from '@/components/NaverMap'
-import { PreviewCard } from '@/components/PinCard'
-import type { Bounds, Pin } from '@/lib/pins'
+import { PinRow, PreviewCard } from '@/components/PinCard'
+import ListSheet, { HALF_RATIO, type SheetSnap } from '@/components/ListSheet'
+import { inBounds, type Bounds, type Pin } from '@/lib/pins'
 
 interface ListMapProps {
   pins: Pin[]
+  /** 다시 찾기에서 고르는 전체 가게 핀 */
+  allPins: Pin[]
   faces: Record<string, Face>
   /** 큰 지도 위 '‹ … 목록으로'에 쓰는 이 목록 이름 */
   title: string
@@ -15,10 +19,11 @@ interface ListMapProps {
   loading?: boolean
   /** 큰 지도 위 '전체 지도'가 여는 홈 지도 주소. 지도로 가는 길은 이것 하나만 둔다 */
   mapHref: string
-  onSearch: (b: Bounds) => void
 }
 
-export default function ListMap({ pins, faces, title, loading, mapHref, onSearch }: ListMapProps) {
+const SHEET_PAGE = 40
+
+export default function ListMap({ pins: pagePins, allPins, faces, title, loading, mapHref }: ListMapProps) {
   // 글과 카드가 먼저 그려지게, 브라우저가 한가해진 뒤에 지도를 붙인다
   const [armed, setArmed] = useState(false)
   const [full, setFull] = useState(false)
@@ -26,7 +31,13 @@ export default function ListMap({ pins, faces, title, loading, mapHref, onSearch
   const [moved, setMoved] = useState(false)
   const [fitKey, setFitKey] = useState(0)
   const [focus, setFocus] = useState<MapFocus | null>(null)
+  // 다시 찾은 그 지역 핀. 큰 지도를 닫으면 이 목록 핀으로 돌아간다
+  const [found, setFound] = useState<Pin[] | null>(null)
+  const pins = full && found ? found : pagePins
   const [insets, setInsets] = useState<{ top: number; bottom: number } | null>(null)
+  const [snap, setSnap] = useState<SheetSnap>('half')
+  const [rows, setRows] = useState(SHEET_PAGE)
+  const [barH, setBarH] = useState(0)
   const bounds = useRef<Bounds | null>(null)
   const barRef = useRef<HTMLDivElement>(null)
   const cardRef = useRef<HTMLDivElement>(null)
@@ -43,7 +54,7 @@ export default function ListMap({ pins, faces, title, loading, mapHref, onSearch
   }, [])
 
   // 핀이 바뀌면(칩·다시 찾기) 작은 지도를 그 핀들에 맞춘다
-  const ids = pins.map((p) => p.id).join(',')
+  const ids = pagePins.map((p) => p.id).join(',')
   useEffect(() => {
     if (!full) setFitKey((k) => k + 1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,6 +89,8 @@ export default function ListMap({ pins, faces, title, loading, mapHref, onSearch
     setFull(false)
     setSel(null)
     setMoved(false)
+    setFound(null)
+    setSnap('half')
     setTimeout(() => setFitKey((k) => k + 1), 60)
   }, [])
 
@@ -102,13 +115,19 @@ export default function ListMap({ pins, faces, title, loading, mapHref, onSearch
     else open(go)
   }
 
+  // 지도는 그 자리에 두고 화면 안 가게 핀만 다시 찍는다
   const search = () => {
-    if (!bounds.current) return
     const b = bounds.current
-    // 큰 지도를 닫는 history.back()이 끝난 뒤에 목록을 바꾼다
-    close(true)
-    onSearch(b)
+    if (!b) return
+    setFound(allPins.filter((p) => inBounds(p, b)))
+    setRows(SHEET_PAGE)
+    setSel(null)
+    setMoved(false)
   }
+
+  useEffect(() => {
+    if (full && barRef.current) setBarH(barRef.current.offsetHeight)
+  }, [full])
 
   // 카드가 뜨면 위 막대와 카드 사이 빈 곳 가운데에 고른 핀을 둔다
   const selPin = sel != null ? pins.find((p) => p.id === sel) ?? null : null
@@ -150,6 +169,7 @@ export default function ListMap({ pins, faces, title, loading, mapHref, onSearch
                 fitKey={fitKey}
                 focus={focus}
                 insets={full ? insets : null}
+                fitBottom={full && !selPin ? Math.round(window.innerHeight * HALF_RATIO) : 0}
                 still={!full}
                 onUserMove={() => {
                   if (!full) return
@@ -211,10 +231,56 @@ export default function ListMap({ pins, faces, title, loading, mapHref, onSearch
                     pin={selPin}
                     faces={faces}
                     onOpen={() => { window.location.href = `/restaurant/${selPin.id}` }}
-                    onClose={() => close(true)}
+                    // ✕는 카드만 닫고 지도 위에 이 목록을 반쯤 다시 띄운다. 원래 페이지로는 위 '‹ 목록으로'·뒤로 가기로 간다
+                    onClose={() => { setSel(null); setSnap('half') }}
                   />
                 </div>
               )}
+              <ListSheet
+                testId="map-list"
+                snap={snap}
+                onSnap={setSnap}
+                hidden={!!selPin}
+                fullTop={barH}
+                className="z-20"
+                header={(
+                  <button
+                    type="button"
+                    data-testid="map-list-head"
+                    onClick={() => setSnap('full')}
+                    className="flex h-12 w-full items-center px-4 text-left text-lead font-bold text-ink"
+                  >
+                    <span className="truncate">{found ? '이 지역' : title.replace(/\s*[\d,]+곳$/, '')}</span>
+                    <span data-testid="map-list-count" className="ml-1.5 flex-shrink-0">{pins.length}곳</span>
+                  </button>
+                )}
+              >
+                <div className={`h-full ${snap === 'half' ? 'overflow-hidden' : 'overflow-y-auto overscroll-contain'}`}>
+                  <div className="px-4 pb-[calc(96px+env(safe-area-inset-bottom))]">
+                    {pins.length === 0 && <p className="py-10 text-center text-body text-sub">이 지도 안에는 가게가 없어요. 지도를 옮겨 다시 찾아 보세요.</p>}
+                    {pins.slice(0, rows).map((p) => (
+                      <PinRow key={p.id} pin={p} faces={faces} onOpen={(id) => { window.location.href = `/restaurant/${id}` }} />
+                    ))}
+                    {pins.length > rows && (
+                      <button type="button" data-testid="map-list-more" onClick={() => setRows((n) => n + SHEET_PAGE)} className="mt-3 h-12 w-full rounded-card bg-well text-body font-bold text-ink">
+                        {pins.length - rows}곳 더 보기
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {snap === 'full' && (
+                  <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex justify-center pb-[calc(16px+env(safe-area-inset-bottom))]">
+                    <button
+                      type="button"
+                      data-testid="map-list-map"
+                      onClick={() => setSnap('half')}
+                      className="pointer-events-auto flex h-12 items-center gap-2 rounded-full bg-ink px-5 text-body font-bold text-paper shadow-[0_4px_16px_rgba(27,29,31,0.16)]"
+                    >
+                      지도 보기
+                    </button>
+                  </div>
+                )}
+              </ListSheet>
             </>
           )}
         </div>

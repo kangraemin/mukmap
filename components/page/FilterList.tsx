@@ -4,10 +4,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import type { RestaurantWithVideos } from '@/lib/types'
 import { SceneCard } from '@/components/RestaurantCard'
-import { VisitorLine } from '@/components/ChannelFace'
 import type { Face } from '@/components/NaverMap'
 import { TOSS_BUTTON, tossHref } from '@/lib/tossLink'
-import { decodePins, inBounds, loadPins, type Bounds, type Pin } from '@/lib/pins'
+import { decodePins, loadPins, type Pin } from '@/lib/pins'
 import ListMap from './ListMap'
 
 export type Facet = 'region' | 'city' | 'channel'
@@ -115,87 +114,12 @@ export default function FilterList({ h1, sub, restaurants: slimmed, channels, fa
   const pinById = useMemo(() => new Map((allPins || []).map((p) => [p.id, p])), [allPins])
   const pagePins = useMemo(() => list.flatMap((r) => pinById.get(r.id) ?? []), [list, pinById])
 
-  // 지도에서 '이 지역에서 다시 찾기'를 누르면 목록을 그 지역 가게로 통째 바꾼다. null이면 원래 목록
-  const [area, setArea] = useState<null | { pins: Pin[] | null }>(null)
-  const searchArea = (b: Bounds) => {
-    setArea({ pins: null })
-    setShown(pageSize)
-    window.scrollTo({ top: 0 })
-    const cLat = (b.sw_lat + b.ne_lat) / 2
-    const cLng = (b.sw_lng + b.ne_lng) / 2
-    const d = (p: Pin) => (p.lat - cLat) ** 2 + ((p.lng - cLng) * 0.8) ** 2
-    const found = (allPins || []).filter((p) => inBounds(p, b)).sort((x, y) => d(x) - d(y))
-    // 옛 목록이 사라지고 새로 채워지는 게 보이게 잠깐 빈 자리를 둔다
-    setTimeout(() => setArea({ pins: found }), 350)
-  }
-  const back = () => {
-    setArea(null)
-    setShown(pageSize)
-    window.scrollTo({ top: 0 })
-  }
-
-  if (area) {
-    const ps = area.pins
-    return (
-      <>
-        <button
-          type="button"
-          data-testid="area-back"
-          onClick={back}
-          className="mt-4 inline-flex min-h-[40px] max-w-full items-center gap-1 rounded-full border border-line px-3.5 text-body text-ink"
-        >
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" className="flex-shrink-0"><path d="M10 3.5 5.5 8l4.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          <span className="truncate">{h1}으로</span>
-        </button>
-        {ps ? (
-          <h1 className="pt-3 text-display font-bold text-ink">지도에서 찾은 맛집 {ps.length}곳</h1>
-        ) : (
-          <h1 data-testid="area-skeleton" aria-busy="true" className="pt-3"><span className="sr-only">찾는 중</span><span className="block h-9 w-3/4 animate-pulse rounded-[8px] bg-well" /></h1>
-        )}
-        <p className="mt-1.5 text-body text-sub">{ps ? '옮긴 지도 화면 안에 있는 가게예요. 가운데에서 가까운 순이에요.' : '\u00a0'}</p>
-
-        <ListMap pins={ps || []} faces={faces} title="지도에서 찾은 맛집" loading={!ps} mapHref={href} onSearch={searchArea} />
-
-        {ps ? (
-          <>
-            <p data-testid="list-count" className="mt-6 text-body font-bold text-ink">{ps.length}곳</p>
-            {ps.length === 0 && <p className="mt-3 text-body text-sub">이 화면엔 아직 등록된 가게가 없어요. 지도를 넓혀 다시 찾아보세요.</p>}
-            <ol data-testid="area-list" className="mt-3 grid gap-x-5 gap-y-8 sm:grid-cols-2">
-              {ps.slice(0, shown).map((p) => (
-                <li key={p.id}><PinScene pin={p} faces={faces} /></li>
-              ))}
-            </ol>
-            {ps.length > shown && (
-              <button
-                type="button"
-                onClick={() => setShown((n) => n + pageSize)}
-                className="mt-8 flex min-h-[48px] w-full items-center justify-center rounded-full border border-line text-body text-ink"
-              >
-                {ps.length - shown}곳 더 보기
-              </button>
-            )}
-          </>
-        ) : (
-          <ol className="mt-6 grid gap-x-5 gap-y-8 sm:grid-cols-2">
-            {[0, 1, 2, 3].map((i) => (
-              <li key={i} data-testid="card-skeleton">
-                <span className="block aspect-video animate-pulse rounded-card bg-well" />
-                <span className="mt-3 block h-5 w-1/2 animate-pulse rounded-[6px] bg-well" />
-                <span className="mt-2 block h-4 w-1/3 animate-pulse rounded-[6px] bg-well" />
-              </li>
-            ))}
-          </ol>
-        )}
-      </>
-    )
-  }
-
   return (
     <>
       <h1 className="pt-6 text-display font-bold text-ink">{h1}</h1>
       <p className="mt-1.5 max-w-[60ch] text-body text-sub">{sub}</p>
 
-      <ListMap pins={pagePins} faces={faces} title={h1} loading={allPins === null} mapHref={href} onSearch={searchArea} />
+      <ListMap pins={pagePins} allPins={allPins || []} faces={faces} title={h1} loading={allPins === null} mapHref={href} />
 
       {facets.filter((f) => options[f].length > 1).map((f) => (
         <div key={f} className="mt-4">
@@ -259,27 +183,3 @@ export default function FilterList({ h1, sub, restaurants: slimmed, channels, fa
 }
 
 /** 지도에서 다시 찾은 가게 카드. 목록 카드(SceneCard)와 같은 모양을 핀 정보로 그린다 */
-function PinScene({ pin, faces }: { pin: Pin; faces: Record<string, Face> }) {
-  return (
-    <a href={`/restaurant/${pin.id}`} data-testid="area-item" className="group block w-full">
-      <span className="relative block aspect-video overflow-hidden rounded-card bg-well">
-        {/* eslint-disable-next-line @next/next/no-img-element -- 유튜브 썸네일을 그대로 쓴다 */}
-        {pin.vid && <img src={`https://i.ytimg.com/vi/${pin.vid}/mqdefault.jpg`} alt={`${pin.name} 영상 장면`} loading="lazy" className="h-full w-full object-cover" />}
-      </span>
-      <span className="mt-3 flex items-baseline gap-2">
-        <span className="truncate text-lead font-bold text-ink group-hover:underline">{pin.name}</span>
-        <span className="flex-shrink-0 text-meta text-sub">{pin.category}</span>
-      </span>
-      <span className="mt-0.5 block text-meta text-sub">{[pin.region, pin.city].filter(Boolean).join(' ')}</span>
-      {(pin.best || pin.menu || pin.price) && (
-        <span className="mt-1.5 block truncate text-body text-ink">
-          {pin.best || pin.menu}
-          {pin.price && <span className="text-sub"> / {pin.price}</span>}
-        </span>
-      )}
-      <span className="mt-2 block">
-        <VisitorLine faces={pin.ch.map((id) => ({ id, name: faces[id]?.name || '', thumbnail: faces[id]?.thumbnail || null }))} />
-      </span>
-    </a>
-  )
-}
