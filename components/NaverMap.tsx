@@ -80,9 +80,19 @@ function clusterIcon(items: Pin[], faces: Record<string, Face>): naver.maps.Mark
   return { content, size: new naver.maps.Size(CLUSTER_FACE, CLUSTER_FACE), anchor: new naver.maps.Point(CLUSTER_FACE / 2, CLUSTER_FACE / 2) }
 }
 
-function readBounds(map: naver.maps.Map): Bounds {
-  const b = map.getBounds()
-  return { sw_lat: b.getSW().lat(), sw_lng: b.getSW().lng(), ne_lat: b.getNE().lat(), ne_lng: b.getNE().lng() }
+// 지도가 아직 자리를 못 잡았으면 네이버 SDK 안에서 터진다(토스 웹뷰, 유튜버 목록을 못 받은 채 오래 둘 때). 그땐 건너뛴다
+function readBounds(map: naver.maps.Map): Bounds | null {
+  try {
+    const b = map.getBounds()
+    return { sw_lat: b.getSW().lat(), sw_lng: b.getSW().lng(), ne_lat: b.getNE().lat(), ne_lng: b.getNE().lng() }
+  } catch {
+    return null
+  }
+}
+
+function sendBounds(map: naver.maps.Map, on: (b: Bounds) => void) {
+  const b = readBounds(map)
+  if (b) on(b)
 }
 
 /** 지도 스크립트를 미리 붙인다. 토스 앱은 화면을 그리기 전에 부른다 */
@@ -161,10 +171,10 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
       zoomControl: false,
     })
     mapRef.current = map
-    cb.current.onBoundsChange(readBounds(map))
+    sendBounds(map, cb.current.onBoundsChange)
     setIdleTick((t) => t + 1)
     naver.maps.Event.addListener(map, 'idle', () => {
-      cb.current.onBoundsChange(readBounds(map))
+      sendBounds(map, cb.current.onBoundsChange)
       setIdleTick((t) => t + 1)
     })
     naver.maps.Event.addListener(map, 'click', () => cb.current.onMapClick())
@@ -179,7 +189,7 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
       const s = map.getSize()
       if (!el.clientWidth || !el.clientHeight || (s.width === el.clientWidth && s.height === el.clientHeight)) return
       map.setSize({ width: el.clientWidth, height: el.clientHeight })
-      cb.current.onBoundsChange(readBounds(map))
+      sendBounds(map, cb.current.onBoundsChange)
       setIdleTick((t) => t + 1)
     })
     ro.observe(el)
@@ -193,6 +203,7 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
     if (!map || !el || !el.clientWidth) return
 
     const b = readBounds(map)
+    if (!b) return
     // 화면 가장자리 핀이 갑자기 생기지 않게 반 화면씩 여유를 둔다
     const padLat = (b.ne_lat - b.sw_lat) / 2
     const padLng = (b.ne_lng - b.sw_lng) / 2

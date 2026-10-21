@@ -18,11 +18,15 @@ export function report(ev: string, data?: unknown) {
 report('boot');
 addEventListener('error', (e) => report('error', `${e.message} @${e.filename}:${e.lineno}`));
 addEventListener('unhandledrejection', (e) => report('rejection', String(e.reason?.stack || e.reason)));
-const origError = console.error;
-console.error = (...a: unknown[]) => { report('console.error', a.map(String).join(' ').slice(0, 500)); origError(...a); };
+// 콘솔 가로채기와 화면 스냅샷은 테스트 빌드에서만. 출시 빌드(VITE_ADS=live)는 오류만 보낸다
+const LIVE = import.meta.env.VITE_ADS === 'live';
+if (!LIVE) {
+  const origError = console.error;
+  console.error = (...a: unknown[]) => { report('console.error', a.map(String).join(' ').slice(0, 500)); origError(...a); };
+}
 
 // 지도 SDK와 화면 상태를 몇 번 찍어 둔다
-for (const s of [3, 8, 15]) {
+for (const s of LIVE ? [] : [3, 8, 15]) {
   setTimeout(() => {
     const w = window as unknown as { naver?: { maps?: unknown } };
     const map = document.querySelector('[data-testid="map"]') as HTMLElement | null;

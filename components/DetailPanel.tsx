@@ -167,6 +167,10 @@ export default function DetailPanel({ restaurant: r, onClose, closeLabel = 'ë‹«ê
               href={sceneUrl(lead)}
               target="_blank"
               rel="noopener noreferrer"
+              data-testid="watch-main"
+              data-track="video_watch_click"
+              data-track-where="main"
+              data-track-id={r.id}
               className="flex h-12 flex-1 items-center justify-center gap-1.5 rounded-card bg-play text-body font-bold text-white"
             >
               <PlayGlyph />
@@ -177,6 +181,8 @@ export default function DetailPanel({ restaurant: r, onClose, closeLabel = 'ë‹«ê
             href={placeUrl(r)}
             target="_blank"
             rel="noopener noreferrer"
+            data-track="directions_click"
+            data-track-id={r.id}
             className="flex h-12 flex-1 items-center justify-center rounded-card border border-line text-body font-bold text-ink"
           >
             {t.directions}
@@ -225,9 +231,9 @@ export default function DetailPanel({ restaurant: r, onClose, closeLabel = 'ë‹«ê
 
         <Sub className="mt-6 text-lead font-bold text-ink">{t.videos(r.videos.length)}</Sub>
         <ul data-testid="detail-videos" className="mt-2">
-          {r.videos.map((v) => (
+          {r.videos.map((v, i) => (
             <li key={v.id}>
-              <a href={sceneUrl(v)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 py-2.5">
+              <a href={sceneUrl(v)} target="_blank" rel="noopener noreferrer" data-track="video_watch_click" data-track-where="list" data-track-id={r.id} data-track-rank={i + 1} className="flex items-center gap-3 py-2.5">
                 <span className="h-[54px] w-[96px] flex-shrink-0 overflow-hidden rounded-[8px] bg-well">
                   <img src={`https://i.ytimg.com/vi/${v.video_id}/mqdefault.jpg`} alt="" loading="lazy" className="h-full w-full object-cover" />
                 </span>

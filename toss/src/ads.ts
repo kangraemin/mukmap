@@ -1,4 +1,5 @@
 import { TossAds } from '@apps-in-toss/web-framework';
+import { track } from '@/lib/analytics';
 
 /** 배너 모양은 광고 그룹 종류로 정해진다. 실제 ID로 테스트하면 정책 위반이라 출시 빌드에서만 쓴다 */
 const LIVE = import.meta.env.VITE_ADS === 'live';
@@ -29,16 +30,26 @@ function init() {
 export function attachBanner(target: HTMLElement, onEmpty: () => void, kind: AdKind, variant: 'card' | 'expanded' = 'card') {
   let detach: (() => void) | undefined;
   let gone = false;
+  const fail = (reason: string) => {
+    track('ad_fail', { kind, reason });
+    onEmpty();
+  };
   init().then((ok) => {
     if (gone) return;
-    if (!ok) return onEmpty();
+    if (!ok) return fail('init');
+    track('ad_request', { kind });
     try {
       detach = TossAds.attachBanner(BANNER[kind], target, {
         variant,
-        callbacks: { onNoFill: onEmpty, onAdFailedToRender: onEmpty },
+        callbacks: {
+          onNoFill: () => fail('nofill'),
+          onAdFailedToRender: () => fail('render'),
+          onAdImpression: () => track('ad_shown', { kind }, 'impression'),
+          onAdClicked: () => track('ad_click', { kind }, 'click'),
+        },
       }).destroy;
     } catch {
-      onEmpty();
+      fail('attach');
     }
   });
   return () => {

@@ -71,7 +71,7 @@ export default async function RestaurantPage({ params }: Props) {
           <h2 className="text-body font-bold text-ink">이 지역 더 보기</h2>
           <ul className="mt-2 flex flex-wrap gap-2">
             <li>
-              <a href={tossHref({ place: r.id })} data-testid="open-toss" className="inline-flex min-h-[40px] items-center rounded-full border border-line px-3.5 text-body text-ink">
+              <a href={tossHref({ place: r.id })} data-testid="open-toss" data-track="toss_open_click" data-track-where="restaurant" data-track-id={r.id} className="inline-flex min-h-[40px] items-center rounded-full border border-line px-3.5 text-body text-ink">
                 토스 앱으로 열기
               </a>
             </li>

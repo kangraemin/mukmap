@@ -1,11 +1,16 @@
 'use client'
 
+import { useEffect } from 'react'
+import { track } from '@/lib/analytics'
+
 export default function Error({
+  error,
   reset,
 }: {
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  useEffect(() => { track('app_error', { where: 'page', msg: String(error.message).slice(0, 100) }) }, [error])
   return (
     <main className="flex min-h-[100dvh] flex-col items-center justify-center px-6 text-center">
       <h1 className="text-title font-bold text-ink">페이지를 불러오지 못했어요</h1>

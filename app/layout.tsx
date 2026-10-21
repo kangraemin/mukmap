@@ -3,6 +3,7 @@ import { Black_Han_Sans } from 'next/font/google'
 import Script from 'next/script'
 import './globals.css'
 import { SITE_NAME, SITE_URL, jsonLdScript, siteJsonLd } from '@/lib/seo'
+import TrackClicks from '@/components/TrackClicks'
 
 // 자막 인용에만 쓰는 굵은 서체. 한글 글자가 많아 미리 받지 않고 쓰는 글자만 받는다
 const captionFont = Black_Han_Sans({
@@ -64,14 +65,19 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         />
         {/* 애드센스 자동 광고. 웹에만 넣는다(토스 앱 번들은 토스 배너를 쓴다) */}
         <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4785237655148075" crossOrigin="anonymous" />
+        {/* GA4는 화면을 그리기 전에 깔아 둔다. 첫 화면 이벤트(app_open)가 gtag 도착 전에 나가도 줄에 쌓인다(lib/analytics.ts).
+            운영 주소에서만 켜고, ?ga_debug=1 이면 DebugView로, 기기에 mk_internal을 두면 내부 트래픽으로 보낸다 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}if(location.hostname==='${new URL(SITE_URL).hostname}'){gtag('js',new Date());var c={};if(/[?&]ga_debug=1/.test(location.search))c.debug_mode=true;try{if(localStorage.getItem('mk_internal'))c.traffic_type='internal'}catch(e){}gtag('config','${GA_ID}',c)}`,
+          }}
+        />
       </head>
       <body className="antialiased">
         {children}
         {jsonLdScript(siteJsonLd())}
+        <TrackClicks />
         <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
-        <Script id="ga" strategy="afterInteractive">
-          {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','${GA_ID}')`}
-        </Script>
       </body>
     </html>
   )

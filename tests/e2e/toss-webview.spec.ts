@@ -4,7 +4,7 @@ import { expect, test, type Page } from '@playwright/test'
 // 실제 사고: 검색창 글자가 15px라 iOS가 입력할 때 화면을 확대한 채로 두어 왼쪽이 잘리고 카드가 오른쪽으로 넘쳤다.
 const TOSS = 'http://localhost:5174/'
 
-async function open(page: Page) {
+async function open(page: Page, before?: () => Promise<unknown>) {
   // 운영 API는 토스 오리진만 허용하므로 로컬 번들에서는 응답에 CORS 헤더를 붙여 넘긴다
   await page.route('https://mukmap.kr/api/**', async (route) => {
     try {
@@ -14,6 +14,8 @@ async function open(page: Page) {
       // 테스트가 먼저 끝나 페이지가 닫힌 경우
     }
   })
+  // 나중에 건 route가 먼저 받는다
+  await before?.()
   await page.goto(TOSS)
   await expect(page.getByTestId('intro')).toHaveCount(0, { timeout: 15_000 })
 }
@@ -149,4 +151,18 @@ test('토스: 지도 틀이 처음에 작다가 커져도 지도가 화면을 �
   await page.evaluate(() => document.getElementById('shrink')?.remove())
   // 지도가 커진 틀만큼 더 넓게 보여야 한다(예전엔 작은 크기로 굳어 개수가 그대로였다)
   await expect.poll(places, { timeout: 10_000 }).toBeGreaterThan(before)
+})
+
+test('토스: 유튜버 목록을 끝내 못 받으면 안내가 뜨고, 다시 불러오면 칩이 채워진다', async ({ page }) => {
+  test.setTimeout(120_000)
+  let fail = true
+  await open(page, () => page.route('https://mukmap.kr/api/channels', (route) =>
+    fail ? route.fulfill({ status: 500, headers: { 'access-control-allow-origin': '*' }, body: 'x' }) : route.fallback()))
+  const notice = page.getByTestId('channels-retry')
+  // 여섯 번 더 받아 본 뒤(약 30초) 안내한다
+  await expect(notice).toBeVisible({ timeout: 60_000 })
+  fail = false
+  await notice.getByRole('button', { name: '다시 불러오기' }).click()
+  await expect(notice).toHaveCount(0)
+  await expect(page.locator('nav[aria-label="유튜버 고르기"] button')).not.toHaveCount(1, { timeout: 15_000 })
 })

@@ -9,6 +9,9 @@ import { PinRow, PreviewCard } from '@/components/PinCard'
 import { ShareIcon } from '@/components/ShareIcon'
 import { listMessage, placeMessage, type ShareMessage } from '@/lib/share'
 import Toast from '@/components/Toast'
+import RetryNotice from '@/components/RetryNotice'
+import { entryOf, track, visitInfo } from '@/lib/analytics'
+import { iGa } from '@/lib/josa'
 import { decodePins, inBounds, loadPins, type Bounds, type Pin, type PinsPayload } from '@/lib/pins'
 import { buildIndex, searchPins, type Station } from '@/lib/search'
 import Intro from '@/components/Intro'
@@ -27,6 +30,8 @@ type Sort = 'near' | 'latest' | 'visitors'
 const PAGE = 40
 const LIST_AD_EVERY = 8
 const CACHE_KEY = 'mukmap:pins:v2'
+// 앱을 연 기록은 페이지당 한 번(개발 모드의 효과 두 번 실행에도)
+let appOpenSent = false
 
 interface HomeExplorerProps {
   channels: (Channel & { restaurant_count: number })[]
@@ -44,8 +49,9 @@ interface HomeExplorerProps {
   listAd?: (slot: number) => React.ReactNode
   /** 지도 위 가게 카드 맨 아래 광고 */
   previewAd?: (restaurantId: number) => React.ReactNode
-  /** 공유 버튼을 누르면 부른다. 받은 사람이 열 주소 쿼리와 공유 글·미리보기 그림. 토스 앱만 넘긴다 */
-  onShare?: (msg: ShareMessage) => void
+  /** 공유 버튼을 누르면 부른다. 받은 사람이 열 주소 쿼리와 공유 글·미리보기 그림. 토스 앱만 넘긴다.
+   *  공유 창까지 열었으면 true로 끝나 완료 안내를 띄운다 */
+  onShare?: (msg: ShareMessage) => void | Promise<boolean>
 }
 
 function readNav(): Nav {
@@ -117,8 +123,13 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   const [detail, setDetail] = useState<RestaurantWithVideos | null>(null)
   const [toast, setToast] = useState('')
   const [desktop, setDesktop] = useState(false)
+  // 가게 목록을 끝내 못 받으면 안내와 다시 받기 버튼을 띄운다. pinsTry를 올리면 다시 받는다
+  const [pinsFailed, setPinsFailed] = useState(false)
+  const [pinsTry, setPinsTry] = useState(0)
+  const hadCache = useRef(false)
 
   const details = useRef<Map<number, Promise<RestaurantWithVideos | null>>>(new Map())
+  const openDetailRef = useRef<(id: number) => void>(() => {})
   const fitWhenLoaded = useRef(false)
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -133,21 +144,46 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   // 핀은 한 번만 받는다. 전에 받은 게 있으면 먼저 보여주고 뒤에서 새로 받는다
   useEffect(() => {
     const cached = readCache()
+    hadCache.current = !!cached
     if (cached) setPins(cached)
     // 토스 앱을 막 띄운 순간엔 요청이 바로 실패하곤 해서 몇 번 더 받아 본다
     let live = true
+    const t0 = performance.now()
     const load = (n: number) => loadPins(apiBase)
       .then((p: PinsPayload) => {
         writeCache(p)
         if (live) setPins(decodePins(p))
+        track('pins_load', { ok: true, ms: Math.round(performance.now() - t0), tries: n + 1, cached: !!cached })
       })
       .catch(() => {
-        if (live && n < 5) setTimeout(() => load(n + 1), 500 * 2 ** n)
-        else if (live && !cached) setToast('가게 목록을 불러오지 못했어요. 잠시 뒤 다시 열어 보세요.')
+        if (!live) return
+        if (n < 5) {
+          track('load_retry', { what: 'pins', n: n + 1 })
+          setTimeout(() => load(n + 1), 500 * 2 ** n)
+        } else {
+          track('pins_load', { ok: false, ms: Math.round(performance.now() - t0), tries: n + 1, cached: !!cached })
+          if (!cached) {
+            track('load_fail', { what: 'pins' })
+            setPinsFailed(true)
+          }
+        }
       })
     load(0)
     return () => { live = false }
-  }, [apiBase])
+  }, [apiBase, pinsTry])
+
+  const retryPins = useCallback(() => {
+    track('load_retry_tap', { what: 'pins' })
+    setPinsFailed(false)
+    setPinsTry((n) => n + 1)
+  }, [])
+
+  // 첫 화면 한 번: 처음 왔는지, 며칠 만인지, 어디서 들어왔는지
+  useEffect(() => {
+    if (appOpenSent) return
+    appOpenSent = true
+    track('app_open', { ...visitInfo(), ...entryOf(window.location.search) })
+  }, [])
 
   // 프로필 사진은 우리 주소를 거쳐 받는다(app/api/face)
   const faceChannels = useMemo(() => channels.map((c) => ({ ...c, thumbnail_url: c.thumbnail_url ? `${apiBase}/api/face/${c.id}` : null })), [channels, apiBase])
@@ -162,6 +198,14 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       .then(() => { if (live) setFacesReady(true) })
     return () => { live = false }
   }, [faceChannels])
+  // 소개 화면이 걷힐 조건이 처음 갖춰진 순간 = 첫 실행 체감 속도
+  const mapReady = pins !== null && bounds !== null && facesReady
+  const readySent = useRef(false)
+  useEffect(() => {
+    if (!mapReady || readySent.current) return
+    readySent.current = true
+    track('app_ready', { ms: Math.round(performance.now()), cached: hadCache.current })
+  }, [mapReady])
   const faces = useMemo(() => {
     const m: Record<string, Face> = {}
     for (const c of faceChannels) m[c.id] = { name: c.name, thumbnail: c.thumbnail_url }
@@ -180,6 +224,23 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   ), [pins, channelId, region, city, textHits])
 
   const inView = useMemo(() => (bounds ? filtered.filter((p) => inBounds(p, bounds)) : filtered), [filtered, bounds])
+
+  // 칩·검색으로 거른 결과 수를 보낸다. 첫 진입 조건(주소 쿼리)은 app_open이 이미 안다
+  const filteredRef = useRef(filtered)
+  filteredRef.current = filtered
+  const lastFilter = useRef<string | null>(null)
+  useEffect(() => {
+    if (!pins) return
+    const key = `${channelId}|${region}|${city}`
+    if (lastFilter.current === null) { lastFilter.current = key; return }
+    if (lastFilter.current === key) return
+    lastFilter.current = key
+    const type = channelId ? 'channel' : region ? 'region' : 'all'
+    track('filter_change', { type, value: channelId || [region, city].filter(Boolean).join(' ') || 'all', count: filteredRef.current.length })
+  }, [pins, channelId, region, city])
+  useEffect(() => {
+    if (text && textHits) track('search_result', { q: text.slice(0, 40), count: textHits.size })
+  }, [text, textHits])
 
   // 지금 보이는 지도(지역·검색 조건 포함)에 가게가 하나도 없는 유튜버 칩은 흐리게 보인다. 눌러도 되고, 누르면 그 유튜버 가게로 지도를 옮긴다
   const viewCount = useMemo(() => {
@@ -209,6 +270,13 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
 
   useEffect(() => { setShown(PAGE) }, [inView, sort])
 
+  const sortedRef = useRef(sorted)
+  sortedRef.current = sorted
+  const openFromList = useCallback((id: number) => {
+    track('list_click', { id, rank: sortedRef.current.findIndex((p) => p.id === id) + 1, sort })
+    openDetailRef.current(id)
+  }, [sort])
+
   useEffect(() => {
     if (fitWhenLoaded.current && pins) {
       fitWhenLoaded.current = false
@@ -232,6 +300,15 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
 
   // 토스 뒤로가기 처리(toss/src/main.tsx)가 history.state를 못 읽어도 지금 단계를 알 수 있게 둔다
   useEffect(() => { document.documentElement.dataset.mkNav = nav.v }, [nav])
+
+  // 화면이 바뀔 때 연 화면과 앞 화면에 머문 시간을 보낸다
+  const navKey = nav.v === 'preview' || nav.v === 'detail' ? `${nav.v}:${nav.id}` : nav.v
+  useEffect(() => {
+    const [screen, id] = navKey.split(':')
+    const t0 = performance.now()
+    track('screen_open', { screen, id: id ? Number(id) : undefined }, 'screen')
+    return () => track('screen_leave', { screen, id: id ? Number(id) : undefined, ms: Math.round(performance.now() - t0) })
+  }, [navKey])
 
   useEffect(() => {
     setNav(readNav())
@@ -277,6 +354,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     if (readNav().v === 'detail') replace({ v: 'detail', id })
     else push({ v: 'detail', id })
   }, [push, replace])
+  openDetailRef.current = openDetail
 
   const selectPin = useCallback((id: number) => {
     if (desktop) return openDetail(id)
@@ -302,6 +380,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   }, [])
 
   const searchChannel = useCallback((id: string) => {
+    track('search_select', { kind: 'channel', id })
     closePreview()
     setText('')
     setChannelId(id)
@@ -309,6 +388,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   }, [closePreview])
 
   const searchRegion = useCallback((name: string) => {
+    track('search_select', { kind: 'region', id: name })
     closePreview()
     setText('')
     setRegion(name)
@@ -317,6 +397,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   }, [closePreview])
 
   const searchRestaurant = useCallback((id: number) => {
+    track('search_select', { kind: 'restaurant', id })
     // 걸린 필터('영등포' 검색·유튜버·지역)에 빠진 가게면 필터를 풀어야 지도가 그 가게로 간다
     if (!filtered.some((p) => p.id === id)) {
       setText('')
@@ -330,6 +411,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   }, [desktop, openDetail, selectPin, filtered])
 
   const searchStation = useCallback((station: Station) => {
+    track('search_select', { kind: 'station', id: station.name })
     replace({ v: 'map' })
     setFocus({ lat: station.lat, lng: station.lng, seq: Date.now() })
   }, [replace])
@@ -439,9 +521,14 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     const what = [ch?.name, city ? `${region} ${city}` : region, text && `‘${text}’`].filter(Boolean).join(' ')
     return listMessage(sp.toString(), what, filtered, nameOf)
   }, [pins, channelId, channels, region, city, text, filtered, nameOf])
+  // 공유 창까지 열었으면 완료 안내
+  const doShare = (msg: ShareMessage) => {
+    if (!onShare) return
+    Promise.resolve(onShare(msg)).then((ok) => { if (ok) setToast('공유 링크를 만들었어요') })
+  }
   const sharePlace = (id: number, query: string) => {
     const p = pinById.get(id)
-    if (onShare && p) onShare(placeMessage(p, query, nameOf))
+    if (p) doShare(placeMessage(p, query, nameOf))
   }
   const search = (
     <SearchBar
@@ -587,13 +674,17 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
           <div className="px-4 lg:px-5">
             {pins && sorted.length === 0 && (
               <div className="py-10 text-center">
-                <p className="text-body text-ink">{text ? `‘${text}’에 맞는 가게가 이 지도 안에 없어요.` : '이 지도 안에는 아직 가게가 없어요.'}</p>
+                <p className="text-body text-ink">
+                  {text ? `‘${text}’에 맞는 가게가 이 지도 안에 없어요.`
+                    : channelId ? `${iGa(nameOf(channelId) || '고른 유튜버')} 다녀간 가게가 이 지도 안에 없어요.`
+                    : '이 지도 안에는 아직 가게가 없어요.'}
+                </p>
                 <p className="mt-1 text-meta text-sub">지도를 줄이거나 다른 지역으로 옮겨 보세요.</p>
               </div>
             )}
             {sorted.slice(0, shown).map((p, i) => (
               <Fragment key={p.id}>
-                <PinRow pin={p} faces={faces} onOpen={openDetail} selected={p.id === detailId} />
+                <PinRow pin={p} faces={faces} onOpen={openFromList} selected={p.id === detailId} />
                 {listAd && i >= 2 && (i - 2) % LIST_AD_EVERY === 0 && listAd((i - 2) / LIST_AD_EVERY)}
               </Fragment>
             ))}
@@ -661,7 +752,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
             <button
               type="button"
               data-testid="share-filter"
-              onClick={() => onShare(share)}
+              onClick={() => doShare(share)}
               className="pointer-events-auto ml-2 flex h-12 animate-sheet-in items-center gap-1.5 rounded-full bg-paper px-4 text-body font-bold text-ink shadow-[0_4px_16px_rgba(27,29,31,0.16)] transition-transform active:scale-95"
             >
               <ShareIcon />
@@ -694,7 +785,12 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
               <p className="truncate text-lead font-bold text-ink">{shownDetail?.name || detailPin?.name || ''}</p>
             </div>
           </header>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain sm:px-5">
+          <div
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain sm:px-5"
+            onClickCapture={(e) => {
+              if ((e.target as Element).closest('[data-track="video_watch_click"]')) setToast('유튜브에서 그 장면부터 열어요')
+            }}
+          >
             {shownDetail ? (
               <>
                 <DetailPanel
@@ -718,8 +814,9 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
         </section>
       )}
 
+      {pinsFailed && <RetryNotice testId="pins-retry" title="가게 목록을 불러오지 못했어요" onRetry={retryPins} />}
       {toast && <Toast message={toast} onClose={handleToastClose} />}
-      <Intro ready={pins !== null && bounds !== null && facesReady} loaded={pins !== null} channels={faceChannels} />
+      <Intro ready={mapReady} loaded={pins !== null} channels={faceChannels} />
     </div>
   )
 }

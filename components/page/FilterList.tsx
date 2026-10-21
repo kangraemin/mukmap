@@ -144,6 +144,8 @@ export default function FilterList({ restaurants: slimmed, channels, facets, bas
       <a
         href={tossHref(q)}
         data-testid="open-toss"
+        data-track="toss_open_click"
+        data-track-where="list"
         className="inline-flex min-h-[48px] items-center rounded-full border border-line bg-paper px-4 text-meta font-bold text-ink shadow-[0_4px_16px_rgba(0,0,0,0.12)]"
       >
         토스 앱으로 열기
