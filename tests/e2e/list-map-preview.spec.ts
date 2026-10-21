@@ -254,3 +254,86 @@ test('홈 지도 카드: 찜·공유가 있어도 가게 이름과 유튜버 이
   const lh = await v.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight) || 18)
   expect((await v.boundingBox())!.height).toBeLessThan(lh * 1.5)
 })
+
+/** 시트 머리줄을 손가락으로 아래로 끈다 */
+async function pullDown(page: Page, grip: ReturnType<Page['getByTestId']>) {
+  const b = (await grip.boundingBox())!
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2)
+  await page.mouse.down()
+  for (let i = 1; i <= 10; i++) await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 + i * 30)
+  await page.mouse.up()
+}
+
+/** 시트가 머리줄만 남기고 바닥에 붙어 있다 */
+async function expectPeek(page: Page, id: string) {
+  const sheet = page.getByTestId(id)
+  await expect(sheet).toHaveAttribute('data-snap', 'peek')
+  const vp = page.viewportSize()!
+  await expect.poll(async () => {
+    const b = (await sheet.boundingBox())!
+    return b.height > 50 && b.height < 130 && Math.abs(b.y + b.height - vp.height) < 2
+  }).toBe(true)
+}
+
+test('홈 목록 시트를 밑으로 끌면 머리줄만 남기고 내려가 멈추고, 머리줄을 누르거나 위로 끌면 다시 반쯤', async ({ page }) => {
+  // 사용자 지시(2026-10-21): 밑으로 내리면 다시 반쯤으로 튀어 오르지 말고 더 낮은 단계에 멈춰야
+  await page.goto('/')
+  await expect(page.getByTestId('pill-count')).toHaveText(/\d+곳/, { timeout: 30_000 })
+  await expectHalf(page, 'list-view')
+  await pullDown(page, page.getByTestId('list-pill'))
+  await expectPeek(page, 'list-view')
+  await expect(page.getByTestId('pill-count')).toBeVisible()
+  await page.getByTestId('list-pill').click()
+  await expectHalf(page, 'list-view')
+  await pullDown(page, page.getByTestId('list-pill'))
+  await expectPeek(page, 'list-view')
+  await pullUp(page, page.getByTestId('list-pill'))
+  await expect(page.getByTestId('list-view')).not.toHaveAttribute('data-snap', 'peek')
+})
+
+test('목록 큰 지도 시트도 밑으로 끌면 머리줄만 남고, 머리줄을 누르면 반쯤', async ({ page }) => {
+  await page.goto(STATION)
+  await expect(page.getByTestId('map-expand')).toHaveText(/\d+곳/, { timeout: 30_000 })
+  await page.getByTestId('map-expand').click()
+  await expectHalf(page, 'map-list')
+  await pullDown(page, page.getByTestId('map-list-head'))
+  await expectPeek(page, 'map-list')
+  await page.getByTestId('map-list-head').click()
+  await expectHalf(page, 'map-list')
+})
+
+test('홈에서 핀을 눌러 카드를 띄웠다가 ✕로 닫으면 핀 누르기 전 목록이 그대로 보인다', async ({ page }) => {
+  // 사용자 지시(2026-10-21): 카드 X 누르면 지도가 확대된 "이 지도 안 1곳" 화면이 아니라 보던 목록 그대로
+  await page.goto('/')
+  await expect(page.getByTestId('pill-count')).toHaveText(/\d+곳/, { timeout: 30_000 })
+  const sheet = page.getByTestId('list-view')
+  // 묶음을 눌러 들어가 시트에 안 가린 낱개 핀이 보일 때까지
+  let pin = null
+  for (let i = 0; i < 6 && !pin; i++) {
+    await page.waitForTimeout(1200)
+    const single = page.locator('[data-pin]')
+    const n = await single.evaluateAll((els) => els.findIndex((el) => {
+      const r = el.getBoundingClientRect()
+      const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+      return !!(r.width && top && el.contains(top))
+    }))
+    if (n >= 0) { pin = single.nth(n); break }
+    const ci = await page.locator('[data-cluster]').evaluateAll((els) => els.findIndex((el) => {
+      const r = el.getBoundingClientRect()
+      const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+      return !!(r.width && top && el.contains(top))
+    }))
+    await page.locator('[data-cluster]').nth(ci).click()
+  }
+  expect(pin).not.toBeNull()
+  await page.waitForTimeout(1200)
+  const before = await page.getByTestId('pill-count').textContent()
+  const names = await sheet.getByTestId('list-item').evaluateAll((els) => els.slice(0, 3).map((e) => e.textContent))
+  await pin!.click()
+  await expect(page.getByTestId('preview-card')).toBeVisible()
+  await page.waitForTimeout(1500)
+  await page.getByTestId('preview-card').getByRole('button', { name: '닫기' }).click()
+  await expectHalf(page, 'list-view')
+  await expect(page.getByTestId('pill-count')).toHaveText(before!)
+  await expect.poll(() => sheet.getByTestId('list-item').evaluateAll((els) => els.slice(0, 3).map((e) => e.textContent))).toEqual(names)
+})

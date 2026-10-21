@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import NaverMap, { type Face, type MapFocus } from '@/components/NaverMap'
 import { PinRow, PreviewCard } from '@/components/PinCard'
-import ListSheet, { HALF_RATIO, type SheetSnap } from '@/components/ListSheet'
+import ListSheet, { HALF_RATIO, PEEK_PX, type SheetSnap } from '@/components/ListSheet'
 import { inBounds, type Bounds, type Pin } from '@/lib/pins'
 
 interface ListMapProps {
@@ -169,7 +169,7 @@ export default function ListMap({ pins: pagePins, allPins, faces, title, loading
                 fitKey={fitKey}
                 focus={focus}
                 insets={full ? insets : null}
-                fitBottom={full && !selPin ? Math.round(window.innerHeight * HALF_RATIO) : 0}
+                fitBottom={full && !selPin ? (snap === 'peek' ? PEEK_PX : Math.round(window.innerHeight * HALF_RATIO)) : 0}
                 still={!full}
                 onUserMove={() => {
                   if (!full) return
@@ -247,7 +247,7 @@ export default function ListMap({ pins: pagePins, allPins, faces, title, loading
                   <button
                     type="button"
                     data-testid="map-list-head"
-                    onClick={() => setSnap('full')}
+                    onClick={() => setSnap(snap === 'peek' ? 'half' : 'full')}
                     className="flex h-12 w-full items-center px-4 text-left text-lead font-bold text-ink"
                   >
                     <span className="truncate">{found ? '이 지역' : title.replace(/\s*[\d,]+곳$/, '')}</span>
@@ -255,7 +255,7 @@ export default function ListMap({ pins: pagePins, allPins, faces, title, loading
                   </button>
                 )}
               >
-                <div className={`h-full ${snap === 'half' ? 'overflow-hidden' : 'overflow-y-auto overscroll-contain'}`}>
+                <div className={`h-full ${snap !== 'full' ? 'overflow-hidden' : 'overflow-y-auto overscroll-contain'}`}>
                   <div className="px-4 pb-[calc(96px+env(safe-area-inset-bottom))]">
                     {pins.length === 0 && <p className="py-10 text-center text-body text-sub">이 지도 안에는 가게가 없어요. 지도를 옮겨 다시 찾아 보세요.</p>}
                     {pins.slice(0, rows).map((p) => (

@@ -1,12 +1,15 @@
 'use client'
-// 지도 위에 반쯤 올라오는 목록. 머리줄을 위로 끌면 화면을 다 채우고, 아래로 끌면 다시 반쯤 내려온다
+// 지도 위에 반쯤 올라오는 목록. 머리줄을 위로 끌면 화면을 다 채우고, 아래로 끌면 반쯤 → 머리줄만 남게 내려간다
 // 단계 높이는 inline으로 두고 끄는 동안만 px로 덮는다. iOS는 화면 아래 끝에서 끌면 pointercancel이 오니 그때도 가까운 단계로 붙인다
 import { useRef, useState, type ReactNode } from 'react'
 
-export type SheetSnap = 'half' | 'full'
+export type SheetSnap = 'peek' | 'half' | 'full'
 
 /** 반쯤 올라왔을 때 시트 높이. 지도는 그 위 칸에 핀을 맞춘다 */
 export const HALF_RATIO = 0.46
+
+/** 내려 뒀을 때 남는 머리줄 높이(px, 아래 안전 영역 빼고) */
+export const PEEK_PX = 76
 
 interface ListSheetProps {
   snap: SheetSnap
@@ -39,13 +42,23 @@ export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, c
     setTimeout(() => { swallowClick.current = false }, 0)
     const dy = d.last - d.y
     setDragH(null)
-    if (dy < -SNAP_PX) onSnap('full')
-    else if (dy > SNAP_PX) onSnap('half')
+    if (Math.abs(dy) < SNAP_PX) return
+    // 손을 뗀 높이에 가장 가까운 단계로 붙인다. 같은 단계면 끈 쪽으로 한 칸 옮긴다
+    const vh = window.innerHeight
+    const heights: Record<SheetSnap, number> = { peek: PEEK_PX, half: vh * HALF_RATIO, full: vh - fullTop }
+    const order: SheetSnap[] = ['peek', 'half', 'full']
+    const h = d.h - dy
+    let next = order.reduce((a, b) => (Math.abs(heights[b] - h) < Math.abs(heights[a] - h) ? b : a))
+    if (next === snap) next = order[Math.max(0, Math.min(2, order.indexOf(snap) + (dy < 0 ? 1 : -1)))]
+    if (next !== snap) onSnap(next)
   }
 
-  const height = dragH != null ? `${dragH}px` : snap === 'full' ? `calc(100dvh - ${fullTop}px)` : `${HALF_RATIO * 100}dvh`
+  const height = dragH != null ? `${dragH}px`
+    : snap === 'full' ? `calc(100dvh - ${fullTop}px)`
+    : snap === 'peek' ? `calc(${PEEK_PX}px + env(safe-area-inset-bottom))`
+    : `${HALF_RATIO * 100}dvh`
 
-  // 반쯤일 땐 시트 어디를 끌어도 올라오고, 다 펼쳤을 땐 머리줄만 끈다(목록은 스크롤)
+  // 반쯤·내려 둔 상태에선 시트 어디를 끌어도 되고, 다 펼쳤을 땐 머리줄만 끈다(목록은 스크롤)
   const onDown = (e: React.PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return
     if (snap === 'full' && !(e.target as Element).closest('[data-grip]')) return
@@ -61,7 +74,7 @@ export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, c
       d.moved = true
       e.currentTarget.setPointerCapture(e.pointerId)
     }
-    setDragH(Math.min(window.innerHeight - fullTop, Math.max(120, d.h - dy)))
+    setDragH(Math.min(window.innerHeight - fullTop, Math.max(PEEK_PX, d.h - dy)))
   }
 
   return (
@@ -75,7 +88,7 @@ export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, c
         transform: hidden ? 'translateY(100%)' : undefined,
         transition: dragH != null ? 'none' : 'height 0.28s cubic-bezier(0.2, 0.9, 0.25, 1), transform 0.22s cubic-bezier(0.2, 0.9, 0.25, 1)',
       }}
-      className={`fixed inset-x-0 bottom-0 flex flex-col bg-paper ${snap === 'full' && dragH == null ? '' : 'rounded-t-sheet shadow-[0_-4px_20px_rgba(27,29,31,0.14)]'} ${snap === 'half' ? 'touch-none' : ''} ${hidden ? 'pointer-events-none' : ''} ${className}`}
+      className={`fixed inset-x-0 bottom-0 flex flex-col bg-paper ${snap === 'full' && dragH == null ? '' : 'rounded-t-sheet shadow-[0_-4px_20px_rgba(27,29,31,0.14)]'} ${snap !== 'full' ? 'touch-none' : ''} ${hidden ? 'pointer-events-none' : ''} ${className}`}
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={finish}
@@ -87,7 +100,7 @@ export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, c
       }}
     >
       <div data-grip className="flex-shrink-0 touch-none select-none">
-        {snap === 'half' || dragH != null ? (
+        {snap !== 'full' || dragH != null ? (
           <div className="flex justify-center pt-2"><span className="h-1 w-10 rounded-full bg-line" /></div>
         ) : null}
         {header}

@@ -6,7 +6,7 @@ import SearchBar from '@/components/SearchBar'
 import DetailPanel from '@/components/DetailPanel'
 import { ChannelFace } from '@/components/ChannelFace'
 import { PinRow, PreviewCard } from '@/components/PinCard'
-import ListSheet, { HALF_RATIO, type SheetSnap } from '@/components/ListSheet'
+import ListSheet, { HALF_RATIO, PEEK_PX, type SheetSnap } from '@/components/ListSheet'
 import { HeartIcon } from '@/components/HeartIcon'
 import { ShareIcon } from '@/components/ShareIcon'
 import { listMessage, placeMessage, type ShareMessage } from '@/lib/share'
@@ -106,6 +106,12 @@ function XIcon() {
 export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true, hostNav = false, detailAd, listAd, previewAd, onShare = webShare, likeStore = localLikeStore }: HomeExplorerProps) {
   const [pins, setPins] = useState<Pin[] | null>(null)
   const [bounds, setBounds] = useState<Bounds | null>(null)
+  // 핀을 누르면 지도가 그 가게로 다가간다. 목록은 누르기 전 지도 기준으로 붙잡아 둬서, 카드를 닫아도 보던 목록 그대로다
+  const [heldBounds, setHeldBounds] = useState<Bounds | null>(null)
+  const listBounds = heldBounds ?? bounds
+  const boundsRef = useRef(bounds)
+  boundsRef.current = bounds
+  const [peek, setPeek] = useState(false)
   const [channelId, setChannelId] = useState<string | null>(null)
   const [region, setRegion] = useState('')
   const [city, setCity] = useState('')
@@ -239,7 +245,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   ), [pins, channelId, region, city, textHits, likedOnly, likes])
 
   // 찜한 곳은 지도 밖에 있어도 다 보여준다
-  const inView = useMemo(() => (bounds && !likedOnly ? filtered.filter((p) => inBounds(p, bounds)) : filtered), [filtered, bounds, likedOnly])
+  const inView = useMemo(() => (listBounds && !likedOnly ? filtered.filter((p) => inBounds(p, listBounds)) : filtered), [filtered, listBounds, likedOnly])
 
   // 칩·검색으로 거른 결과 수를 보낸다. 첫 진입 조건(주소 쿼리)은 app_open이 이미 안다
   const filteredRef = useRef(filtered)
@@ -269,12 +275,12 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     return m
   }, [pins, region, city, textHits, bounds])
 
-  // 목록 시트: 지도에선 반쯤, 목록 단계에선 전체. 카드가 뜨면 내려 두고, 상세는 열기 전 높이를 기억한다
+  // 목록 시트: 지도에선 반쯤(내려 두면 머리줄만), 목록 단계에선 전체. 카드가 뜨면 내려 두고, 상세는 열기 전 높이를 기억한다
   const sheetLast = useRef<SheetSnap>('half')
   if (nav.v === 'list') sheetLast.current = 'full'
-  else if (nav.v !== 'detail') sheetLast.current = 'half'
+  else if (nav.v !== 'detail') sheetLast.current = peek ? 'peek' : 'half'
   const sheetSnap = sheetLast.current
-  const sheetHidden = nav.v === 'preview' || (nav.v === 'detail' && sheetSnap === 'half')
+  const sheetHidden = nav.v === 'preview' || (nav.v === 'detail' && sheetSnap !== 'full')
   const listOpen = desktop || !sheetHidden
 
   const sorted = useMemo(() => {
@@ -282,13 +288,13 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     const list = [...inView]
     if (sort === 'latest') return list.sort((a, b) => b.date.localeCompare(a.date))
     if (sort === 'visitors') return list.sort((a, b) => b.ch.length - a.ch.length || b.date.localeCompare(a.date))
-    if (!bounds) return list
-    const cy = (bounds.sw_lat + bounds.ne_lat) / 2
-    const cx = (bounds.sw_lng + bounds.ne_lng) / 2
+    if (!listBounds) return list
+    const cy = (listBounds.sw_lat + listBounds.ne_lat) / 2
+    const cx = (listBounds.sw_lng + listBounds.ne_lng) / 2
     const k = Math.cos((cy * Math.PI) / 180)
     const d = (p: Pin) => (p.lat - cy) ** 2 + ((p.lng - cx) * k) ** 2
     return list.sort((a, b) => d(a) - d(b))
-  }, [inView, sort, bounds, listOpen])
+  }, [inView, sort, listBounds, listOpen])
 
   useEffect(() => { setShown(PAGE) }, [inView, sort])
 
@@ -382,8 +388,16 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     if (desktop) return openDetail(id)
     const cur = readNav()
     if (cur.v === 'preview') replace({ v: 'preview', id })
-    else push({ v: 'preview', id })
+    else {
+      setHeldBounds((b) => b ?? boundsRef.current)
+      push({ v: 'preview', id })
+    }
   }, [desktop, openDetail, push, replace])
+
+  // 지도를 직접 옮기거나 조건·위치를 새로 정하면 붙잡아 둔 목록을 놓는다
+  const releaseList = useCallback(() => setHeldBounds(null), [])
+  useEffect(() => { releaseList() }, [fitKey, channelId, region, city, text, likedOnly, releaseList])
+  useEffect(() => { if (focus && !('id' in focus)) releaseList() }, [focus, releaseList])
 
   const onMapClick = useCallback(() => {
     if (readNav().v === 'preview') window.history.back()
@@ -686,12 +700,12 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   )
 
   const label = text ? `‘${text}’ ` : likedOnly ? '찜한 곳 ' : '이 지도 안 '
-  const halfSheet = !desktop && sheetSnap === 'half' && !sheetHidden
+  const halfSheet = !desktop && sheetSnap !== 'full' && !sheetHidden
   // 시트 머리줄: 개수·공유·정렬. 반쯤일 땐 개수를 누르면 목록을 다 펼친다
   const listHead = (
     <div className="flex h-14 items-center justify-between gap-2 px-4 lg:px-5">
       {halfSheet ? (
-        <button type="button" data-testid="list-pill" onClick={() => push({ v: 'list' })} className="flex min-h-[44px] min-w-0 flex-1 items-center text-left text-lead font-bold text-ink">
+        <button type="button" data-testid="list-pill" onClick={() => (peek ? setPeek(false) : push({ v: 'list' }))} className="flex min-h-[44px] min-w-0 flex-1 items-center text-left text-lead font-bold text-ink">
           {label}
           {count !== null
             ? <span data-testid="pill-count" className="ml-1">{count}곳</span>
@@ -789,8 +803,13 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
           snap={sheetSnap}
           hidden={sheetHidden}
           onSnap={(s) => {
-            if (s === 'full' && readNav().v === 'map') push({ v: 'list' })
-            else if (s === 'half' && readNav().v === 'list') back()
+            if (s === 'full') {
+              setPeek(false)
+              if (readNav().v === 'map') push({ v: 'list' })
+            } else {
+              setPeek(s === 'peek')
+              if (readNav().v === 'list') back()
+            }
           }}
           className="z-30"
           header={sheetSnap === 'full' ? (
@@ -825,10 +844,11 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
           onPinClick={selectPin}
           onMapClick={onMapClick}
           onBoundsChange={setBounds}
+          onUserMove={releaseList}
           fitKey={fitKey}
           focus={focus}
           insets={insets}
-          fitBottom={!desktop && !sheetHidden && sheetSnap === 'half' && typeof window !== 'undefined' ? Math.round(window.innerHeight * HALF_RATIO) : 0}
+          fitBottom={desktop || sheetHidden || sheetSnap === 'full' || typeof window === 'undefined' ? 0 : sheetSnap === 'peek' ? PEEK_PX : Math.round(window.innerHeight * HALF_RATIO)}
         />
 
         {/* 지도 아래: 고른 가게 카드. 카드가 없으면 목록 시트가 반쯤 올라와 있다 */}
