@@ -27,19 +27,16 @@ function meta(pin: Pin) {
   return [pin.category, [pin.region, pin.city].filter(Boolean).join(' ')].filter(Boolean).join(' · ')
 }
 
-/** 최고 메뉴·가격·웨이팅 같은 짧은 정보. 마지막 칩은 남는 폭만큼 줄인다 */
-function Chips({ items }: { items: [string, string | null | undefined][] }) {
+/** 최고 메뉴·가격·웨이팅 같은 짧은 정보. 넘치면 잘라 내지 않고 옆으로 밀어 본다(실기기에서 '웨이팅 한.'처럼 잘렸다) */
+function Chips({ items, bleed = '' }: { items: [string, string | null | undefined][]; bleed?: string }) {
   const shown = items.filter((x): x is [string, string] => Boolean(x[1]))
   if (!shown.length) return null
   return (
-    <span className="mt-2.5 flex gap-1.5 overflow-hidden">
-      {shown.map(([k, v], i) => (
-        <span
-          key={k}
-          className={`flex h-7 items-center gap-1 whitespace-nowrap rounded-full bg-well px-2.5 text-meta ${i === shown.length - 1 ? 'min-w-0 flex-shrink' : 'flex-shrink-0'}`}
-        >
+    <span data-testid="pin-chips" className={`no-scrollbar mt-2.5 flex gap-1.5 overflow-x-auto overscroll-x-contain ${bleed}`}>
+      {shown.map(([k, v]) => (
+        <span key={k} className="flex h-7 flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-well px-2.5 text-meta">
           <span className="text-sub">{k}</span>
-          <span className="truncate font-semibold text-ink">{v}</span>
+          <span className="font-semibold text-ink">{v}</span>
         </span>
       ))}
     </span>
@@ -93,7 +90,7 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, leaving, adS
             </span>
           )
         )}
-        {pin.verdict && <Chips items={chipsOf(pin)} />}
+        {pin.verdict && <Chips items={chipsOf(pin)} bleed="-mx-4 px-4" />}
         <span className="mt-3 flex items-center justify-between text-meta">
           <span className="text-sub">{pin.nv ? `영상 ${pin.nv}개` : ''}</span>
           <span className="flex items-center gap-0.5 text-body font-bold text-ink">

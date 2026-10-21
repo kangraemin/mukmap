@@ -14,6 +14,28 @@ export function isStationQuery(q: string): boolean {
   return q.length <= 80 && /^.+역(?:\s+\S*(?:선|철도|전철))?$/.test(q.trim())
 }
 
+/** lib/stations.json 한 줄: [역 이름(역 뺌), 위도, 경도, 같은 이름 역을 가르는 지역] */
+export type StationRow = [string, number, number, string?]
+
+let stationRows: Promise<StationRow[]> | null = null
+/** 전국 역 목록(약 40KB). 검색창을 처음 누를 때 받는다 */
+export function loadStations(): Promise<StationRow[]> {
+  stationRows ??= import('./stations.json').then((m) => m.default as unknown as StationRow[]).catch(() => {
+    stationRows = null
+    return []
+  })
+  return stationRows
+}
+
+/** '강남역', '강남역 2호선'을 받아 둔 목록에서 바로 찾는다. 이름이 같으면 먼저, 그다음 앞이 같은 역 */
+export function findStations(rows: StationRow[], q: string): Station[] {
+  const term = norm(q.trim().replace(/\s+\S*(?:선|철도|전철)$/, '')).replace(/역$/, '')
+  if (!term) return []
+  const exact = rows.filter((r) => r[0] === term)
+  const head = exact.length ? [] : rows.filter((r) => r[0].startsWith(term))
+  return [...exact, ...head].slice(0, 3).map(([name, lat, lng, hint]) => ({ name: `${name}역${hint ? ` ${hint}` : ''}`, lat, lng }))
+}
+
 const REGION_ALIAS: Record<string, string> = {
   서울특별시: '서울', 서울시: '서울', 경기도: '경기', 인천광역시: '인천', 인천시: '인천',
   부산광역시: '부산', 부산시: '부산', 대구광역시: '대구', 대구시: '대구', 대전광역시: '대전', 대전시: '대전',

@@ -3,7 +3,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { REGIONS } from '@/lib/constants'
 import type { Pin } from '@/lib/pins'
-import { isStationQuery, norm, searchPins, tokensOf, type SearchIndex, type Station } from '@/lib/search'
+import { findStations, isStationQuery, loadStations, norm, searchPins, tokensOf, type SearchIndex, type Station, type StationRow } from '@/lib/search'
 import { ChannelFace } from './ChannelFace'
 
 interface SearchChannel {
@@ -69,10 +69,21 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
   const inputRef = useRef<HTMLInputElement>(null)
   const q = useDeferredValue(query.trim())
   const [stationResult, setStationResult] = useState<{ q: string; rows: Station[] } | null>(null)
+  // 전국 역 목록. 있으면 역 검색이 서버를 거치지 않고 바로 뜬다(실기기에서 서버 왕복으로 1~2초 걸렸다)
+  const [stationRows, setStationRows] = useState<StationRow[] | null>(null)
+  const term = query.trim()
+  const stationQuery = isStationQuery(term)
+  const localStations = useMemo(() => (stationQuery && stationRows ? findStations(stationRows, term) : []), [stationQuery, stationRows, term])
+  // 목록에 없는 역만 서버(네이버 검색)에 묻는다. 답이 오기 전엔 '찾는 중'
+  const askServer = stationQuery && stationRows !== null && localStations.length === 0
+  const stationPending = stationQuery && (stationRows === null || (askServer && stationResult?.q !== term))
 
   useEffect(() => {
-    const term = query.trim()
-    if (!open || !isStationQuery(term)) return
+    if (open && !stationRows) loadStations().then(setStationRows)
+  }, [open, stationRows])
+
+  useEffect(() => {
+    if (!open || !askServer) return
     const controller = new AbortController()
     const timer = setTimeout(async () => {
       try {
@@ -87,7 +98,7 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
       }
     }, 250)
     return () => { clearTimeout(timer); controller.abort() }
-  }, [query, open, apiBase])
+  }, [term, open, askServer, apiBase])
 
   const items = useMemo<Item[]>(() => {
     if (!q) return []
@@ -97,13 +108,13 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
     const regs = single ? REGIONS.filter((r) => r.includes(toks[0])).slice(0, 3) : []
     const shops = index ? searchPins(index, q) : []
     return [
-      ...(stationResult?.q === query.trim() ? stationResult.rows.map((station) => ({ type: 'station' as const, station })) : []),
+      ...(localStations.length ? localStations : stationResult?.q === query.trim() ? stationResult.rows : []).map((station) => ({ type: 'station' as const, station })),
       ...(shops.length > 1 ? [{ type: 'all' as const, q, n: shops.length }] : []),
       ...chs.map((ch) => ({ type: 'channel' as const, ch })),
       ...regs.map((name) => ({ type: 'region' as const, name })),
       ...shops.slice(0, MAX_SHOPS).map((pin) => ({ type: 'restaurant' as const, pin })),
     ]
-  }, [q, query, index, channels, stationResult])
+  }, [q, query, index, channels, stationResult, localStations])
 
   const close = () => {
     setOpen(false)
@@ -171,7 +182,8 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
           className="absolute left-0 right-0 top-full z-50 mt-2 max-h-[60vh] animate-drop-in overflow-y-auto overscroll-contain rounded-card bg-paper py-1.5 shadow-[0_12px_32px_rgba(27,29,31,0.18)]"
         >
           {!index && <p className="px-4 py-3 text-body text-sub">가게 목록을 받는 중이에요…</p>}
-          {index && items.length === 0 && (
+          {stationPending && <p data-testid="station-pending" className="px-4 py-3 text-body text-sub">역을 찾는 중이에요…</p>}
+          {index && items.length === 0 && !stationPending && (
             <div className="px-4 py-3">
               <p className="text-body font-bold text-ink">‘{q}’에 맞는 가게가 없어요</p>
               <p className="mt-0.5 text-meta text-sub">메뉴(국밥), 유튜버(쯔양), 지역(광주)을 띄어 써서 찾아보세요.</p>
@@ -229,6 +241,7 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
               )
             })}
           </ul>
+          {localStations.length > 0 && <p className="px-4 pb-1 pt-0.5 text-[11px] text-sub">역 위치 © OpenStreetMap 기여자</p>}
         </div>
       )}
     </div>

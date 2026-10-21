@@ -43,18 +43,21 @@ test('토스: 입력할 때 iOS가 확대하지 않는다', async ({ page }) => 
   expect(size).toBeGreaterThanOrEqual(16)
 })
 
-test('토스: 역 검색은 운영 API 주소를 쓰고 선택하면 검색을 닫는다', async ({ page }) => {
+test('토스: 역 검색은 앱 안 역 목록으로 바로 뜨고, 없는 역만 운영 API에 묻는다. 선택하면 검색을 닫는다', async ({ page }) => {
   await open(page)
   let called = false
   await page.route('https://mukmap.kr/api/station?*', async (route) => {
     called = true
     await route.fulfill({
       headers: { 'access-control-allow-origin': '*' },
-      json: [{ name: '강남역 2호선', lat: 37.4979526, lng: 127.0276242 }],
+      json: [{ name: '없던역 9호선', lat: 37.4979526, lng: 127.0276242 }],
     })
   })
   await page.getByRole('searchbox', { name: '검색' }).fill('강남역')
-  await expect(page.getByTestId('search-station')).toBeVisible()
+  await expect(page.getByTestId('search-station')).toHaveText(/강남역/, { timeout: 1_000 })
+  expect(called).toBe(false)
+  await page.getByRole('searchbox', { name: '검색' }).fill('없던역')
+  await expect(page.getByTestId('search-station')).toHaveText(/없던역 9호선/)
   expect(called).toBe(true)
   await page.getByTestId('search-station').click()
   await expect(page.getByTestId('search-results')).toBeHidden()

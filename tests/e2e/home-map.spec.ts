@@ -219,8 +219,10 @@ test('검색에서 가게를 누르면 지도가 그 가게로 가고 카드가 
 })
 
 test('역 이름을 검색해 누르면 필터를 유지하고 지도가 그 역으로 간다', async ({ page }) => {
-  const station = { name: '강남역 2호선', lat: 37.4979526, lng: 127.0276242 }
-  await page.route('**/api/station?*', (route) => route.fulfill({ json: [station] }))
+  // 강남역은 앱에 넣은 역 목록(lib/stations.json)에서 바로 찾는다. 서버에 묻지 않는다
+  const station = { lat: 37.49795, lng: 127.02756 }
+  let asked = false
+  await page.route('**/api/station?*', (route) => { asked = true; return route.fulfill({ json: [] }) })
   await ready(page)
   await searchBox(page).fill('쯔양 서울')
   await page.getByTestId('search-all').click()
@@ -236,7 +238,7 @@ test('역 이름을 검색해 누르면 필터를 유지하고 지도가 그 역
   })
   await searchBox(page).fill('강남역')
   const row = page.getByTestId('search-station')
-  await expect(row).toHaveText(/강남역 2호선.*지도 이동/)
+  await expect(row).toHaveText(/강남역.*지도 이동/)
   await row.click()
   await expect(page.getByTestId('search-results')).toBeHidden()
   await expect(filter).toHaveText(/쯔양 서울/)
@@ -247,27 +249,83 @@ test('역 이름을 검색해 누르면 필터를 유지하고 지도가 그 역
     return Math.abs(map.getCenter().lat() - lat) < 0.0001
       && Math.abs(map.getCenter().lng() - lng) < 0.0001 && map.getZoom() === 16
   }, station), { timeout: 10_000 }).toBe(true)
+  expect(asked).toBe(false)
 })
 
-test('역 검색은 역명·노선에만 요청하고 검색어를 바꾸면 이전 결과를 숨긴다', async ({ page }) => {
+test('역 검색은 서버를 기다리지 않고 바로 뜬다', async ({ page }) => {
+  // 실제 사고: 역 이름을 칠 때마다 서버(네이버 검색)를 거쳐 1~2초 뒤에 떴고, 그동안 '맞는 가게가 없어요'가 보였다
   const queries: string[] = []
+  await page.route('**/api/station?*', async (route) => {
+    queries.push(new URL(route.request().url()).searchParams.get('q')!)
+    await new Promise((r) => setTimeout(r, 3_000))
+    await route.fulfill({ json: [] }).catch(() => {})
+  })
+  await ready(page)
+  await searchBox(page).fill('사하역')
+  await expect(page.getByTestId('search-station')).toHaveText(/사하역/, { timeout: 1_000 })
+  await searchBox(page).fill('시청역')
+  // 이름이 같은 역은 지역으로 가른다
+  await expect(page.getByTestId('search-station')).toHaveText([/시청역 부산/, /시청역 서울/, /시청역 대전/], { timeout: 1_000 })
+  await searchBox(page).fill('사하역 1호선')
+  await expect(page.getByTestId('search-station')).toHaveText(/사하역/, { timeout: 1_000 })
+  expect(queries).toEqual([])
+})
+
+test('목록에 없는 역만 서버에 묻고, 기다리는 동안 가게 없음 대신 찾는 중을 보인다', async ({ page }) => {
+  const queries: string[] = []
+  let release = () => {}
+  const held = new Promise<void>((r) => { release = r })
   await page.route('**/api/station?*', async (route) => {
     const q = new URL(route.request().url()).searchParams.get('q')!
     queries.push(q)
-    await route.fulfill({ json: [{ name: q, lat: 37.4979526, lng: 127.0276242 }] })
+    await held
+    await route.fulfill({ json: [{ name: '없던역 9호선', lat: 37.4979526, lng: 127.0276242 }] })
   })
   await ready(page)
   await searchBox(page).fill('강남역 맛집')
   await page.waitForTimeout(400)
   expect(queries).toEqual([])
-  await searchBox(page).fill('강남역 2호선')
-  await expect(page.getByTestId('search-station')).toHaveText(/강남역 2호선/)
-  expect(queries).toEqual(['강남역 2호선'])
+  await searchBox(page).fill('없던역')
+  await expect(page.getByTestId('station-pending')).toBeVisible()
+  await expect(page.getByText(/맞는 가게가 없어요/)).toHaveCount(0)
+  await expect.poll(() => queries).toEqual(['없던역'])
+  release()
+  await expect(page.getByTestId('search-station')).toHaveText(/없던역 9호선/)
+  await expect(page.getByTestId('station-pending')).toHaveCount(0)
   await searchBox(page).fill('국밥')
   await expect(page.getByTestId('search-station')).toHaveCount(0)
   await expect(page.getByTestId('search-restaurant').first()).toBeVisible()
-  await page.waitForTimeout(400)
-  expect(queries).toEqual(['강남역 2호선'])
+})
+
+test('핀 카드의 최고·가격·웨이팅 칩이 잘리지 않고 옆으로 밀린다', async ({ page }) => {
+  // 실제 사고: 칩이 카드 폭을 넘으면 마지막 칩이 '웨이팅 한.'처럼 잘려 읽을 수 없었다
+  await page.route('**/api/pins', async (route) => {
+    const res = await route.fetch()
+    const body = await res.json()
+    const p = body.pins.find((x: { verdict?: string }) => x.verdict)
+    Object.assign(p, { name: '칩넘침테스트집', best: '시그니처 고추짬뽕과 탕수육', price: '고추짬뽕 10,000원 탕수육 18,000원', wait: '한 시간 넘게 기다림' })
+    await route.fulfill({ response: res, json: body })
+  })
+  await ready(page)
+  await searchBox(page).fill('칩넘침테스트집')
+  await page.getByTestId('search-restaurant').first().click()
+  const chips = page.getByTestId('preview-card').getByTestId('pin-chips')
+  await expect(chips).toBeVisible({ timeout: 10_000 })
+  const m = await chips.evaluate((el) => ({
+    scroll: el.scrollWidth > el.clientWidth,
+    style: getComputedStyle(el).overflowX,
+    cut: Array.from(el.querySelectorAll('span span')).some((s) => s.scrollWidth > s.clientWidth + 1),
+    last: (el.lastElementChild as HTMLElement).innerText,
+  }))
+  expect(m.style).toBe('auto')
+  expect(m.scroll).toBe(true)
+  expect(m.cut).toBe(false)
+  expect(m.last).toContain('한 시간 넘게 기다림')
+  // 밀면 마지막 칩이 카드 안에 다 보인다
+  await chips.evaluate((el) => { el.scrollLeft = el.scrollWidth })
+  const card = (await page.getByTestId('preview-card').boundingBox())!
+  const last = (await chips.locator(':scope > span').last().boundingBox())!
+  expect(last.x + last.width).toBeLessThanOrEqual(card.x + card.width)
 })
 
 test('다른 지역 검색 필터가 걸린 채로 가게를 고르면 지도가 그 가게로 간다', async ({ page }) => {
