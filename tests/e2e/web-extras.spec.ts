@@ -100,6 +100,8 @@ test('토스 앱 찜도 다시 열면 남는다', async ({ page }) => {
   const like = page.getByTestId('preview-card').getByTestId('like')
   await like.click({ timeout: 30_000 })
   await expect(like).toHaveAttribute('aria-pressed', 'true')
+  // 저장은 비동기다. 앱 밖에선 토스 저장소가 실패해 localStorage로 남는데, 그 전에 다시 열면 찜이 사라진다(PC가 바쁠 때)
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('mukmap:likes:v1') || ''), { timeout: 15_000 }).toContain(String(ID))
   await page.goto(`${TOSS}?pin=${ID}`)
   await expect(page.getByTestId('preview-card').getByTestId('like')).toHaveAttribute('aria-pressed', 'true', { timeout: 30_000 })
 })

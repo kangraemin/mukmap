@@ -35,7 +35,7 @@ interface ListPageProps {
 /** 카드에 쓰는 칸만 남긴다. 목록 전체가 브라우저로 넘어가므로 크기를 줄인다 */
 function slim(r: RestaurantWithVideos): RestaurantWithVideos {
   return {
-    id: r.id, name: r.name, category: r.category, address: r.address, region: r.region, city: r.city,
+    id: r.id, name: r.name, category: r.category, address: r.address, region: r.region, city: r.city, lat: r.lat, lng: r.lng,
     videos: r.videos.map((v) => ({
       id: v.id, video_id: v.video_id, channel_id: v.channel_id, menu: v.menu, price: v.price,
       // 대표 장면 고르기(leadVideo)에 인용이 있는지만 쓴다

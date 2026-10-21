@@ -22,6 +22,16 @@ declare namespace naver.maps {
     maxZoom?: number
     zoomControl?: boolean
     zoomControlOptions?: { position: number }
+    // 손 조작 끄기 (목록 페이지 미리보기)
+    draggable?: boolean
+    pinchZoom?: boolean
+    scrollWheel?: boolean
+    keyboardShortcuts?: boolean
+    disableDoubleClickZoom?: boolean
+    disableDoubleTapZoom?: boolean
+    disableTwoFingerTapZoom?: boolean
+    scaleControl?: boolean
+    mapDataControl?: boolean
   }
 
   class LatLng {
@@ -51,6 +61,7 @@ declare namespace naver.maps {
     icon?: MarkerIcon | string
     title?: string
     zIndex?: number
+    clickable?: boolean
   }
 
   interface MarkerIcon {

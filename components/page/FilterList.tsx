@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import type { RestaurantWithVideos } from '@/lib/types'
 import { SceneCard } from '@/components/RestaurantCard'
 import { TOSS_BUTTON, tossHref } from '@/lib/tossLink'
+import MapPreview from './MapPreview'
 
 export type Facet = 'region' | 'city' | 'channel'
 export type ChannelInfo = Record<string, { name: string; thumbnail: string | null; slug?: string | null }>
@@ -86,9 +87,16 @@ export default function FilterList({ restaurants: slimmed, channels, facets, bas
   }
   // 지도에서 '목록으로'를 누르면 이 페이지로 돌아온다
   const href = mapHref({ ...q, from: pathname || undefined })
+  // 미리보기 지도도 고른 칩대로 거른 가게만 찍는다
+  const spots = useMemo(
+    () => list.flatMap((r) => (r.lat != null && r.lng != null ? [{ lat: r.lat, lng: r.lng }] : [])),
+    [list],
+  )
 
   return (
     <>
+      <MapPreview spots={spots} href={href} />
+
       {facets.filter((f) => options[f].length > 1).map((f) => (
         <div key={f} className="mt-4">
           <p className="text-meta font-bold text-sub">{LABEL[f]}</p>
