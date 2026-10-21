@@ -24,6 +24,10 @@ export type EventName =
   | 'ad_click'          // 배너 누름. kind
   | 'ad_fail'           // 배너 없음·실패. kind, reason
   | 'review_request'    // 토스 리뷰 요청. supported, ok
+  | 'alert_on'          // 토스 '새 맛집 알림' 켬. channel, agreed
+  | 'alert_off'         // 알림 끔. channel
+  | 'alert_rejected'    // 토스 동의창에서 거절. channel
+  | 'alert_fail'        // 켜기·끄기 실패. channel, msg
   | 'toss_open_click'   // 웹의 '토스 앱으로 열기'. where
   | 'app_error'         // 화면 오류. where, msg
 

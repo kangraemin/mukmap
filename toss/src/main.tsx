@@ -7,6 +7,7 @@ import { LIKES_KEY, localLikeStore, type LikeStore } from '@/lib/likes';
 import RetryNotice from '@/components/RetryNotice';
 import { addSink, listenTrackedClicks, track } from '@/lib/analytics';
 import AdBanner from './AdBanner';
+import AlertButton from './AlertButton';
 import { preloadMapSdk } from '@/components/NaverMap';
 import { loadPins } from '@/lib/pins';
 import type { Channel } from '@/lib/types';
@@ -203,6 +204,7 @@ function App() {
         previewAd={(id) => <AdBanner key={`pv-${id}`} kind="strip" variant="expanded" className="border-t border-line" />}
         onShare={shareLink}
         likeStore={tossLikeStore}
+        channelAction={(ch) => <AlertButton key={ch.id} api={API} channel={ch} />}
       />
       {failed && (
         <RetryNotice

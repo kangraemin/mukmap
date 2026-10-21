@@ -58,6 +58,8 @@ interface HomeExplorerProps {
   onShare?: (msg: ShareMessage) => void | Promise<boolean | string>
   /** 찜 목록을 둘 곳. 토스 앱은 앱 저장소를 넘긴다. 없으면 localStorage */
   likeStore?: LikeStore
+  /** 유튜버를 골랐을 때 목록 머리줄에 붙일 버튼. 토스 앱은 '새 맛집 알림' 버튼을 넘긴다 */
+  channelAction?: (channel: { id: string; name: string }) => React.ReactNode
 }
 
 function readNav(): Nav {
@@ -103,7 +105,7 @@ function XIcon() {
   )
 }
 
-export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true, hostNav = false, detailAd, listAd, previewAd, onShare = webShare, likeStore = localLikeStore }: HomeExplorerProps) {
+export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true, hostNav = false, detailAd, listAd, previewAd, onShare = webShare, likeStore = localLikeStore, channelAction }: HomeExplorerProps) {
   const [pins, setPins] = useState<Pin[] | null>(null)
   const [bounds, setBounds] = useState<Bounds | null>(null)
   // 핀을 누르면 지도가 그 가게로 다가간다. 목록은 누르기 전 지도 기준으로 붙잡아 둬서, 카드를 닫아도 보던 목록 그대로다
@@ -717,6 +719,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
         </h2>
       )}
       <div className="flex flex-shrink-0 items-center gap-1">
+        {channelAction && channelId && channelAction({ id: channelId, name: nameOf(channelId) || '' })}
         {share && (
           <button
             type="button"

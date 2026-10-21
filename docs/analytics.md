@@ -41,6 +41,10 @@
 | `ad_click` | 배너 누름 (토스) | `kind` | |
 | `ad_fail` | 배너 없음·실패 (토스) | `kind`, `reason`(init·nofill·render·attach) | |
 | `review_request` | 토스 리뷰 요청 (영상 보고 돌아왔을 때, 기기당 1번) | `supported`, `ok`, `msg` | `{supported:true, ok:true}` |
+| `alert_on` | '새 맛집 알림' 켬 (토스, 동의창 통과 뒤) | `channel`, `agreed`(newAgreement·alreadyAgreed) | `{channel:"UC…", agreed:"newAgreement"}` |
+| `alert_off` | 알림 끔 (토스) | `channel` | |
+| `alert_rejected` | 토스 동의창에서 거절 | `channel` | |
+| `alert_fail` | 알림 켜기·끄기 실패 (토스) | `channel`, `msg` | |
 | `toss_open_click` | 웹의 '토스 앱으로 열기' | `where`(restaurant·list), `id` | `{where:"restaurant", id:142}` |
 | `app_error` | 화면 오류 | `where`(page·window·promise·render), `msg`(100자까지) | |
 
