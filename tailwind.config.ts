@@ -9,6 +9,8 @@ const config: Config = {
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    // 버튼 모양 같은 공용 클래스 문자열(lib/tossLink.ts TOSS_BUTTON)
+    "./lib/**/*.{ts,tsx}",
   ],
   theme: {
     extend: {

@@ -1,5 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- 토스 앱과 같이 쓰는 컴포넌트라 next/image를 쓰지 않는다 */
 import { ShareIcon } from './ShareIcon'
+import { HeartIcon } from './HeartIcon'
 import React from 'react'
 import type { Pin } from '@/lib/pins'
 import { VisitorLine } from './ChannelFace'
@@ -85,7 +86,9 @@ function PlayBadge() {
 }
 
 /** 핀을 누르면 지도 아래에 뜨는 카드. 누르면 상세로 간다 */
-export function PreviewCard({ pin, faces, onOpen, onClose, onShare, leaving, adSlot }: { pin: Pin; faces: Faces; onOpen: () => void; onClose: () => void; onShare?: () => void; leaving?: boolean; adSlot?: React.ReactNode }) {
+export function PreviewCard({ pin, faces, onOpen, onClose, onShare, liked = false, onLike, leaving, adSlot }: { pin: Pin; faces: Faces; onOpen: () => void; onClose: () => void; onShare?: () => void; liked?: boolean; onLike?: () => void; leaving?: boolean; adSlot?: React.ReactNode }) {
+  // 오른쪽 위 버튼(찜·공유·닫기) 수만큼 글을 비켜 둔다
+  const pad = ['pr-8', 'pr-20', 'pr-[124px]'][Number(!!onShare) + Number(!!onLike)]
   return (
     <div
       data-testid="preview-card"
@@ -94,7 +97,7 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, leaving, adS
       }`}
     >
       <Pressable onPress={onOpen} className="block w-full px-4 pb-3.5 pt-4 text-left active:opacity-90" label={`${pin.name} 자세히 보기`}>
-        <span className={`flex items-center gap-3 ${onShare ? 'pr-20' : 'pr-8'}`}>
+        <span className={`flex items-center gap-3 ${pad}`}>
           <span className="relative h-[72px] w-[128px] flex-shrink-0 overflow-hidden rounded-[10px] bg-well">
             {pin.vid && <img src={thumb(pin.vid)} alt="" className="h-full w-full object-cover" />}
             {pin.vid && <PlayBadge />}
@@ -129,6 +132,18 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, leaving, adS
         </span>
       </Pressable>
       {adSlot}
+      {onLike && (
+        <button
+          type="button"
+          onClick={onLike}
+          aria-label="찜"
+          aria-pressed={liked}
+          data-testid="like"
+          className={`absolute ${onShare ? 'right-[92px]' : 'right-12'} top-1 flex h-11 w-11 items-center justify-center text-ink`}
+        >
+          <HeartIcon on={liked} />
+        </button>
+      )}
       {onShare && (
         <button
           type="button"

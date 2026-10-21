@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import type { RestaurantWithVideos } from '@/lib/types'
 import { SceneCard } from '@/components/RestaurantCard'
-import { tossHref } from '@/lib/tossLink'
+import { TOSS_BUTTON, tossHref } from '@/lib/tossLink'
 
 export type Facet = 'region' | 'city' | 'channel'
 export type ChannelInfo = Record<string, { name: string; thumbnail: string | null; slug?: string | null }>
@@ -13,8 +13,10 @@ interface FilterListProps {
   restaurants: RestaurantWithVideos[]
   channels: ChannelInfo
   facets: Facet[]
-  /** 이 페이지가 이미 걸고 있는 조건. 지도 주소에 그대로 넣는다 */
-  base: { yt?: string; region?: string; city?: string }
+  /** 이 페이지가 이미 걸고 있는 조건. 유튜버는 지도에서도 거르고, 지역은 지도를 그곳에서 시작만 한다. at은 지도를 시작할 점(역) */
+  base: { yt?: string; region?: string; city?: string; at?: string }
+  /** 카드 아래 붙일 한 줄(역에서 걸어서 몇 분). 가게 id → 글 */
+  notes?: Record<number, string>
   pageSize?: number
 }
 
@@ -26,14 +28,16 @@ function keyOf(r: RestaurantWithVideos, f: Facet): string[] {
   return Array.from(new Set(r.videos.map((v) => v.channel_slug || v.channel_id)))
 }
 
+// 지역은 area·area_city로 넘겨 지도에서 거르지 않고 그 구에서 시작만 한다(다른 구 가게도 보이게)
 function mapHref(q: Record<string, string | undefined>) {
   const sp = new URLSearchParams()
-  for (const k of ['yt', 'region', 'city', 'from'] as const) if (q[k]) sp.set(k, q[k]!)
+  const name = { yt: 'yt', region: 'area', city: 'area_city', at: 'at', from: 'from' } as const
+  for (const k of ['yt', 'region', 'city', 'at', 'from'] as const) if (q[k]) sp.set(name[k], q[k]!)
   const qs = sp.toString()
   return qs ? `/?${qs}` : '/'
 }
 
-export default function FilterList({ restaurants: slimmed, channels, facets, base, pageSize = 30 }: FilterListProps) {
+export default function FilterList({ restaurants: slimmed, channels, facets, base, notes, pageSize = 30 }: FilterListProps) {
   // 서버가 빼고 보낸 유튜버 이름·얼굴을 다시 붙인다
   const restaurants = useMemo(() => slimmed.map((r) => ({
     ...r,
@@ -78,6 +82,7 @@ export default function FilterList({ restaurants: slimmed, channels, facets, bas
     yt: picked.channel || base.yt,
     region: picked.region || base.region,
     city: picked.city || base.city,
+    at: base.at,
   }
   // 지도에서 '목록으로'를 누르면 이 페이지로 돌아온다
   const href = mapHref({ ...q, from: pathname || undefined })
@@ -115,6 +120,7 @@ export default function FilterList({ restaurants: slimmed, channels, facets, bas
         {list.slice(0, shown).map((r) => (
           <li key={r.id}>
             <SceneCard restaurant={r} href={`/restaurant/${r.id}`} />
+            {notes?.[r.id] && <p data-testid="walk" className="mt-1.5 text-meta font-bold text-sub">{notes[r.id]}</p>}
           </li>
         ))}
       </ol>
@@ -146,7 +152,7 @@ export default function FilterList({ restaurants: slimmed, channels, facets, bas
         data-testid="open-toss"
         data-track="toss_open_click"
         data-track-where="list"
-        className="inline-flex min-h-[48px] items-center rounded-full border border-line bg-paper px-4 text-meta font-bold text-ink shadow-[0_4px_16px_rgba(0,0,0,0.12)]"
+        className={`${TOSS_BUTTON} min-h-[48px] px-4 text-meta shadow-[0_4px_16px_rgba(0,0,0,0.2)]`}
       >
         토스 앱으로 열기
       </a>

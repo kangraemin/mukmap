@@ -9,7 +9,8 @@ export interface Face {
   thumbnail: string | null
 }
 
-export type MapFocus = { seq: number } & ({ id: number } | { lat: number; lng: number })
+/** 가게 하나, 한 점(역 등, 줌 생략 시 16), 또는 여러 점이 다 보이게(구·시) */
+export type MapFocus = { seq: number } & ({ id: number } | { lat: number; lng: number; zoom?: number } | { lats: number[]; lngs: number[] })
 
 interface NaverMapProps {
   /** 거르기가 끝난 핀 전체. 화면 안에 든 것만 그린다 */
@@ -171,6 +172,8 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
       zoomControl: false,
     })
     mapRef.current = map
+    // 테스트가 지도 가운데를 읽는다
+    ;(mapElRef.current as HTMLDivElement & { __map?: naver.maps.Map }).__map = map
     sendBounds(map, cb.current.onBoundsChange)
     setIdleTick((t) => t + 1)
     naver.maps.Event.addListener(map, 'idle', () => {
@@ -298,9 +301,14 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
   useEffect(() => {
     const map = mapRef.current
     if (!map || !focus) return
+    if ('lats' in focus) {
+      if (focus.lats.length) flyToFit(map, focus.lats, focus.lngs, 60)
+      return
+    }
     const p = 'id' in focus ? pins.find((x) => x.id === focus.id) : focus
     if (!p) return
-    map.morph(new naver.maps.LatLng(p.lat, p.lng), 'id' in focus ? Math.max(map.getZoom(), 15) : 16, { duration: 500, easing: 'easeOutCubic' })
+    const zoom = 'id' in focus ? Math.max(map.getZoom(), 15) : 'zoom' in focus && focus.zoom ? focus.zoom : 16
+    map.morph(new naver.maps.LatLng(p.lat, p.lng), zoom, { duration: 500, easing: 'easeOutCubic' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus, sdkLoaded])
 

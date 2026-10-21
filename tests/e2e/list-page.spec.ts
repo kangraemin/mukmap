@@ -15,7 +15,7 @@ test('구 칩을 누르면 그 구 가게만 남는다', async ({ page }) => {
   expect(n).toBeLessThan(total)
   const areas = await page.locator('ol li a').evaluateAll((els) => els.slice(0, 10).map((e) => e.textContent || ''))
   for (const a of areas) expect(a).toContain('강남')
-  await expect(page.getByTestId('open-map')).toHaveAttribute('href', /city=%EA%B0%95%EB%82%A8%EA%B5%AC/)
+  await expect(page.getByTestId('open-map')).toHaveAttribute('href', /area_city=%EA%B0%95%EB%82%A8%EA%B5%AC/)
 })
 
 test('유튜버 칩을 누르면 그 유튜버가 간 가게만 남는다', async ({ page }) => {
@@ -73,30 +73,28 @@ test('가게 페이지의 토스 앱으로 열기는 그 가게 상세(place=)�
   expect(intossQuery((await toss.getAttribute('href'))!).get('place')).toBe('142')
 })
 
-test('목록에서 구를 골라 지도로 가면 그 구만 보는 중이라고 알리고, 목록으로 돌아갈 수 있다', async ({ page }) => {
+test('목록에서 구를 골라 지도로 가면 가게를 거르지 않고 그 구에서 지도를 시작하고, 목록으로 돌아갈 수 있다', async ({ page }) => {
+  // 사용자 결정(2026-10-21): 검색으로 목록에 온 사람이 지도를 밀면 옆 동네 가게도 보여야 한다
   test.setTimeout(90_000)
   await page.goto(SEOUL)
   await page.getByTestId('facet-city').getByRole('button', { name: /^강남구/ }).click()
   await page.getByTestId('open-map').click()
-  await expect(page).toHaveURL(/city=/)
+  await expect(page).toHaveURL(/area_city=/)
   await expect(page.getByTestId('pill-count')).toHaveText(/\d+곳/, { timeout: 30_000 })
-  // 지역 칩이 스크롤 줄 밖 왼쪽에 고정돼 늘 보인다
-  const chip = page.getByTestId('place-chip').locator('visible=true')
-  await expect(chip).toContainText('서울 강남구만')
-  await expect(chip).toBeInViewport()
-
-  // 칩을 누르면 지역 조건이 풀리고 다른 구 가게도 나온다
-  const before = Number((await page.getByTestId('pill-count').textContent())!.replace(/\D/g, ''))
-  await chip.click()
   await expect(page.getByTestId('place-chip')).toHaveCount(0)
-  await expect.poll(async () => Number((await page.getByTestId('pill-count').textContent())!.replace(/\D/g, ''))).toBeGreaterThan(before)
+  // 지도가 강남구로 옮겨 간다 (강남구 가운데 37.50, 127.05 근처)
+  await expect.poll(() => page.evaluate(() => {
+    const el = document.querySelector('[data-testid="map"]') as HTMLElement & { __map?: naver.maps.Map }
+    const c = el?.__map?.getCenter()
+    return c ? Math.abs(c.lat() - 37.5) < 0.05 && Math.abs(c.lng() - 127.05) < 0.06 : false
+  }), { timeout: 15_000 }).toBe(true)
 
   // 목록으로 = 뒤로가기: 왔던 서울 목록 페이지로 돌아가고, 앞으로 가면 다시 지도다
   await page.getByTestId('back-to-list').locator('visible=true').click()
   await expect(page).toHaveURL(new RegExp(`${SEOUL}$`))
   await expect(page.getByTestId('open-map')).toBeVisible()
   await page.goForward()
-  await expect(page).toHaveURL(/city=/)
+  await expect(page).toHaveURL(/area_city=/)
 })
 
 test('지도 링크로 바로 들어오면 목록으로는 그 목록 주소로 간다', async ({ page }) => {

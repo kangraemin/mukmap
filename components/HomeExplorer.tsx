@@ -6,8 +6,11 @@ import SearchBar from '@/components/SearchBar'
 import DetailPanel from '@/components/DetailPanel'
 import { ChannelFace } from '@/components/ChannelFace'
 import { PinRow, PreviewCard } from '@/components/PinCard'
+import { HeartIcon } from '@/components/HeartIcon'
 import { ShareIcon } from '@/components/ShareIcon'
 import { listMessage, placeMessage, type ShareMessage } from '@/lib/share'
+import { webShare } from '@/lib/webShare'
+import { localLikeStore, parseLikes, type LikeStore } from '@/lib/likes'
 import Toast from '@/components/Toast'
 import RetryNotice from '@/components/RetryNotice'
 import { entryOf, track, visitInfo } from '@/lib/analytics'
@@ -49,9 +52,11 @@ interface HomeExplorerProps {
   listAd?: (slot: number) => React.ReactNode
   /** 지도 위 가게 카드 맨 아래 광고 */
   previewAd?: (restaurantId: number) => React.ReactNode
-  /** 공유 버튼을 누르면 부른다. 받은 사람이 열 주소 쿼리와 공유 글·미리보기 그림. 토스 앱만 넘긴다.
-   *  공유 창까지 열었으면 true로 끝나 완료 안내를 띄운다 */
-  onShare?: (msg: ShareMessage) => void | Promise<boolean>
+  /** 공유 버튼을 누르면 부른다. 받은 사람이 열 주소 쿼리와 공유 글·미리보기 그림. 없으면 웹 공유(mukmap.kr 주소).
+   *  공유 창까지 열었으면 true로 끝나 완료 안내를 띄우고, 글을 돌려주면 그 글로 안내한다 */
+  onShare?: (msg: ShareMessage) => void | Promise<boolean | string>
+  /** 찜 목록을 둘 곳. 토스 앱은 앱 저장소를 넘긴다. 없으면 localStorage */
+  likeStore?: LikeStore
 }
 
 function readNav(): Nav {
@@ -97,7 +102,7 @@ function XIcon() {
   )
 }
 
-export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true, hostNav = false, detailAd, listAd, previewAd, onShare }: HomeExplorerProps) {
+export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true, hostNav = false, detailAd, listAd, previewAd, onShare = webShare, likeStore = localLikeStore }: HomeExplorerProps) {
   const [pins, setPins] = useState<Pin[] | null>(null)
   const [bounds, setBounds] = useState<Bounds | null>(null)
   const [channelId, setChannelId] = useState<string | null>(null)
@@ -127,6 +132,15 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   const [pinsFailed, setPinsFailed] = useState(false)
   const [pinsTry, setPinsTry] = useState(0)
   const hadCache = useRef(false)
+  // 찜: 기기에 남긴 가게 id. 찜 칩을 켜면 찜한 곳만 지도 전체에서 본다
+  const [likes, setLikes] = useState<Set<number>>(() => new Set())
+  const [likedOnly, setLikedOnly] = useState(false)
+  useEffect(() => {
+    let live = true
+    likeStore.get().then((raw) => { if (live) setLikes(new Set(parseLikes(raw))) }).catch(() => {})
+    return () => { live = false }
+  }, [likeStore])
+  useEffect(() => { if (!likes.size) setLikedOnly(false) }, [likes])
 
   const details = useRef<Map<number, Promise<RestaurantWithVideos | null>>>(new Map())
   const openDetailRef = useRef<(id: number) => void>(() => {})
@@ -220,10 +234,11 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
 
   const filtered = useMemo(() => (pins || []).filter((p) =>
     (!channelId || p.ch.includes(channelId)) && (!region || p.region === region) && (!city || p.city === city) &&
-    (!textHits || textHits.has(p.id))
-  ), [pins, channelId, region, city, textHits])
+    (!textHits || textHits.has(p.id)) && (!likedOnly || likes.has(p.id))
+  ), [pins, channelId, region, city, textHits, likedOnly, likes])
 
-  const inView = useMemo(() => (bounds ? filtered.filter((p) => inBounds(p, bounds)) : filtered), [filtered, bounds])
+  // 찜한 곳은 지도 밖에 있어도 다 보여준다
+  const inView = useMemo(() => (bounds && !likedOnly ? filtered.filter((p) => inBounds(p, bounds)) : filtered), [filtered, bounds, likedOnly])
 
   // 칩·검색으로 거른 결과 수를 보낸다. 첫 진입 조건(주소 쿼리)은 app_open이 이미 안다
   const filteredRef = useRef(filtered)
@@ -442,6 +457,11 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     if (f && f.startsWith('/') && !f.startsWith('//')) setFrom(f)
     historyStart.current = window.history.length
     if (q.get('yt') || reg || q.get('q')) fitWhenLoaded.current = true
+    // 웹 목록·역 페이지의 '지도로 보기'(?area=서울&area_city=강남구, ?at=37.5,127.0)는 거르지 않고 그곳에서 시작한다
+    const area = q.get('area')
+    if (area) startArea.current = { region: area, city: q.get('area_city') || '' }
+    const at = (q.get('at') || '').split(',').map(Number)
+    if (at.length === 2 && at.every(Number.isFinite)) setFocus({ lat: at[0], lng: at[1], zoom: 15, seq: Date.now() })
     if (Number.isInteger(place) && place > 0 && readNav().v === 'map') {
       push({ v: 'detail', id: place })
       setFocus({ id: place, seq: Date.now() })
@@ -453,6 +473,17 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     // 첫 진입 한 번만 읽는다
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ?area=는 가게 목록이 와야 그 지역 가게가 다 보이는 범위를 안다
+  const startArea = useRef<{ region: string; city: string } | null>(null)
+  useEffect(() => {
+    const a = startArea.current
+    if (!a || !pins) return
+    const ps = pins.filter((p) => p.region === a.region && (!a.city || p.city === a.city))
+    if (!ps.length) return
+    startArea.current = null
+    setFocus({ lats: ps.map((p) => p.lat), lngs: ps.map((p) => p.lng), seq: Date.now() })
+  }, [pins])
 
   // ?yt=는 유튜버 목록이 와야 풀 수 있다. 토스 앱은 목록을 늦게 받아서 도착했을 때 한 번 적용한다
   const ytApplied = useRef(false)
@@ -477,6 +508,19 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   }, [listOpen, sorted.length])
 
   const handleToastClose = useCallback(() => setToast(''), [])
+
+  const toggleLike = useCallback((id: number) => {
+    setLikes((cur) => {
+      const next = new Set(cur)
+      const on = !next.has(id)
+      if (on) next.add(id)
+      else next.delete(id)
+      likeStore.set(JSON.stringify(Array.from(next))).catch(() => {})
+      track('like_toggle', { id, on, count: next.size })
+      setToast(on ? '찜했어요' : '찜을 풀었어요')
+      return next
+    })
+  }, [likeStore])
 
   const place = [region, city].filter(Boolean).join(' ')
   // 카드가 떠 있으면 지도에서 가려지는 위(검색·칩)·아래(카드) 높이. 고른 핀을 그 사이 가운데에 둔다
@@ -524,7 +568,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   // 공유 창까지 열었으면 완료 안내
   const doShare = (msg: ShareMessage) => {
     if (!onShare) return
-    Promise.resolve(onShare(msg)).then((ok) => { if (ok) setToast('공유 링크를 만들었어요') })
+    Promise.resolve(onShare(msg)).then((ok) => { if (ok) setToast(typeof ok === 'string' ? ok : '공유 링크를 만들었어요') })
   }
   const sharePlace = (id: number, query: string) => {
     const p = pinById.get(id)
@@ -562,14 +606,28 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     <nav aria-label="유튜버 고르기" className={`no-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto py-1 pr-4 lg:pr-5 ${place ? 'pl-2' : 'pl-4 lg:pl-5'}`}>
       <button
         type="button"
-        onClick={() => { setText(''); pickChannel(null) }}
-        aria-pressed={!channelId && !text}
+        onClick={() => { setText(''); setLikedOnly(false); pickChannel(null) }}
+        aria-pressed={!channelId && !text && !likedOnly}
         className={`flex h-9 flex-shrink-0 items-center rounded-full px-3.5 text-meta font-bold ${
-          !channelId && !text ? 'bg-ink text-paper' : 'bg-paper text-ink'
+          !channelId && !text && !likedOnly ? 'bg-ink text-paper' : 'bg-paper text-ink'
         } ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : 'border border-line'}`}
       >
         전체
       </button>
+      {likes.size > 0 && (
+        <button
+          type="button"
+          data-testid="liked-chip"
+          onClick={() => { closePreview(); setLikedOnly((v) => !v); setFitKey((k) => k + 1) }}
+          aria-pressed={likedOnly}
+          className={`flex h-9 flex-shrink-0 items-center gap-1 rounded-full px-3.5 text-meta font-bold ${
+            likedOnly ? 'bg-ink text-paper' : 'bg-paper text-ink'
+          } ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : 'border border-line'}`}
+        >
+          <HeartIcon on={likedOnly} size={14} />
+          찜 {likes.size}
+        </button>
+      )}
       {channels.map((ch) => {
         const on = ch.id === channelId
         const empty = !on && pins !== null && !viewCount.get(ch.id)
@@ -651,7 +709,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
         <div className="border-b border-line bg-paper pt-[env(safe-area-inset-top)] lg:pt-0">
           <div className="flex h-14 items-center justify-between px-4 lg:px-5">
             <h2 className="text-lead font-bold text-ink" aria-live="polite">
-              {text ? `‘${text}’ ` : '이 지도 안 '}<span data-testid="list-count">{count ?? 0}</span>곳
+              {text ? `‘${text}’ ` : likedOnly ? '찜한 곳 ' : '이 지도 안 '}<span data-testid="list-count">{count ?? 0}</span>곳
             </h2>
             <label className="relative inline-flex min-h-[44px] items-center pl-2 text-meta font-bold text-ink">
               <span className="sr-only">정렬</span>
@@ -730,7 +788,9 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                 leaving={preview.leaving}
                 onOpen={() => push({ v: 'detail', id: preview.shown!.id })}
                 onClose={back}
-                onShare={onShare && (() => sharePlace(preview.shown!.id, `pin=${preview.shown!.id}`))}
+                onShare={() => sharePlace(preview.shown!.id, `pin=${preview.shown!.id}`)}
+                liked={likes.has(preview.shown.id)}
+                onLike={() => toggleLike(preview.shown!.id)}
                 adSlot={previewAd?.(preview.shown.id)}
               />
             </div>
@@ -748,7 +808,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                 : pins === null && <span data-testid="pins-loading" className="font-normal opacity-80">불러오는 중</span>}
             </button>
           )}
-          {!preview.shown && onShare && share && (
+          {!preview.shown && share && (
             <button
               type="button"
               data-testid="share-filter"
@@ -797,7 +857,9 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                   restaurant={shownDetail}
                   channelHref={pageLinks ? (slug) => `/youtuber/${encodeURIComponent(slug)}` : undefined}
                   adSlot={detailAd?.(shownDetail.id)}
-                  onShare={onShare && (() => sharePlace(shownDetail.id, `place=${shownDetail.id}`))}
+                  onShare={() => sharePlace(shownDetail.id, `place=${shownDetail.id}`)}
+                  liked={likes.has(shownDetail.id)}
+                  onLike={() => toggleLike(shownDetail.id)}
                 />
               </>
             ) : (

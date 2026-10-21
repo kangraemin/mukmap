@@ -5,10 +5,11 @@ import SiteHeader from '@/components/page/SiteHeader'
 import { getRestaurant } from '@/lib/data'
 import { areaOf, leadVideo, thumbOf, visitorsOf } from '@/lib/format'
 import { iGa } from '@/lib/josa'
-import { tossHref } from '@/lib/tossLink'
+import { TOSS_BUTTON, tossHref } from '@/lib/tossLink'
 import { breadcrumbJsonLd, jsonLdScript, languagesOf, mapHrefOf, pageMetadata, pathOf, restaurantJsonLd } from '@/lib/seo'
 import { DATA_KEY, LANGS, langPath } from '@/lib/i18n'
 import LangLinks from '@/components/page/LangLinks'
+import PageShareButton from '@/components/PageShareButton'
 
 export const revalidate = 3600
 
@@ -29,6 +30,17 @@ function pathsOf(r: Awaited<ReturnType<typeof load>>) {
   const paths: Record<string, string> = { ko: `/restaurant/${r.id}` }
   for (const l of LANGS) if (r.videos.some((v) => v.i18n?.[DATA_KEY[l]])) paths[l] = langPath(l, 'restaurant', String(r.id))
   return paths
+}
+
+function shareText(r: Awaited<ReturnType<typeof load>>) {
+  const names = namesOf(r) || '유튜버'
+  const lead = leadVideo(r)
+  return [
+    `🍽️ ${iGa(names)} 다녀간 ‘${r.name}’`,
+    [areaOf(r), r.category].filter(Boolean).join(' · '),
+    lead?.menu ? `먹은 것: ${lead.menu}` : '',
+    '영상 속 장면이랑 위치, 먹맵에서 바로 보기 👇',
+  ].filter(Boolean).join('\n')
 }
 
 function namesOf(r: Awaited<ReturnType<typeof load>>) {
@@ -66,12 +78,13 @@ export default async function RestaurantPage({ params }: Props) {
           restaurant={r}
           asPage
           channelHref={(slug) => pathOf('youtuber', slug)}
+          shareSlot={<PageShareButton query={`place=${r.id}`} text={shareText(r)} />}
         />
         <section aria-label="더 보기" className="px-4 pb-[calc(40px+env(safe-area-inset-bottom))] pt-2 sm:px-0">
           <h2 className="text-body font-bold text-ink">이 지역 더 보기</h2>
           <ul className="mt-2 flex flex-wrap gap-2">
             <li>
-              <a href={tossHref({ place: r.id })} data-testid="open-toss" data-track="toss_open_click" data-track-where="restaurant" data-track-id={r.id} className="inline-flex min-h-[40px] items-center rounded-full border border-line px-3.5 text-body text-ink">
+              <a href={tossHref({ place: r.id })} data-testid="open-toss" data-track="toss_open_click" data-track-where="restaurant" data-track-id={r.id} className={`${TOSS_BUTTON} min-h-[40px] px-3.5`}>
                 토스 앱으로 열기
               </a>
             </li>

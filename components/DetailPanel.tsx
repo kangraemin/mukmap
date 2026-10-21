@@ -5,6 +5,7 @@ import { KO_LABELS, type DetailLabels } from '@/lib/i18n'
 import { ChannelFace } from './ChannelFace'
 import { RecBadge } from './RecBadge'
 import { ShareIcon } from './ShareIcon'
+import { HeartIcon } from './HeartIcon'
 
 interface DetailPanelProps {
   restaurant: RestaurantWithVideos
@@ -16,8 +17,13 @@ interface DetailPanelProps {
   asPage?: boolean
   /** 버튼 줄 아래에 둘 광고 자리. 토스 앱만 넘긴다 */
   adSlot?: React.ReactNode
-  /** 공유 버튼을 누르면 부른다. 토스 앱만 넘긴다 */
+  /** 공유 버튼을 누르면 부른다(지도 화면) */
   onShare?: () => void
+  /** 서버가 그린 가게 페이지는 함수를 못 넘겨 공유 버튼을 통째로 넘긴다 */
+  shareSlot?: React.ReactNode
+  /** 찜했는지. onLike가 있으면 하트 버튼을 그린다 */
+  liked?: boolean
+  onLike?: () => void
   /** 외국어 페이지가 넘기는 화면 글자. 없으면 한국어 */
   labels?: DetailLabels
 }
@@ -125,7 +131,7 @@ function Review({ v, d, channelHref, Sub, t }: { v: VisitVideo; d: VideoDetail; 
   )
 }
 
-export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫기', channelHref, asPage, adSlot, onShare, labels: t = KO_LABELS }: DetailPanelProps) {
+export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫기', channelHref, asPage, adSlot, onShare, shareSlot, liked = false, onLike, labels: t = KO_LABELS }: DetailPanelProps) {
   const lead = leadVideo(r)
   // 상세 요약이 있는 영상만, 최근 순(videos는 이미 최근 순)
   const reviewed = r.videos.filter((v) => v.detail && (has(v.detail.verdict) || (v.detail.dishes || []).length))
@@ -196,6 +202,19 @@ export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫�
               className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-card border border-line text-ink"
             >
               <ShareIcon />
+            </button>
+          )}
+          {shareSlot}
+          {onLike && (
+            <button
+              type="button"
+              onClick={onLike}
+              aria-label="찜"
+              aria-pressed={liked}
+              data-testid="like"
+              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-card border border-line text-ink"
+            >
+              <HeartIcon on={liked} />
             </button>
           )}
         </div>

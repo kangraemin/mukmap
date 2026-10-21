@@ -27,7 +27,9 @@ interface ListPageProps {
   /** 그 자리에서 거르는 칩 줄 (구·시, 유튜버 등) */
   facets?: Facet[]
   /** 이 페이지가 이미 걸고 있는 조건. 지도 버튼 주소에 들어간다 */
-  base?: { yt?: string; region?: string; city?: string }
+  base?: { yt?: string; region?: string; city?: string; at?: string }
+  /** 카드 아래 한 줄(역에서 걸어서 몇 분) */
+  notes?: Record<number, string>
 }
 
 /** 카드에 쓰는 칸만 남긴다. 목록 전체가 브라우저로 넘어가므로 크기를 줄인다 */
@@ -56,7 +58,7 @@ function channelsOf(rs: RestaurantWithVideos[]): ChannelInfo {
 }
 
 export default function ListPage({
-  crumbs, title, h1, description, question, answer, restaurants, dateModified, groups = [], mapHref, more, facets = [], base = {},
+  crumbs, title, h1, description, question, answer, restaurants, dateModified, groups = [], mapHref, more, facets = [], base = {}, notes,
 }: ListPageProps) {
   const path = crumbs[crumbs.length - 1].path
   const links = groups.filter((g) => g.items.length > 0)
@@ -68,7 +70,7 @@ export default function ListPage({
         <h1 className="pt-6 text-display font-bold text-ink">{h1}</h1>
         <p className="mt-1.5 max-w-[60ch] text-body text-sub">{firstSentence(answer)}</p>
 
-        <FilterList restaurants={restaurants.map(slim)} channels={channelsOf(restaurants)} facets={facets} base={base} />
+        <FilterList restaurants={restaurants.map(slim)} channels={channelsOf(restaurants)} facets={facets} base={base} notes={notes} />
 
         {more && (
           <p className="mt-8">

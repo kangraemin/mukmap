@@ -15,3 +15,6 @@ export function tossHref(q: Record<string, string | number | undefined>) {
   const p = new URLSearchParams({ pid: 'appsintoss', af_dp: supertoss, deep_link_value: supertoss, af_force_deeplink: 'true' })
   return `${ONELINK}?${p.toString()}`
 }
+
+// '토스 앱으로 열기' 버튼 모양. 토스 파랑 바탕에 흰 글씨라 밝은·어두운 화면 모두에서 또렷하다(테두리만 있던 버튼은 어두운 화면에서 안 보였다)
+export const TOSS_BUTTON = 'inline-flex items-center rounded-full bg-[#1B64DA] font-bold text-white active:bg-[#1957C2]'

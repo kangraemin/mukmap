@@ -32,9 +32,10 @@
 | `list_click` | 목록에서 가게를 누름 | `id`, `rank`(1부터), `sort` | `{id:142, rank:2, sort:"near"}` |
 | **`video_watch_click`** | 영상 장면 보러 유튜브로 | `id`, `where`(main·list), `rank`(list일 때) | `{id:142, where:"main"}` |
 | `directions_click` | 네이버 지도 길찾기 | `id` | `{id:142}` |
-| `share_attempt` | 공유 버튼 (토스) | `kind`(place·list), `id` | `{kind:"place", id:142}` |
-| `share_success` | 공유 창이 끝까지 열림 (토스) | `kind`, `id` | |
-| `share_fail` | 공유 실패 (토스) | `kind`, `id`, `msg` | |
+| `share_attempt` | 공유 버튼 (토스·웹) | `kind`(place·list), `id`, `via`(웹: web 공유창·copy 링크 복사) | `{kind:"place", id:142}` |
+| `share_success` | 공유 창이 끝까지 열림·링크 복사됨 (토스·웹) | `kind`, `id`, `via` | |
+| `share_fail` | 공유 실패·닫음 (토스·웹) | `kind`, `id`, `via`, `msg` | |
+| `like_toggle` | 찜 하트 | `id`, `on`(찜함·풂), `count`(찜한 가게 수) | `{id:142, on:true, count:3}` |
 | `ad_request` | 배너 요청 (토스) | `kind`(strip·feed) | |
 | `ad_shown` | 배너가 보임 (토스) | `kind` | |
 | `ad_click` | 배너 누름 (토스) | `kind` | |

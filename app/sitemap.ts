@@ -3,6 +3,7 @@ import { MIN_INDEXABLE, getAll, translatedNames } from '@/lib/data'
 import { LANGS, REGIONS, langPath } from '@/lib/i18n'
 import { abs, pathOf } from '@/lib/seo'
 import type { RestaurantWithVideos } from '@/lib/types'
+import { STATIONS, nearStation } from '@/lib/stations'
 
 export const revalidate = 3600
 
@@ -33,6 +34,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
   for (const [path, rs] of Array.from(group.entries())) {
     if (rs.length >= MIN_INDEXABLE) out.push({ url: abs(path), lastModified: latest(rs), changeFrequency: 'weekly' })
+  }
+  // 역 페이지: 1km 안 가게가 충분한 역만
+  for (const s of STATIONS) {
+    const rs = nearStation(s, restaurants).map((x) => x.r)
+    if (rs.length >= MIN_INDEXABLE) out.push({ url: abs(pathOf('station', s.slug)), lastModified: latest(rs), changeFrequency: 'weekly' })
   }
   for (const r of restaurants) {
     out.push({ url: abs(`/restaurant/${r.id}`), lastModified: latest([r]), changeFrequency: 'monthly' })

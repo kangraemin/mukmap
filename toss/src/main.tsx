@@ -3,6 +3,7 @@ import { Component, StrictMode, useEffect, useState, type ReactNode } from 'reac
 import { createRoot } from 'react-dom/client';
 import { Analytics, Review } from '@apps-in-toss/web-framework';
 import HomeExplorer from '@/components/HomeExplorer';
+import { LIKES_KEY, localLikeStore, type LikeStore } from '@/lib/likes';
 import RetryNotice from '@/components/RetryNotice';
 import { addSink, listenTrackedClicks, track } from '@/lib/analytics';
 import AdBanner from './AdBanner';
@@ -111,6 +112,28 @@ async function shareLink({ query, text, image }: ShareMessage): Promise<boolean>
   }
 }
 
+// 찜은 토스 앱 저장소에 둔다(앱을 껐다 켜도 남는다). 저장소가 안 되면 웹뷰 localStorage로
+const tossLikeStore: LikeStore = {
+  get: async () => {
+    try {
+      const { Storage } = await import('@apps-in-toss/web-framework');
+      return await Storage.getItem(LIKES_KEY);
+    } catch (e) {
+      report('likes-get-fail', String(e));
+      return localLikeStore.get();
+    }
+  },
+  set: async (v) => {
+    try {
+      const { Storage } = await import('@apps-in-toss/web-framework');
+      await Storage.setItem(LIKES_KEY, v);
+    } catch (e) {
+      report('likes-set-fail', String(e));
+      await localLikeStore.set(v);
+    }
+  },
+};
+
 // 화면을 그리다 터지면 흰 화면 대신 안내와 다시 열기
 class Boundary extends Component<{ children: ReactNode }, { err: boolean }> {
   state = { err: false };
@@ -179,6 +202,7 @@ function App() {
         listAd={(slot) => <AdBanner key={`list-${slot}`} kind="feed" className="my-3" />}
         previewAd={(id) => <AdBanner key={`pv-${id}`} kind="strip" variant="expanded" className="border-t border-line" />}
         onShare={shareLink}
+        likeStore={tossLikeStore}
       />
       {failed && (
         <RetryNotice

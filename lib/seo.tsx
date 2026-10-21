@@ -17,13 +17,15 @@ export function pathOf(...parts: string[]) {
   return '/' + parts.map((p) => encodeURIComponent(p)).join('/')
 }
 
-/** 같은 조건으로 홈 지도를 여는 주소. HomeExplorer가 yt·region·place를 읽는다 */
+/** 같은 조건으로 홈 지도를 여는 주소. HomeExplorer가 yt·area·at·place를 읽는다.
+ *  지역은 거르지 않고 그 구에서 시작만 한다(area·area_city). at은 시작할 점(역) */
 /** from: 돌아갈 목록 페이지 경로. 지도 위 '목록으로' 버튼이 쓴다 */
-export function mapHrefOf(q: { yt?: string; region?: string | null; city?: string | null; place?: string | number; from?: string }) {
+export function mapHrefOf(q: { yt?: string; region?: string | null; city?: string | null; at?: string; place?: string | number; from?: string }) {
   const sp = new URLSearchParams()
   if (q.yt) sp.set('yt', q.yt)
-  if (q.region) sp.set('region', q.region)
-  if (q.city) sp.set('city', q.city)
+  if (q.region) sp.set('area', q.region)
+  if (q.city) sp.set('area_city', q.city)
+  if (q.at) sp.set('at', q.at)
   if (q.place != null) sp.set('place', String(q.place))
   if (q.from) sp.set('from', q.from)
   const qs = sp.toString()

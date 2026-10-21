@@ -18,6 +18,7 @@ export type EventName =
   | 'share_attempt'     // 공유 버튼. kind, id
   | 'share_success'     // 공유 창이 끝까지 열림. kind, id
   | 'share_fail'        // 공유 실패. kind, msg
+  | 'like_toggle'       // 찜 하트. id, on, count
   | 'ad_request'        // 배너 요청. kind
   | 'ad_shown'          // 배너가 보임. kind
   | 'ad_click'          // 배너 누름. kind
