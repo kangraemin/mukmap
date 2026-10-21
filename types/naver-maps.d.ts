@@ -13,6 +13,7 @@ declare namespace naver.maps {
     fitBounds(bounds: LatLngBounds, margin?: number): void
     panTo(latlng: LatLng, transitionOptions?: object): void
     morph(latlng: LatLng, zoom: number, transitionOptions?: { duration?: number; easing?: string }): void
+    setOptions(opts: MapOptions): void
   }
 
   interface MapOptions {

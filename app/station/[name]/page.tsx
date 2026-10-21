@@ -4,7 +4,7 @@ import ListPage from '@/components/page/ListPage'
 import { MIN_INDEXABLE, decodeParam, getAll } from '@/lib/data'
 import { regionAnswer } from '@/lib/region-page'
 import { iGa } from '@/lib/josa'
-import { mapHrefOf, pageMetadata, pathOf } from '@/lib/seo'
+import { pageMetadata, pathOf } from '@/lib/seo'
 import { STATION_KM, nearStation, stationBySlug } from '@/lib/stations'
 
 export const revalidate = 3600
@@ -51,7 +51,6 @@ export default async function StationPage({ params }: Props) {
       answer={answer}
       restaurants={restaurants}
       dateModified={facts.latest}
-      mapHref={mapHrefOf({ at: `${station.lat},${station.lng}`, from: path })}
       facets={['channel']}
       base={{ at: `${station.lat},${station.lng}` }}
       notes={notes}

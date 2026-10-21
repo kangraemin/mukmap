@@ -87,8 +87,8 @@ function PlayBadge() {
 
 /** 핀을 누르면 지도 아래에 뜨는 카드. 누르면 상세로 간다 */
 export function PreviewCard({ pin, faces, onOpen, onClose, onShare, liked = false, onLike, leaving, adSlot }: { pin: Pin; faces: Faces; onOpen: () => void; onClose: () => void; onShare?: () => void; liked?: boolean; onLike?: () => void; leaving?: boolean; adSlot?: React.ReactNode }) {
-  // 오른쪽 위 버튼(찜·공유·닫기) 수만큼 글을 비켜 둔다
-  const pad = ['pr-8', 'pr-20', 'pr-[124px]'][Number(!!onShare) + Number(!!onLike)]
+  // 오른쪽 위엔 닫기만 둔다. 찜·공유까지 위에 두면 글 칸이 60px 남짓만 남아 이름이 잘렸다
+  const stop = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); fn() }
   return (
     <div
       data-testid="preview-card"
@@ -97,7 +97,7 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, liked = fals
       }`}
     >
       <Pressable onPress={onOpen} className="block w-full px-4 pb-3.5 pt-4 text-left active:opacity-90" label={`${pin.name} 자세히 보기`}>
-        <span className={`flex items-center gap-3 ${pad}`}>
+        <span className="flex items-center gap-3 pr-8">
           <span className="relative h-[72px] w-[128px] flex-shrink-0 overflow-hidden rounded-[10px] bg-well">
             {pin.vid && <img src={thumb(pin.vid)} alt="" className="h-full w-full object-cover" />}
             {pin.vid && <PlayBadge />}
@@ -125,36 +125,40 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, liked = fals
         {pin.verdict && <Chips items={chipsOf(pin)} bleed="-mx-4 px-4" />}
         <span className="mt-3 flex items-center justify-between text-meta">
           <span className="text-sub">{pin.nv ? `영상 ${pin.nv}개` : ''}</span>
-          <span className="flex items-center gap-0.5 text-body font-bold text-ink">
-            자세히
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <span className="flex items-center">
+            {onLike && (
+              <button
+                type="button"
+                onClick={stop(onLike)}
+                onKeyDown={(e) => e.stopPropagation()}
+                aria-label="찜"
+                aria-pressed={liked}
+                data-testid="like"
+                className="-my-2 flex h-11 w-11 items-center justify-center text-ink"
+              >
+                <HeartIcon on={liked} />
+              </button>
+            )}
+            {onShare && (
+              <button
+                type="button"
+                onClick={stop(onShare)}
+                onKeyDown={(e) => e.stopPropagation()}
+                aria-label="공유"
+                data-testid="share-place"
+                className="-my-2 mr-1 flex h-11 w-11 items-center justify-center text-ink"
+              >
+                <ShareIcon />
+              </button>
+            )}
+            <span className="flex items-center gap-0.5 text-body font-bold text-ink">
+              자세히
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </span>
           </span>
         </span>
       </Pressable>
       {adSlot}
-      {onLike && (
-        <button
-          type="button"
-          onClick={onLike}
-          aria-label="찜"
-          aria-pressed={liked}
-          data-testid="like"
-          className={`absolute ${onShare ? 'right-[92px]' : 'right-12'} top-1 flex h-11 w-11 items-center justify-center text-ink`}
-        >
-          <HeartIcon on={liked} />
-        </button>
-      )}
-      {onShare && (
-        <button
-          type="button"
-          onClick={onShare}
-          aria-label="공유"
-          data-testid="share-place"
-          className="absolute right-12 top-1 flex h-11 w-11 items-center justify-center text-ink"
-        >
-          <ShareIcon />
-        </button>
-      )}
       <button
         type="button"
         onClick={onClose}

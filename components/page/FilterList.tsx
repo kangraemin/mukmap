@@ -1,16 +1,22 @@
 'use client'
 // 목록 페이지의 가게 카드 + 구·시·유튜버 칩 거르기. 칩은 페이지를 옮기지 않고 그 자리에서 거른다.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import type { RestaurantWithVideos } from '@/lib/types'
 import { SceneCard } from '@/components/RestaurantCard'
+import { VisitorLine } from '@/components/ChannelFace'
+import type { Face } from '@/components/NaverMap'
 import { TOSS_BUTTON, tossHref } from '@/lib/tossLink'
-import MapPreview from './MapPreview'
+import { decodePins, inBounds, loadPins, type Bounds, type Pin } from '@/lib/pins'
+import ListMap from './ListMap'
 
 export type Facet = 'region' | 'city' | 'channel'
 export type ChannelInfo = Record<string, { name: string; thumbnail: string | null; slug?: string | null }>
 
 interface FilterListProps {
+  /** 페이지 제목과 한 줄 설명. 지도에서 다시 찾으면 화면에서만 바뀐다(서버 HTML은 그대로) */
+  h1: string
+  sub: string
   restaurants: RestaurantWithVideos[]
   channels: ChannelInfo
   facets: Facet[]
@@ -38,7 +44,7 @@ function mapHref(q: Record<string, string | undefined>) {
   return qs ? `/?${qs}` : '/'
 }
 
-export default function FilterList({ restaurants: slimmed, channels, facets, base, notes, pageSize = 30 }: FilterListProps) {
+export default function FilterList({ h1, sub, restaurants: slimmed, channels, facets, base, notes, pageSize = 30 }: FilterListProps) {
   // 서버가 빼고 보낸 유튜버 이름·얼굴을 다시 붙인다
   const restaurants = useMemo(() => slimmed.map((r) => ({
     ...r,
@@ -87,15 +93,109 @@ export default function FilterList({ restaurants: slimmed, channels, facets, bas
   }
   // 지도에서 '목록으로'를 누르면 이 페이지로 돌아온다
   const href = mapHref({ ...q, from: pathname || undefined })
-  // 미리보기 지도도 고른 칩대로 거른 가게만 찍는다
-  const spots = useMemo(
-    () => list.flatMap((r) => (r.lat != null && r.lng != null ? [{ lat: r.lat, lng: r.lng }] : [])),
-    [list],
-  )
+  // 지도 핀은 전체 핀 목록(/api/pins)에서 이 페이지 가게만 고른다. 유튜버 얼굴은 /api/channels로 받는다
+  const [allPins, setAllPins] = useState<Pin[] | null>(null)
+  const [moreFaces, setMoreFaces] = useState<Record<string, Face>>({})
+  useEffect(() => {
+    let dead = false
+    loadPins().then((p) => { if (!dead) setAllPins(decodePins(p)) }).catch(() => {})
+    fetch('/api/channels').then((r) => (r.ok ? r.json() : null)).then((j: { channels?: { id: string; name: string; thumbnail_url: string | null }[] } | null) => {
+      if (dead || !j?.channels) return
+      const m: Record<string, Face> = {}
+      for (const c of j.channels) m[c.id] = { name: c.name, thumbnail: c.thumbnail_url ? `/api/face/${c.id}` : null }
+      setMoreFaces(m)
+    }).catch(() => {})
+    return () => { dead = true }
+  }, [])
+  const faces = useMemo(() => {
+    const m: Record<string, Face> = {}
+    for (const [id, c] of Object.entries(channels)) m[id] = { name: c.name, thumbnail: c.thumbnail ? `/api/face/${id}` : null }
+    return { ...m, ...moreFaces }
+  }, [channels, moreFaces])
+  const pinById = useMemo(() => new Map((allPins || []).map((p) => [p.id, p])), [allPins])
+  const pagePins = useMemo(() => list.flatMap((r) => pinById.get(r.id) ?? []), [list, pinById])
+
+  // 지도에서 '이 지역에서 다시 찾기'를 누르면 목록을 그 지역 가게로 통째 바꾼다. null이면 원래 목록
+  const [area, setArea] = useState<null | { pins: Pin[] | null }>(null)
+  const searchArea = (b: Bounds) => {
+    setArea({ pins: null })
+    setShown(pageSize)
+    window.scrollTo({ top: 0 })
+    const cLat = (b.sw_lat + b.ne_lat) / 2
+    const cLng = (b.sw_lng + b.ne_lng) / 2
+    const d = (p: Pin) => (p.lat - cLat) ** 2 + ((p.lng - cLng) * 0.8) ** 2
+    const found = (allPins || []).filter((p) => inBounds(p, b)).sort((x, y) => d(x) - d(y))
+    // 옛 목록이 사라지고 새로 채워지는 게 보이게 잠깐 빈 자리를 둔다
+    setTimeout(() => setArea({ pins: found }), 350)
+  }
+  const back = () => {
+    setArea(null)
+    setShown(pageSize)
+    window.scrollTo({ top: 0 })
+  }
+
+  if (area) {
+    const ps = area.pins
+    return (
+      <>
+        <button
+          type="button"
+          data-testid="area-back"
+          onClick={back}
+          className="mt-4 inline-flex min-h-[40px] max-w-full items-center gap-1 rounded-full border border-line px-3.5 text-body text-ink"
+        >
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" className="flex-shrink-0"><path d="M10 3.5 5.5 8l4.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <span className="truncate">{h1}으로</span>
+        </button>
+        {ps ? (
+          <h1 className="pt-3 text-display font-bold text-ink">지도에서 찾은 맛집 {ps.length}곳</h1>
+        ) : (
+          <h1 data-testid="area-skeleton" aria-busy="true" className="pt-3"><span className="sr-only">찾는 중</span><span className="block h-9 w-3/4 animate-pulse rounded-[8px] bg-well" /></h1>
+        )}
+        <p className="mt-1.5 text-body text-sub">{ps ? '옮긴 지도 화면 안에 있는 가게예요. 가운데에서 가까운 순이에요.' : '\u00a0'}</p>
+
+        <ListMap pins={ps || []} faces={faces} title="지도에서 찾은 맛집" loading={!ps} mapHref={href} onSearch={searchArea} />
+
+        {ps ? (
+          <>
+            <p data-testid="list-count" className="mt-6 text-body font-bold text-ink">{ps.length}곳</p>
+            {ps.length === 0 && <p className="mt-3 text-body text-sub">이 화면엔 아직 등록된 가게가 없어요. 지도를 넓혀 다시 찾아보세요.</p>}
+            <ol data-testid="area-list" className="mt-3 grid gap-x-5 gap-y-8 sm:grid-cols-2">
+              {ps.slice(0, shown).map((p) => (
+                <li key={p.id}><PinScene pin={p} faces={faces} /></li>
+              ))}
+            </ol>
+            {ps.length > shown && (
+              <button
+                type="button"
+                onClick={() => setShown((n) => n + pageSize)}
+                className="mt-8 flex min-h-[48px] w-full items-center justify-center rounded-full border border-line text-body text-ink"
+              >
+                {ps.length - shown}곳 더 보기
+              </button>
+            )}
+          </>
+        ) : (
+          <ol className="mt-6 grid gap-x-5 gap-y-8 sm:grid-cols-2">
+            {[0, 1, 2, 3].map((i) => (
+              <li key={i} data-testid="card-skeleton">
+                <span className="block aspect-video animate-pulse rounded-card bg-well" />
+                <span className="mt-3 block h-5 w-1/2 animate-pulse rounded-[6px] bg-well" />
+                <span className="mt-2 block h-4 w-1/3 animate-pulse rounded-[6px] bg-well" />
+              </li>
+            ))}
+          </ol>
+        )}
+      </>
+    )
+  }
 
   return (
     <>
-      <MapPreview spots={spots} href={href} />
+      <h1 className="pt-6 text-display font-bold text-ink">{h1}</h1>
+      <p className="mt-1.5 max-w-[60ch] text-body text-sub">{sub}</p>
+
+      <ListMap pins={pagePins} faces={faces} title={h1} loading={allPins === null} mapHref={href} onSearch={searchArea} />
 
       {facets.filter((f) => options[f].length > 1).map((f) => (
         <div key={f} className="mt-4">
@@ -142,29 +242,44 @@ export default function FilterList({ restaurants: slimmed, channels, facets, bas
         </button>
       )}
 
-      {/* 화면 아래에 늘 떠 있는 지도 버튼. 고른 칩 조건 그대로 지도를 연다. 옆에 같은 조건으로 토스 미니앱을 여는 작은 버튼 */}
-      <div className="fixed bottom-[calc(16px+env(safe-area-inset-bottom))] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap">
-      <a
-        href={href}
-        data-testid="open-map"
-        className="inline-flex min-h-[48px] items-center gap-2 rounded-full bg-ink px-5 text-body font-bold text-paper shadow-[0_4px_16px_rgba(0,0,0,0.2)]"
-      >
-        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21Z" />
-          <circle cx="12" cy="9.5" r="2.5" />
-        </svg>
-        지도로 보기
-      </a>
-      <a
-        href={tossHref(q)}
-        data-testid="open-toss"
-        data-track="toss_open_click"
-        data-track-where="list"
-        className={`${TOSS_BUTTON} min-h-[48px] px-4 text-meta shadow-[0_4px_16px_rgba(0,0,0,0.2)]`}
-      >
-        토스 앱으로 열기
-      </a>
+      {/* 화면 아래에 떠 있는 토스 앱 버튼. 지도로 가는 버튼은 위 지도 하나로 모았다(지도 버튼이 세 곳이라 헷갈렸다) */}
+      <div className="fixed bottom-[calc(16px+env(safe-area-inset-bottom))] left-1/2 z-30 -translate-x-1/2 whitespace-nowrap">
+        <a
+          href={tossHref(q)}
+          data-testid="open-toss"
+          data-track="toss_open_click"
+          data-track-where="list"
+          className={`${TOSS_BUTTON} min-h-[48px] px-5 text-body shadow-[0_4px_16px_rgba(0,0,0,0.2)]`}
+        >
+          토스 앱으로 열기
+        </a>
       </div>
     </>
+  )
+}
+
+/** 지도에서 다시 찾은 가게 카드. 목록 카드(SceneCard)와 같은 모양을 핀 정보로 그린다 */
+function PinScene({ pin, faces }: { pin: Pin; faces: Record<string, Face> }) {
+  return (
+    <a href={`/restaurant/${pin.id}`} data-testid="area-item" className="group block w-full">
+      <span className="relative block aspect-video overflow-hidden rounded-card bg-well">
+        {/* eslint-disable-next-line @next/next/no-img-element -- 유튜브 썸네일을 그대로 쓴다 */}
+        {pin.vid && <img src={`https://i.ytimg.com/vi/${pin.vid}/mqdefault.jpg`} alt={`${pin.name} 영상 장면`} loading="lazy" className="h-full w-full object-cover" />}
+      </span>
+      <span className="mt-3 flex items-baseline gap-2">
+        <span className="truncate text-lead font-bold text-ink group-hover:underline">{pin.name}</span>
+        <span className="flex-shrink-0 text-meta text-sub">{pin.category}</span>
+      </span>
+      <span className="mt-0.5 block text-meta text-sub">{[pin.region, pin.city].filter(Boolean).join(' ')}</span>
+      {(pin.best || pin.menu || pin.price) && (
+        <span className="mt-1.5 block truncate text-body text-ink">
+          {pin.best || pin.menu}
+          {pin.price && <span className="text-sub"> / {pin.price}</span>}
+        </span>
+      )}
+      <span className="mt-2 block">
+        <VisitorLine faces={pin.ch.map((id) => ({ id, name: faces[id]?.name || '', thumbnail: faces[id]?.thumbnail || null }))} />
+      </span>
+    </a>
   )
 }

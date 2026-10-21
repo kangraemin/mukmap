@@ -26,6 +26,12 @@ interface NaverMapProps {
   focus: MapFocus | null
   /** 카드가 떠 있을 때 지도 위·아래가 가려지는 높이(px). 고른 핀을 그 사이 가운데로 옮긴다 */
   insets?: { top: number; bottom: number } | null
+  /** 손으로 밀거나 확대하지 못하게 묶는다(목록 페이지 위 작은 지도). 핀과 바탕은 눌린다 */
+  still?: boolean
+  /** 사람이 손으로 지도를 밀거나 벌렸을 때. 코드가 옮긴 건 알리지 않는다 */
+  onUserMove?: () => void
+  /** 묶음 핀을 눌렀을 때. 주면 작은 지도 안에서 확대하지 않고 이걸 부른다 */
+  onClusterClick?: (lats: number[], lngs: number[]) => void
 }
 
 // 핀끼리 이 거리(px) 안이면 묶는다. 줌과 상관없이 같은 기준이라 얼굴이 겹치지 않는다
@@ -127,7 +133,7 @@ export function preloadMapSdk(): boolean {
   return true
 }
 
-export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapClick, onBoundsChange, fitKey, focus, insets }: NaverMapProps) {
+export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapClick, onBoundsChange, fitKey, focus, insets, still = false, onUserMove, onClusterClick }: NaverMapProps) {
   const mapElRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<naver.maps.Map | null>(null)
   const markersRef = useRef<Map<string, { marker: naver.maps.Marker; listener: unknown; sig: string }>>(new Map())
@@ -137,8 +143,8 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
   const [idleTick, setIdleTick] = useState(0)
 
   // 콜백은 바뀌어도 리스너를 다시 달지 않게 ref로 읽는다
-  const cb = useRef({ onPinClick, onMapClick, onBoundsChange })
-  cb.current = { onPinClick, onMapClick, onBoundsChange }
+  const cb = useRef({ onPinClick, onMapClick, onBoundsChange, onUserMove, onClusterClick })
+  cb.current = { onPinClick, onMapClick, onBoundsChange, onUserMove, onClusterClick }
 
   useEffect(() => {
     if ((window as Window & { naver?: { maps?: unknown } }).naver?.maps) {
@@ -181,7 +187,22 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
       setIdleTick((t) => t + 1)
     })
     naver.maps.Event.addListener(map, 'click', () => cb.current.onMapClick())
+    for (const t of ['dragend', 'pinchend']) naver.maps.Event.addListener(map, t, () => cb.current.onUserMove?.())
   }, [sdkLoaded])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    map.setOptions({
+      draggable: !still,
+      pinchZoom: !still,
+      scrollWheel: !still,
+      keyboardShortcuts: !still,
+      disableDoubleClickZoom: still,
+      disableDoubleTapZoom: still,
+      disableTwoFingerTapZoom: still,
+    })
+  }, [still, sdkLoaded])
 
   useEffect(() => {
     const map = mapRef.current
@@ -271,6 +292,10 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
         listener = naver.maps.Event.addListener(marker, 'click', () => {
           const lats = items.map((p) => p.lat)
           const lngs = items.map((p) => p.lng)
+          if (cb.current.onClusterClick) {
+            cb.current.onClusterClick(lats, lngs)
+            return
+          }
           const span = Math.max(Math.max(...lats) - Math.min(...lats), Math.max(...lngs) - Math.min(...lngs))
           // 같은 건물처럼 거의 한 자리면 더 키워도 안 갈라진다. 첫 가게를 바로 보여준다
           if (span < 0.0002 || map.getZoom() >= 19) {

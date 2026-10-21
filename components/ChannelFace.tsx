@@ -34,15 +34,16 @@ export function VisitorLine({ faces, size = 20 }: { faces: Face[]; size?: number
   if (!faces.length) return null
   const label = faces.length === 1 ? faces[0].name : `${faces[0].name} 외 ${faces.length - 1}명`
   return (
-    <span className="flex items-center gap-1.5">
-      <span className="flex">
+    // 이름은 한 줄로 두고 넘치면 말줄임한다(좁은 카드에서 '히/밥'처럼 세로로 쪼개졌다)
+    <span className="flex min-w-0 items-center gap-1.5">
+      <span className="flex flex-shrink-0">
         {faces.slice(0, 3).map((f, i) => (
           <span key={f.id} style={{ marginLeft: i ? -size * 0.3 : 0, zIndex: 3 - i }} className="relative">
             <ChannelFace face={f} size={size} ring={faces.length > 1} />
           </span>
         ))}
       </span>
-      <span className={size >= 24 ? 'text-body font-bold text-ink' : 'text-meta text-sub'}>{label}</span>
+      <span data-testid="visitor-name" className={`min-w-0 truncate whitespace-nowrap ${size >= 24 ? 'text-body font-bold text-ink' : 'text-meta text-sub'}`}>{label}</span>
     </span>
   )
 }

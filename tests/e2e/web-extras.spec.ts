@@ -116,6 +116,8 @@ test('역 맛집 페이지: 홍대입구역 1km 안 가게를 가까운 순으�
   const mins = walks.map((t) => Number(t.match(/(\d+)분/)![1]))
   expect(mins).toEqual([...mins].sort((a, b) => a - b))
   expect(Math.max(...mins)).toBeLessThanOrEqual(15)
+  // 지도로 가는 길은 위 지도를 크게 연 뒤 '전체 지도' 하나다
+  await page.getByTestId('map-expand').click()
   const href = (await page.getByTestId('open-map').getAttribute('href'))!
   const at = new URLSearchParams(href.split('?')[1]).get('at')!
   const [lat, lng] = at.split(',').map(Number)

@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import ListPage from '@/components/page/ListPage'
 import { MIN_INDEXABLE, decodeParam, factsOf, getChannelBySlugOrId, restaurantsOf, yearRange } from '@/lib/data'
 import { eunNeun, iGa } from '@/lib/josa'
-import { abs, mapHrefOf, pageMetadata, pathOf } from '@/lib/seo'
+import { abs, pageMetadata, pathOf } from '@/lib/seo'
 
 export const revalidate = 3600
 // 요청마다 다시 그리면 첫 바이트가 5초 넘게 걸렸다. 한 번 그린 페이지를 1시간 동안 그대로 준다
@@ -58,7 +58,6 @@ export default async function YoutuberRegionPage({ params }: Props) {
       answer={answer}
       restaurants={restaurants}
       dateModified={facts.latest}
-      mapHref={mapHrefOf({ yt: slug, region, from: path })}
       facets={['city']}
       base={{ yt: slug, region }}
       more={{ href: pathOf('region', region), label: `${region}의 다른 유튜버 맛집` }}

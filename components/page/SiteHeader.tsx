@@ -6,7 +6,8 @@ export interface Crumb {
 
 export default function SiteHeader({ crumbs, mapHref = '/', home = { href: '/', name: '먹맵' }, mapLabel = '지도 보기', navLabel = '현재 위치' }: {
   crumbs: Crumb[]
-  mapHref?: string
+  /** null이면 지도 링크를 두지 않는다(목록 페이지는 본문 지도에서 연다) */
+  mapHref?: string | null
   /** 외국어 페이지는 그 언어 첫 화면과 이름을 넘긴다 */
   home?: { href: string; name: string }
   mapLabel?: string
@@ -28,7 +29,7 @@ export default function SiteHeader({ crumbs, mapHref = '/', home = { href: '/', 
             ))}
           </ol>
         </nav>
-        <a href={mapHref} className="inline-flex min-h-[44px] flex-shrink-0 items-center text-meta font-bold text-ink">{mapLabel}</a>
+        {mapHref !== null && <a href={mapHref} className="inline-flex min-h-[44px] flex-shrink-0 items-center text-meta font-bold text-ink">{mapLabel}</a>}
       </div>
     </header>
   )

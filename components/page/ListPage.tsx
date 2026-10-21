@@ -20,8 +20,6 @@ interface ListPageProps {
   restaurants: RestaurantWithVideos[]
   dateModified: string | null
   groups?: LinkGroup[]
-  /** 같은 조건으로 여는 지도 주소 (/?yt=..&region=..) */
-  mapHref: string
   /** 조건을 넓히는 링크. 필터 줄이 아니라 목록 끝에 둔다 */
   more?: { href: string; label: string }
   /** 그 자리에서 거르는 칩 줄 (구·시, 유튜버 등) */
@@ -58,19 +56,16 @@ function channelsOf(rs: RestaurantWithVideos[]): ChannelInfo {
 }
 
 export default function ListPage({
-  crumbs, title, h1, description, question, answer, restaurants, dateModified, groups = [], mapHref, more, facets = [], base = {}, notes,
+  crumbs, title, h1, description, question, answer, restaurants, dateModified, groups = [], more, facets = [], base = {}, notes,
 }: ListPageProps) {
   const path = crumbs[crumbs.length - 1].path
   const links = groups.filter((g) => g.items.length > 0)
 
   return (
     <>
-      <SiteHeader crumbs={crumbs} mapHref={mapHref} />
+      <SiteHeader crumbs={crumbs} mapHref={null} />
       <main className="mx-auto max-w-3xl px-4 pb-[calc(96px+env(safe-area-inset-bottom))]">
-        <h1 className="pt-6 text-display font-bold text-ink">{h1}</h1>
-        <p className="mt-1.5 max-w-[60ch] text-body text-sub">{firstSentence(answer)}</p>
-
-        <FilterList restaurants={restaurants.map(slim)} channels={channelsOf(restaurants)} facets={facets} base={base} notes={notes} />
+        <FilterList h1={h1} sub={firstSentence(answer)} restaurants={restaurants.map(slim)} channels={channelsOf(restaurants)} facets={facets} base={base} notes={notes} />
 
         {more && (
           <p className="mt-8">
