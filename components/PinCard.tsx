@@ -29,10 +29,20 @@ function meta(pin: Pin) {
 
 /** 최고 메뉴·가격·웨이팅 같은 짧은 정보. 넘치면 잘라 내지 않고 옆으로 밀어 본다(실기기에서 '웨이팅 한.'처럼 잘렸다) */
 function Chips({ items, bleed = '' }: { items: [string, string | null | undefined][]; bleed?: string }) {
+  const ref = React.useRef<HTMLSpanElement>(null)
+  // 칩을 미는 손가락이 뒤의 지도로 새면 칩 대신 지도가 움직인다(토스 앱 실기기)
+  React.useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const stop = (e: Event) => e.stopPropagation()
+    const types = ['touchstart', 'touchmove', 'pointerdown', 'pointermove'] as const
+    for (const t of types) el.addEventListener(t, stop, { passive: true })
+    return () => { for (const t of types) el.removeEventListener(t, stop) }
+  }, [])
   const shown = items.filter((x): x is [string, string] => Boolean(x[1]))
   if (!shown.length) return null
   return (
-    <span data-testid="pin-chips" className={`no-scrollbar mt-2.5 flex gap-1.5 overflow-x-auto overscroll-x-contain ${bleed}`}>
+    <span ref={ref} data-testid="pin-chips" className={`no-scrollbar mt-2.5 flex touch-pan-x gap-1.5 overflow-x-auto overscroll-x-contain ${bleed}`}>
       {shown.map(([k, v]) => (
         <span key={k} className="flex h-7 flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-well px-2.5 text-meta">
           <span className="text-sub">{k}</span>
@@ -40,6 +50,25 @@ function Chips({ items, bleed = '' }: { items: [string, string | null | undefine
         </span>
       ))}
     </span>
+  )
+}
+
+/** 누르면 여는 카드 바탕. 아이폰 WebKit은 <button> 안의 가로 스크롤(칩 줄)을 밀어 주지 않아 div로 만든다 */
+function Pressable({ onPress, label, className, testId, children }: { onPress: () => void; label?: string; className: string; testId?: string; children: React.ReactNode }) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={label}
+      data-testid={testId}
+      onClick={onPress}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPress() }
+      }}
+      className={`cursor-pointer ${className}`}
+    >
+      {children}
+    </div>
   )
 }
 
@@ -64,7 +93,7 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, leaving, adS
         leaving ? 'pointer-events-none animate-sheet-out' : 'animate-sheet-in'
       }`}
     >
-      <button type="button" onClick={onOpen} className="block w-full px-4 pb-3.5 pt-4 text-left active:opacity-90" aria-label={`${pin.name} 자세히 보기`}>
+      <Pressable onPress={onOpen} className="block w-full px-4 pb-3.5 pt-4 text-left active:opacity-90" label={`${pin.name} 자세히 보기`}>
         <span className={`flex items-center gap-3 ${onShare ? 'pr-20' : 'pr-8'}`}>
           <span className="relative h-[72px] w-[128px] flex-shrink-0 overflow-hidden rounded-[10px] bg-well">
             {pin.vid && <img src={thumb(pin.vid)} alt="" className="h-full w-full object-cover" />}
@@ -98,7 +127,7 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, leaving, adS
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </span>
         </span>
-      </button>
+      </Pressable>
       {adSlot}
       {onShare && (
         <button
@@ -127,10 +156,9 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, leaving, adS
 export const PinRow = React.memo(function PinRow({ pin, faces, onOpen, selected }: { pin: Pin; faces: Faces; onOpen: (id: number) => void; selected?: boolean }) {
   const fs = facesOf(pin, faces)
   return (
-    <button
-      type="button"
-      data-testid="list-item"
-      onClick={() => onOpen(pin.id)}
+    <Pressable
+      testId="list-item"
+      onPress={() => onOpen(pin.id)}
       className={`block w-full border-b border-line py-3 text-left ${selected ? 'bg-well' : 'active:bg-well'}`}
     >
       <span className="flex items-center gap-3">
@@ -155,6 +183,6 @@ export const PinRow = React.memo(function PinRow({ pin, faces, onOpen, selected 
         </span>
       </span>
       {pin.verdict && <Chips items={chipsOf(pin, true)} />}
-    </button>
+    </Pressable>
   )
 })

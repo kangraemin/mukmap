@@ -328,6 +328,68 @@ test('핀 카드의 최고·가격·웨이팅 칩이 잘리지 않고 옆으로 
   expect(last.x + last.width).toBeLessThanOrEqual(card.x + card.width)
 })
 
+test('핀 카드의 칩 줄을 손가락으로 밀면 칩만 밀리고 지도는 그대로다', async ({ page, browserName }) => {
+  // 실제 사고(토스 앱): 칩 줄을 옆으로 밀면 칩은 그대로고 뒤의 지도가 움직였다
+  test.skip(browserName !== 'chromium', '터치 밀기는 Chromium CDP로만 흉내 낸다')
+  await page.route('**/api/pins', async (route) => {
+    const res = await route.fetch()
+    const body = await res.json()
+    const p = body.pins.find((x: { verdict?: string }) => x.verdict)
+    Object.assign(p, { name: '칩밀기테스트집', best: '시그니처 고추짬뽕과 탕수육', price: '고추짬뽕 10,000원 탕수육 18,000원', wait: '한 시간 넘게 기다림' })
+    await route.fulfill({ response: res, json: body })
+  })
+  await ready(page)
+  await page.evaluate(() => {
+    const original = naver.maps.Map.prototype.morph
+    naver.maps.Map.prototype.morph = function (...args) {
+      ;(window as Window & { searchedMap?: naver.maps.Map }).searchedMap = this
+      return original.apply(this, args)
+    }
+  })
+  await searchBox(page).fill('칩밀기테스트집')
+  await page.getByTestId('search-restaurant').first().click()
+  const chips = page.getByTestId('preview-card').getByTestId('pin-chips')
+  await expect(chips).toBeVisible({ timeout: 10_000 })
+  const map = () => page.evaluate(() => {
+    const m = (window as Window & { searchedMap?: naver.maps.Map }).searchedMap!
+    return { lat: m.getCenter().lat(), lng: m.getCenter().lng() }
+  })
+  // 카드가 뜨며 지도가 가게로 옮겨 가고(카드 높이를 재고 한 번 더 맞춘다) 멈출 때까지
+  let before = await map()
+  await expect.poll(async () => {
+    await page.waitForTimeout(1500)
+    const now = await map()
+    const still = Math.abs(now.lat - before.lat) < 1e-7 && Math.abs(now.lng - before.lng) < 1e-7
+    before = now
+    return still
+  }, { timeout: 15_000, intervals: [0] }).toBe(true)
+  // 아이폰 WebKit은 <button> 안의 가로 스크롤을 밀어 주지 않는다. 칩 줄은 버튼 밖에 있어야 한다
+  expect(await chips.evaluate((el) => el.closest('button') === null)).toBe(true)
+  // 칩을 민 손가락이 지도 쪽(문서)으로 새지 않는다
+  await page.evaluate(() => {
+    const w = window as Window & { leaked?: number }
+    w.leaked = 0
+    for (const t of ['touchstart', 'touchmove', 'pointerdown', 'pointermove']) document.addEventListener(t, () => { w.leaked!++ })
+  })
+  const b = (await chips.boundingBox())!
+  const y = b.y + b.height / 2
+  const cdp = await page.context().newCDPSession(page)
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', x: number) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] })
+  await touch('touchStart', b.x + b.width - 20)
+  for (let i = 1; i <= 10; i++) {
+    await touch('touchMove', b.x + b.width - 20 - i * 20)
+    await page.waitForTimeout(16)
+  }
+  await touch('touchEnd', 0)
+  await page.waitForTimeout(800)
+  expect(await chips.evaluate((el) => el.scrollLeft)).toBeGreaterThan(50)
+  expect(await page.evaluate(() => (window as Window & { leaked?: number }).leaked)).toBe(0)
+  const after = await map()
+  expect(Math.abs(after.lat - before.lat)).toBeLessThan(1e-6)
+  expect(Math.abs(after.lng - before.lng)).toBeLessThan(1e-6)
+  await expect(page.getByTestId('preview-card')).toBeVisible()
+})
+
 test('다른 지역 검색 필터가 걸린 채로 가게를 고르면 지도가 그 가게로 간다', async ({ page }) => {
   await ready(page)
   // '영등포' 전체 보기로 필터를 건다
