@@ -161,9 +161,11 @@ for (const scheme of ['light', 'dark'] as const) {
 
 test('홈 HTML(자바스크립트 없이)에 오구리웍스 다른 서비스 링크가 있다', async ({ request }) => {
   const html = await (await request.get('/')).text()
-  expect(html).toContain('href="https://kangraemin.github.io/oneul-kkum/"')
+  // 유입 효과를 계산기 쪽 GA에서 볼 수 있게 utm을 붙인다(&는 HTML에서 &amp;)
+  const utm = '?utm_source=mukmap&amp;utm_medium=referral'
+  expect(html).toContain(`href="https://kangraemin.github.io/oneul-kkum/${utm}"`)
   expect(html).toContain('생활 계산기')
-  // 계산기 하위 페이지도 바로 찾게 딥링크 3개
-  for (const sub of ['yeonbong', 'toejikgeum', 'junggae']) expect(html).toContain(`href="https://kangraemin.github.io/oneul-kkum/${sub}/"`)
-  for (const name of ['연봉 실수령액', '퇴직금 계산기', '부동산 중개수수료']) expect(html).toContain(name)
+  // 계산기 하위 페이지도 바로 찾게 딥링크
+  for (const sub of ['yeonbong/', 'toejikgeum/', 'junggae/', 'hyuil/2027/']) expect(html).toContain(`href="https://kangraemin.github.io/oneul-kkum/${sub}${utm}"`)
+  for (const name of ['연봉 실수령액', '퇴직금 계산기', '부동산 중개수수료', '2027 공휴일']) expect(html).toContain(name)
 })
