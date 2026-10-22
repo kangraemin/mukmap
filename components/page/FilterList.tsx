@@ -151,7 +151,7 @@ export default function FilterList({ h1, sub, restaurants: slimmed, channels, fa
       <ol className="mt-3 grid gap-x-5 gap-y-8 sm:grid-cols-2">
         {list.slice(0, shown).map((r) => (
           <li key={r.id}>
-            <SceneCard restaurant={r} href={`/restaurant/${r.id}`} />
+            <SceneCard restaurant={r} href={`/restaurant/${r.id}`} firstChannel={picked.channel} />
             {notes?.[r.id] && <p data-testid="walk" className="mt-1.5 text-meta font-bold text-sub">{notes[r.id]}</p>}
           </li>
         ))}

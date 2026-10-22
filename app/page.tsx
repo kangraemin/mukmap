@@ -3,6 +3,8 @@ import { HREFLANG, LANGS } from '@/lib/i18n'
 import ReactDOM from 'react-dom'
 import HomeExplorer from '@/components/HomeExplorer'
 import { getAll, getChannelSummaries, getRegionSummaries } from '@/lib/data'
+import { newThisWeek } from '@/lib/related'
+import { visitorsOf } from '@/lib/format'
 import { SITE_NAME, SITE_URL, faqJsonLd, jsonLdScript, todayLabel } from '@/lib/seo'
 
 export const revalidate = 3600
@@ -33,6 +35,7 @@ export default async function Home() {
   ReactDOM.preconnect('https://oapi.map.naver.com')
   ReactDOM.preload(`https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID}`, { as: 'script' })
   ReactDOM.preload('/api/pins', { as: 'fetch', crossOrigin: 'anonymous' })
+  const weekly = newThisWeek(restaurants)
   const names = channels.slice(0, 4).map((c) => c.name).join(', ')
   const faq = [
     {
@@ -49,6 +52,36 @@ export default async function Home() {
     <>
       <h1 className="sr-only">유튜버 맛집 지도 먹맵</h1>
       <HomeExplorer channels={channels}>
+        {weekly.length > 0 && (
+          <section aria-labelledby="weekly" className="mb-8">
+            <h2 id="weekly" className="text-title font-bold text-ink">이번 주 새 영상에 나온 곳</h2>
+            <ul className="mt-2">
+              {weekly.map(({ r, at }, i) => (
+                <li key={r.id}>
+                  <a
+                    href={`/restaurant/${r.id}`}
+                    data-track="weekly_click"
+                    data-track-id={r.id}
+                    data-track-rank={i + 1}
+                    className="flex min-h-[52px] items-center justify-between gap-3 border-b border-line py-2"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-body text-ink">{r.name}</span>
+                      <span className="block truncate text-meta text-sub">
+                        {[visitorsOf(r).map((v) => v.name).join('·'), r.region, r.city].filter(Boolean).join(', ')}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-meta text-sub">{Number(at.slice(5, 7))}월 {Number(at.slice(8, 10))}일</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+            <a href="/this-week" data-track="weekly_click" data-track-id="all" className="mt-3 inline-flex min-h-[40px] items-center rounded-full border border-line px-3.5 text-body text-ink">
+              이번 주 새로 뜬 곳 전체 보기
+            </a>
+          </section>
+        )}
+
         <section aria-labelledby="by-youtuber">
           <h2 id="by-youtuber" className="text-title font-bold text-ink">유튜버별 맛집</h2>
           <ul className="mt-2">

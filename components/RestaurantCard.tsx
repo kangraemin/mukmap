@@ -9,9 +9,11 @@ interface CardProps {
   href?: string
   onClick?: () => void
   selected?: boolean
+  /** 유튜버 칩으로 거른 목록이면 그 유튜버(slug 또는 id)를 맨 앞에 보여 준다 */
+  firstChannel?: string
 }
 
-function Shell({ href, onClick, className, children }: Omit<CardProps, 'restaurant' | 'selected'> & {
+function Shell({ href, onClick, className, children }: Omit<CardProps, 'restaurant' | 'selected' | 'firstChannel'> & {
   className: string
   children: React.ReactNode
 }) {
@@ -61,8 +63,11 @@ function RestaurantCard({ restaurant: r, href, onClick, selected }: CardProps) {
 export default React.memo(RestaurantCard)
 
 /** 큰 카드: 영상 장면 위에 자막을 얹는다. 유튜버·지역 페이지 목록에 쓴다 */
-export function SceneCard({ restaurant: r, href, onClick }: CardProps) {
+export function SceneCard({ restaurant: r, href, onClick, firstChannel }: CardProps) {
   const lead = leadVideo(r)
+  const faces = visitorsOf(r)
+  const at = faces.findIndex((f) => f.slug === firstChannel || f.id === firstChannel)
+  if (at > 0) faces.unshift(...faces.splice(at, 1))
   return (
     <Shell href={href} onClick={onClick} className="group block w-full">
       <span className="relative block aspect-video overflow-hidden rounded-card bg-well">
@@ -81,7 +86,7 @@ export function SceneCard({ restaurant: r, href, onClick }: CardProps) {
           {lead?.price && <span className="text-sub"> / {lead.price}</span>}
         </span>
       )}
-      <span className="mt-2 block"><VisitorLine faces={visitorsOf(r)} /></span>
+      <span className="mt-2 block"><VisitorLine faces={faces} /></span>
     </Shell>
   )
 }

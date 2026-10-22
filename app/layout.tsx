@@ -66,10 +66,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         {/* 애드센스 자동 광고. 웹에만 넣는다(토스 앱 번들은 토스 배너를 쓴다) */}
         <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4785237655148075" crossOrigin="anonymous" />
         {/* GA4는 화면을 그리기 전에 깔아 둔다. 첫 화면 이벤트(app_open)가 gtag 도착 전에 나가도 줄에 쌓인다(lib/analytics.ts).
-            운영 주소에서만 켜고, ?ga_debug=1 이면 DebugView로, 기기에 mk_internal을 두면 내부 트래픽으로 보낸다 */}
+            운영 주소에서만 켜고, 자동화 브라우저(navigator.webdriver: e2e·봇)는 빼고, ?ga_debug=1 이면 DebugView로, 기기에 mk_internal을 두면 내부 트래픽으로 보낸다 */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}if(location.hostname==='${new URL(SITE_URL).hostname}'){gtag('js',new Date());var c={};if(/[?&]ga_debug=1/.test(location.search))c.debug_mode=true;try{if(localStorage.getItem('mk_internal'))c.traffic_type='internal'}catch(e){}gtag('config','${GA_ID}',c)}`,
+            __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}if(location.hostname==='${new URL(SITE_URL).hostname}'&&!navigator.webdriver){gtag('js',new Date());var c={};if(/[?&]ga_debug=1/.test(location.search))c.debug_mode=true;try{if(localStorage.getItem('mk_internal'))c.traffic_type='internal'}catch(e){}gtag('config','${GA_ID}',c)}`,
           }}
         />
       </head>

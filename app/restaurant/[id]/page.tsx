@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import DetailPanel from '@/components/DetailPanel'
 import SiteHeader from '@/components/page/SiteHeader'
-import { getRestaurant } from '@/lib/data'
+import { getAll, getRestaurant } from '@/lib/data'
+import { distLabel, nearbyOf } from '@/lib/related'
 import { areaOf, leadVideo, thumbOf, visitorsOf } from '@/lib/format'
 import { iGa } from '@/lib/josa'
 import { TOSS_BUTTON, tossHref } from '@/lib/tossLink'
@@ -69,6 +70,7 @@ export default async function RestaurantPage({ params }: Props) {
     { name: r.name, path: `/restaurant/${r.id}` },
   ]
   const visitors = visitorsOf(r)
+  const nearby = nearbyOf(r, (await getAll()).restaurants)
 
   return (
     <>
@@ -80,6 +82,33 @@ export default async function RestaurantPage({ params }: Props) {
           channelHref={(slug) => pathOf('youtuber', slug)}
           shareSlot={<PageShareButton query={`place=${r.id}`} text={shareText(r)} />}
         />
+        {nearby.length > 0 && (
+          <section aria-labelledby="nearby" className="px-4 pt-4 sm:px-0">
+            <h2 id="nearby" className="text-body font-bold text-ink">근처 다른 집</h2>
+            <ul className="mt-1">
+              {nearby.map((n) => (
+                <li key={n.r.id}>
+                  <a
+                    href={`/restaurant/${n.r.id}`}
+                    data-track="related_click"
+                    data-track-from={r.id}
+                    data-track-id={n.r.id}
+                    data-track-same={n.same ? 1 : 0}
+                    className="flex min-h-[52px] items-center justify-between gap-3 border-b border-line py-2"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-body text-ink">{n.r.name}</span>
+                      <span className="block truncate text-meta text-sub">
+                        {[n.r.category, visitorsOf(n.r).map((v) => v.name).join('·')].filter(Boolean).join(', ')}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-meta text-sub">{distLabel(n.km)}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         <section aria-label="더 보기" className="px-4 pb-[calc(40px+env(safe-area-inset-bottom))] pt-2 sm:px-0">
           <h2 className="text-body font-bold text-ink">이 지역 더 보기</h2>
           <ul className="mt-2 flex flex-wrap gap-2">

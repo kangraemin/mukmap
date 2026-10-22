@@ -32,6 +32,8 @@ export type EventName =
   | 'near_off'          // 근처 알림 끔
   | 'near_rejected'     // 근처 알림 동의창 거절. from
   | 'near_fail'         // 근처 알림 켜기·끄기 실패. from, msg
+  | 'related_click'     // 가게 페이지 '근처 다른 집'. from, id, same(같은 유튜버 1)
+  | 'weekly_click'      // 홈 '이번 주 새 영상에 나온 곳'. id, rank
   | 'toss_open_click'   // 웹의 '토스 앱으로 열기'. where
   | 'app_error'         // 화면 오류. where, msg
 

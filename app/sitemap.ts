@@ -3,6 +3,7 @@ import { MIN_INDEXABLE, getAll, translatedNames } from '@/lib/data'
 import { LANGS, REGIONS, langPath } from '@/lib/i18n'
 import { abs, pathOf } from '@/lib/seo'
 import type { RestaurantWithVideos } from '@/lib/types'
+import { newThisWeek } from '@/lib/related'
 import { STATIONS, nearStation } from '@/lib/stations'
 
 export const revalidate = 3600
@@ -16,6 +17,9 @@ function latest(rs: RestaurantWithVideos[]) {
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const { channels, restaurants } = await getAll()
   const out: MetadataRoute.Sitemap = [{ url: abs('/'), lastModified: latest(restaurants), changeFrequency: 'daily' }]
+  // 매주 바뀌는 '이번 주 새로 뜬 곳'(app/this-week)
+  const week = newThisWeek(restaurants, Date.now(), 60).map((x) => x.r)
+  if (week.length >= MIN_INDEXABLE) out.push({ url: abs('/this-week'), lastModified: latest(week), changeFrequency: 'daily' })
   const group = new Map<string, RestaurantWithVideos[]>()
   const add = (path: string, r: RestaurantWithVideos) => {
     const list = group.get(path) || []

@@ -45,6 +45,8 @@
 | `alert_off` | 알림 끔 (토스) | `channel` | |
 | `alert_rejected` | 토스 동의창에서 거절 | `channel` | |
 | `alert_fail` | 알림 켜기·끄기 실패 (토스) | `channel`, `msg` | |
+| `related_click` | 가게 페이지 '근처 다른 집'을 누름 | `from`(보던 가게), `id`, `same`(같은 유튜버 1) | `{from:142, id:150, same:1}` |
+| `weekly_click` | 홈 '이번 주 새 영상에 나온 곳'을 누름 | `id`(가게, 전체 보기는 all), `rank` | `{id:2399, rank:1}` |
 | `toss_open_click` | 웹의 '토스 앱으로 열기' | `where`(restaurant·list), `id` | `{where:"restaurant", id:142}` |
 | `app_error` | 화면 오류 | `where`(page·window·promise·render), `msg`(100자까지) | |
 
