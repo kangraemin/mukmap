@@ -9,7 +9,7 @@ import { PinRow, PreviewCard } from '@/components/PinCard'
 import ListSheet, { HALF_RATIO, PEEK_PX, type SheetSnap } from '@/components/ListSheet'
 import { HeartIcon } from '@/components/HeartIcon'
 import { ShareIcon } from '@/components/ShareIcon'
-import { listMessage, placeMessage, type ShareMessage } from '@/lib/share'
+import { listMessage, placeMessage, placeNameMessage, type ShareMessage } from '@/lib/share'
 import { webShare } from '@/lib/webShare'
 import { localLikeStore, parseLikes, type LikeStore } from '@/lib/likes'
 import Toast from '@/components/Toast'
@@ -60,6 +60,10 @@ interface HomeExplorerProps {
   likeStore?: LikeStore
   /** 유튜버를 골랐을 때 목록 머리줄에 붙일 버튼. 토스 앱은 '새 맛집 알림' 버튼을 넘긴다 */
   channelAction?: (channel: { id: string; name: string }) => React.ReactNode
+  /** 찜한 곳만 볼 때 목록 머리줄에 붙일 버튼. 토스 앱은 '근처 새 맛집 알림' 버튼을 넘긴다 */
+  likedAction?: (likedIds: number[]) => React.ReactNode
+  /** 찜을 켜거나 끈 뒤 부른다. 바뀐 뒤의 찜 전체와 이번에 켰는지 */
+  onLikeChange?: (likedIds: number[], liked: boolean) => void
 }
 
 function readNav(): Nav {
@@ -105,7 +109,7 @@ function XIcon() {
   )
 }
 
-export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true, hostNav = false, detailAd, listAd, previewAd, onShare = webShare, likeStore = localLikeStore, channelAction }: HomeExplorerProps) {
+export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true, hostNav = false, detailAd, listAd, previewAd, onShare = webShare, likeStore = localLikeStore, channelAction, likedAction, onLikeChange }: HomeExplorerProps) {
   const [pins, setPins] = useState<Pin[] | null>(null)
   const [bounds, setBounds] = useState<Bounds | null>(null)
   // 핀을 누르면 지도가 그 가게로 다가간다. 목록은 누르기 전 지도 기준으로 붙잡아 둬서, 카드를 닫아도 보던 목록 그대로다
@@ -532,18 +536,21 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
 
   const handleToastClose = useCallback(() => setToast(''), [])
 
+  // 바깥(onLikeChange)에 한 번만 알리려고 상태 갱신 함수 밖에서 계산한다(StrictMode는 갱신 함수를 두 번 부른다)
+  const likesRef = useRef(likes)
+  likesRef.current = likes
   const toggleLike = useCallback((id: number) => {
-    setLikes((cur) => {
-      const next = new Set(cur)
-      const on = !next.has(id)
-      if (on) next.add(id)
-      else next.delete(id)
-      likeStore.set(JSON.stringify(Array.from(next))).catch(() => {})
-      track('like_toggle', { id, on, count: next.size })
-      setToast(on ? '찜했어요' : '찜을 풀었어요')
-      return next
-    })
-  }, [likeStore])
+    const next = new Set(likesRef.current)
+    const on = !next.has(id)
+    if (on) next.add(id)
+    else next.delete(id)
+    likesRef.current = next
+    setLikes(next)
+    likeStore.set(JSON.stringify(Array.from(next))).catch(() => {})
+    track('like_toggle', { id, on, count: next.size })
+    setToast(on ? '찜했어요' : '찜을 풀었어요')
+    onLikeChange?.(Array.from(next), on)
+  }, [likeStore, onLikeChange])
 
   const place = [region, city].filter(Boolean).join(' ')
   // 카드가 떠 있으면 지도에서 가려지는 위(검색·칩)·아래(카드) 높이. 고른 핀을 그 사이 가운데에 둔다
@@ -595,6 +602,8 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   const sharePlace = (id: number, query: string) => {
     const p = pinById.get(id)
     if (p) doShare(placeMessage(p, query, nameOf))
+    // 핀 목록보다 상세가 먼저 뜬 경우에도 누르면 공유한다
+    else if (detail?.id === id) doShare(placeNameMessage(detail.name, detail.address, query))
   }
   const search = (
     <SearchBar
@@ -720,6 +729,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       )}
       <div className="flex flex-shrink-0 items-center gap-1">
         {channelAction && channelId && channelAction({ id: channelId, name: nameOf(channelId) || '' })}
+        {likedAction && likedOnly && likedAction(Array.from(likes))}
         {share && (
           <button
             type="button"

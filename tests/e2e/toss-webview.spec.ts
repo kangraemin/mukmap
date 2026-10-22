@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 // 토스 미니앱 번들을 토스 웹뷰 크기로 띄워, 화면이 옆으로 밀리거나 확대되지 않는지 본다.
 // 실제 사고: 검색창 글자가 15px라 iOS가 입력할 때 화면을 확대한 채로 두어 왼쪽이 잘리고 카드가 오른쪽으로 넘쳤다.

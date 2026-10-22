@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 // 웹(mukmap.kr) 공유·찜·역 맛집 페이지, 목록의 토스 앱 버튼
 

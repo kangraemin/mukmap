@@ -345,19 +345,26 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey, sdkLoaded])
 
+  // 핀보다 focus가 먼저 오면(공유 링크 ?place, 느린 망) 못 옮긴 focus를 기억해 두고 그 가게 핀이 오면 한 번 옮긴다
+  const missedFocus = useRef<typeof focus>(null)
+  const appliedFocus = useRef<typeof focus>(null)
+  const missedReady = !!missedFocus.current && 'id' in missedFocus.current && pins.some((x) => x.id === (missedFocus.current as { id: number }).id)
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !focus) return
+    if (!map || !focus || appliedFocus.current === focus) return
     if ('lats' in focus) {
+      appliedFocus.current = focus
       if (focus.lats.length) flyToFit(map, focus.lats, focus.lngs, 60, fitBottom)
       return
     }
     const p = 'id' in focus ? pins.find((x) => x.id === focus.id) : focus
+    missedFocus.current = p ? null : focus
     if (!p) return
+    appliedFocus.current = focus
     const zoom = 'id' in focus ? Math.max(map.getZoom(), 15) : 'zoom' in focus && focus.zoom ? focus.zoom : 16
     morphSure(map, fitBottom ? centerAbove(p.lat, p.lng, zoom, -fitBottom / 2) : new naver.maps.LatLng(p.lat, p.lng), zoom, 500)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus, sdkLoaded])
+  }, [focus, sdkLoaded, missedReady])
 
   // 카드가 뜨면 고른 가게로 확대해, 위 검색·칩과 카드 사이 빈 곳 가운데에 둔다
   const insetTop = insets?.top ?? null

@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
 import { runAlerts } from '@/lib/alerts'
+import { runNearAlerts } from '@/lib/alerts-near'
 import { mtlsReady } from '@/lib/toss-message'
 
 export const dynamic = 'force-dynamic'
+// GET 처리기 안의 Supabase 조회(fetch)를 Next가 캐시해 새로 켠 사람이 안 보였다. 매번 새로 읽는다
+export const fetchCache = 'force-no-store'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
@@ -16,7 +19,10 @@ export async function GET(request: NextRequest) {
   }
   const dry = request.nextUrl.searchParams.get('dry') === '1'
   if (!dry && !mtlsReady()) return NextResponse.json({ error: 'mTLS 인증서 없음(TOSS_MTLS_CERT/KEY)' }, { status: 503 })
-  const result = await runAlerts(createServiceClient(), { dry })
-  console.log('[alerts]', JSON.stringify({ dry, sent: result.sent, failed: result.failed, plans: result.plans }))
-  return NextResponse.json({ dry, ...result })
+  const db = createServiceClient()
+  const { notified, ...result } = await runAlerts(db, { dry })
+  // 근처 알림은 유튜버 알림 다음에. 오늘 유튜버 알림을 받은 사람은 건너뛴다(하루 한 통)
+  const near = await runNearAlerts(db, { dry, skip: notified, now: result.now })
+  console.log('[alerts]', JSON.stringify({ dry, sent: result.sent, failed: result.failed, plans: result.plans, near }))
+  return NextResponse.json({ dry, ...result, near })
 }

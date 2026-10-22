@@ -31,5 +31,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/en/:path*', '/ja/:path*', '/zh-cn/:path*', '/zh-tw/:path*', '/en', '/ja', '/zh-cn', '/zh-tw', '/api/pins', '/api/restaurants/:path*', '/api/channels', '/api/search', '/api/station', '/api/client-log', '/api/alerts'],
+  matcher: ['/en/:path*', '/ja/:path*', '/zh-cn/:path*', '/zh-tw/:path*', '/en', '/ja', '/zh-cn', '/zh-tw', '/api/pins', '/api/restaurants/:path*', '/api/channels', '/api/search', '/api/station', '/api/client-log', '/api/alerts', '/api/alerts/near'],
 }

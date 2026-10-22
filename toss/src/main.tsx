@@ -8,6 +8,7 @@ import RetryNotice from '@/components/RetryNotice';
 import { addSink, listenTrackedClicks, track } from '@/lib/analytics';
 import AdBanner from './AdBanner';
 import AlertButton from './AlertButton';
+import { NearAlertButton, NearAlertToast, nearLikeChange } from './NearAlert';
 import { preloadMapSdk } from '@/components/NaverMap';
 import { loadPins } from '@/lib/pins';
 import type { Channel } from '@/lib/types';
@@ -159,6 +160,8 @@ class Boundary extends Component<{ children: ReactNode }, { err: boolean }> {
   }
 }
 
+const onLikeChange = nearLikeChange(API);
+
 function App() {
   const [channels, setChannels] = useState<ChannelRow[] | null>(null);
   // 유튜버 목록을 끝내 못 받으면 안내와 다시 받기 버튼. tryKey를 올리면 다시 받는다
@@ -205,7 +208,10 @@ function App() {
         onShare={shareLink}
         likeStore={tossLikeStore}
         channelAction={(ch) => <AlertButton key={ch.id} api={API} channel={ch} />}
+        likedAction={(ids) => <NearAlertButton api={API} ids={ids} />}
+        onLikeChange={onLikeChange}
       />
+      <NearAlertToast />
       {failed && (
         <RetryNotice
           testId="channels-retry"

@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 // 공유 링크로 들어왔을 때: 공유한 가게·조건이 바로 보이고, 뒤로가기·조건 풀기 같은 다음 동작이 어색하지 않다
 const ID = 142
@@ -73,8 +74,9 @@ test('유튜버·지역 공유 링크(?yt&region)로 열면 그 유튜버 칩이
 })
 
 // 토스 번들: 공유 버튼이 있고, 누르면 받은 사람이 같은 화면으로 들어올 주소를 만든다
-async function openToss(page: Page, query = '') {
+async function openToss(page: Page, query = '', holdPins?: Promise<void>) {
   await page.route('https://mukmap.kr/api/**', async (route) => {
+    if (holdPins && /\/api\/pins/.test(route.request().url())) await holdPins
     try {
       const res = await route.fetch()
       await route.fulfill({ response: res, headers: { ...res.headers(), 'access-control-allow-origin': '*' } })
@@ -93,6 +95,20 @@ test('토스: 상세 공유 버튼은 그 가게 상세 주소(place=)를 공유
   await expect(btn).toBeVisible({ timeout: 30_000 })
   await btn.click()
   await expect.poll(() => shared(page)).toBe(`place=${ID}`)
+})
+
+test('토스: 지도 핀이 아직 안 왔어도 상세 공유를 누르면 그 가게 이름으로 공유한다', async ({ page }) => {
+  // 핀 목록 응답을 붙잡아 둔다(느린 망에서 상세가 먼저 뜬 상황)
+  let release = () => {}
+  const held = new Promise<void>((r) => { release = r })
+  await openToss(page, `?place=${ID}`, held)
+  const btn = page.getByTestId('share-detail')
+  await expect(btn).toBeVisible({ timeout: 30_000 })
+  const name = (await page.getByTestId('detail-view').getByRole('heading').first().textContent())!.trim()
+  await btn.click()
+  await expect.poll(() => shared(page)).toBe(`place=${ID}`)
+  expect(await page.evaluate(() => document.documentElement.dataset.mkShareText)).toContain(name)
+  release()
 })
 
 test('토스: 지도 카드 공유 버튼은 그 가게 카드 주소(pin=)를 공유한다', async ({ page }) => {

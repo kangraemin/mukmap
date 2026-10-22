@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 // 공유 왕복: 토스 번들에서 공유 버튼을 눌러 나온 주소를 토스가 실제로 감싸는 방식(minion → og.toss.im → onelink → supertoss → intoss)으로
 // 감쌌다가 받는 쪽처럼 풀어서 다시 열면, 보낸 사람이 보던 화면이 그대로 나와야 한다

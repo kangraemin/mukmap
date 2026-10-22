@@ -11,7 +11,7 @@ export interface ChannelPlan {
   subscribers: number
 }
 
-async function all<T>(q: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>) {
+export async function all<T>(q: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>) {
   const rows: T[] = []
   for (let from = 0; ; from += 1000) {
     const { data, error } = await q(from, from + 999)
@@ -44,7 +44,7 @@ export async function runAlerts(db: SupabaseClient, { dry }: { dry: boolean }) {
     db.from('alert_subs').select('anon_key, channel_id, created_at').order('created_at').range(a, b))
   const byChannel = new Map<string, typeof subs>()
   for (const s of subs) byChannel.set(s.channel_id, [...(byChannel.get(s.channel_id) ?? []), s])
-  if (!byChannel.size) return { now, plans: [] as ChannelPlan[], sent: 0, failed: [] as unknown[] }
+  if (!byChannel.size) return { now, plans: [] as ChannelPlan[], sent: 0, failed: [] as unknown[], notified: new Set<string>() }
 
   const ids = Array.from(byChannel.keys())
   const [{ data: states, error: e1 }, { data: chs, error: e2 }] = await Promise.all([
@@ -57,6 +57,8 @@ export async function runAlerts(db: SupabaseClient, { dry }: { dry: boolean }) {
 
   const plans: ChannelPlan[] = []
   let sent = 0
+  // 오늘 유튜버 알림을 받은 사람. 같은 날 근처 알림은 보내지 않는다
+  const notified = new Set<string>()
   const failed: unknown[] = []
   for (const [channelId, list] of Array.from(byChannel)) {
     // 처음 확인하는 유튜버는 가장 먼저 알림을 켠 때부터 센다
@@ -75,9 +77,10 @@ export async function runAlerts(db: SupabaseClient, { dry }: { dry: boolean }) {
         continue
       }
       sent += items.length
+      for (const it of items) notified.add(it.anonKey)
     }
     const { error } = await db.from('alert_state').upsert({ channel_id: channelId, checked_at: now })
     if (error) throw new Error(error.message)
   }
-  return { now, plans, sent, failed }
+  return { now, plans, sent, failed, notified }
 }

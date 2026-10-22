@@ -24,6 +24,12 @@ function who(ids: string[], nameOf: (id: string) => string) {
   return names.length > 2 ? `${names.slice(0, 2).join('·')} 외 ${names.length - 2}명` : names.join('·')
 }
 
+/** 지도 핀이 아직 안 왔을 때 상세 정보만으로 만드는 가게 공유 */
+export function placeNameMessage(name: string, address: string | null, query: string): ShareMessage {
+  const lines = [`🍽️ 유튜버가 다녀간 ‘${name}’`, address || '', '영상 속 장면이랑 위치, 먹맵에서 바로 보기 👇']
+  return { query, text: lines.filter(Boolean).join('\n') }
+}
+
 /** 가게 하나(지도 카드·상세) */
 export function placeMessage(p: Pin, query: string, nameOf: (id: string) => string): ShareMessage {
   const area = [p.region, p.city].filter(Boolean).join(' ')

@@ -28,6 +28,10 @@ export type EventName =
   | 'alert_off'         // 알림 끔. channel
   | 'alert_rejected'    // 토스 동의창에서 거절. channel
   | 'alert_fail'        // 켜기·끄기 실패. channel, msg
+  | 'near_on'           // 토스 '찜한 곳 근처 새 맛집 알림' 켬. from(like|button), agreed, count
+  | 'near_off'          // 근처 알림 끔
+  | 'near_rejected'     // 근처 알림 동의창 거절. from
+  | 'near_fail'         // 근처 알림 켜기·끄기 실패. from, msg
   | 'toss_open_click'   // 웹의 '토스 앱으로 열기'. where
   | 'app_error'         // 화면 오류. where, msg
 

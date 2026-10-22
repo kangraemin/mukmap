@@ -6,40 +6,7 @@ import { track } from '@/lib/analytics';
 import { ALERT_TEMPLATE } from '@/lib/alerts-shared';
 import { iGa } from '@/lib/josa';
 import { report } from './debug';
-
-type Agreement = 'newAgreement' | 'alreadyAgreed' | 'agreementRejected';
-interface Bridge {
-  agree: () => Promise<Agreement>;
-  anonKey: () => Promise<string | null>;
-}
-
-// 로컬 테스트(토스 밖)에서는 window.__mkAlertsStub 으로 토스 기능을 대신한다
-declare global {
-  interface Window { __mkAlertsStub?: Bridge }
-}
-
-const tossBridge: Bridge = {
-  agree: async () => {
-    const { Notification } = await import('@apps-in-toss/web-framework');
-    if (!Notification.requestAgreement.isSupported()) throw new Error('UNSUPPORTED_APP_VERSION');
-    return new Promise<Agreement>((resolve, reject) => {
-      const cleanup = Notification.requestAgreement({
-        options: { templateCode: ALERT_TEMPLATE },
-        onEvent: ({ type }) => { cleanup(); resolve(type); },
-        onError: (e) => { cleanup(); reject(e); },
-      });
-    });
-  },
-  anonKey: async () => {
-    const { User } = await import('@apps-in-toss/web-framework');
-    const r = await User.getAnonymousKey();
-    return r && typeof r === 'object' ? r.hash : null;
-  },
-};
-const bridge = () => (import.meta.env.DEV && window.__mkAlertsStub) || tossBridge;
-
-let keyP: Promise<string | null> | null = null;
-const anonKey = () => (keyP ??= bridge().anonKey().catch((e) => { report('anon-key-fail', String(e)); keyP = null; return null; }));
+import { anonKey, bridge } from './alertBridge';
 
 // 켜 둔 유튜버 목록은 앱을 연 뒤 한 번만 받아 모든 버튼이 같이 쓴다
 let subsP: Promise<Set<string>> | null = null;
@@ -52,7 +19,7 @@ function loadSubs(api: string) {
   }).catch((e) => { report('alerts-load-fail', String(e)); subsP = null; return new Set<string>(); }));
 }
 
-function BellIcon({ on }: { on: boolean }) {
+export function BellIcon({ on }: { on: boolean }) {
   return (
     <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
       <path d="M10 3a4.5 4.5 0 0 0-4.5 4.5v2.8L4 13h12l-1.5-2.7V7.5A4.5 4.5 0 0 0 10 3Zm-1.8 12a1.8 1.8 0 0 0 3.6 0" fill={on ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
@@ -101,7 +68,7 @@ export default function AlertButton({ api, channel }: { api: string; channel: { 
         setToast(`${channel.name} 새 맛집 알림을 껐어요`);
         return;
       }
-      const agreed = await bridge().agree();
+      const agreed = await bridge().agree(ALERT_TEMPLATE);
       if (agreed === 'agreementRejected') {
         track('alert_rejected', { channel: channel.id }, 'click');
         return;

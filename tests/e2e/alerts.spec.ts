@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
+import { nearNew } from '@/lib/alerts-near'
 
 // '유튜버 새 맛집 알림'과 역 페이지 공유 미리보기.
 // 신청 API는 실제 DB에 쓰므로 테스트 전용 키로 넣고 끝나면 지운다.
@@ -68,12 +69,6 @@ test('토스: 유튜버를 고르면 알림 버튼이 뜨고, 동의하면 켜�
       // 테스트가 먼저 끝나 페이지가 닫힌 경우
     }
   })
-  // 네이버 지도 키에는 localhost:5174가 등록돼 있지 않아 인증이 401이다. 등록된 3000 주소로 바꿔 묻는다
-  await page.route(/\/\/oapi\.map\.naver\.com\/v3\/auth/, (route) => {
-    const u = new URL(route.request().url())
-    u.searchParams.set('url', 'http://localhost:3000/')
-    return route.continue({ url: u.toString(), headers: { ...route.request().headers(), referer: 'http://localhost:3000/' } })
-  })
   await page.goto(TOSS)
   await expect(page.getByTestId('intro')).toHaveCount(0, { timeout: 15_000 })
   await expect(page.getByTestId('alert-toggle')).toHaveCount(0)
@@ -101,4 +96,111 @@ test('토스: 유튜버를 고르면 알림 버튼이 뜨고, 동의하면 켜�
   await toggle.click()
   await expect(toggle).toHaveAttribute('aria-pressed', 'false')
   expect(calls.find((c) => c.on === false)?.channelId).toBe(onCall.channelId)
+})
+
+test('근처 알림 API: 켜면 찜 목록을 통째로 맞추고, 끄면 지운다. 예약 실행(dry)이 이 사람을 센다', async ({ request }) => {
+  const anonKey = `e2e-near-${test.info().project.name.replace(/\W/g, '')}-${Date.now()}`
+  const post = (data: object) => request.post('/api/alerts/near', { data, headers: { Origin: ORIGIN } })
+
+  expect((await post({ anonKey: 'x' })).status()).toBe(400)
+  expect((await post({ anonKey, on: true, ids: ['a'] })).status()).toBe(400)
+  expect((await (await post({ anonKey })).json()).on).toBe(false)
+
+  const on = await post({ anonKey, on: true, ids: [142, 142, 999999999] })
+  expect(on.status()).toBe(200)
+  expect(on.headers()['access-control-allow-origin']).toBe(ORIGIN)
+  // 겹친 id는 하나로, 없는 가게는 버린다
+  expect((await on.json()).count).toBe(1)
+  expect((await (await post({ anonKey })).json()).on).toBe(true)
+  expect((await (await post({ anonKey, on: true, ids: [] })).json()).count).toBe(0)
+
+  const dry = await request.get('/api/cron/alerts?dry=1', { headers: { authorization: `Bearer ${cronSecret()}` } })
+  expect(dry.status()).toBe(200)
+  expect((await dry.json()).near.plan.people).toBeGreaterThanOrEqual(1)
+
+  expect((await post({ anonKey, on: false })).status()).toBe(200)
+  expect((await (await post({ anonKey })).json()).on).toBe(false)
+})
+
+test('토스: 처음 찜할 때만 근처 알림 동의를 묻고, 동의하면 찜 목록을 맞춘다. 찜한 곳 목록 버튼으로 끈다', async ({ page }) => {
+  let asked = 0
+  let agreement = 'agreementRejected'
+  await page.exposeFunction('__agreement', (code: string) => { if (code === 'mukmap-kr-near-place') asked++; return agreement })
+  await page.addInitScript(() => {
+    ;(window as unknown as { __mkAlertsStub: unknown }).__mkAlertsStub = {
+      agree: (code: string) => (window as unknown as { __agreement: (c: string) => Promise<string> }).__agreement(code),
+      anonKey: async () => 'stub-anon-key-0123456789',
+    }
+  })
+  const calls: { anonKey: string; on?: boolean; ids?: number[] }[] = []
+  let serverOn = false
+  await page.route('https://mukmap.kr/api/**', async (route) => {
+    const req = route.request()
+    if (req.url().endsWith('/api/alerts/near')) {
+      const body = req.postDataJSON()
+      calls.push(body)
+      if (body.on !== undefined) serverOn = body.on
+      return route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: { on: serverOn, count: body.ids?.length ?? 0 } })
+    }
+    try {
+      const res = await route.fetch()
+      await route.fulfill({ response: res, headers: { ...res.headers(), 'access-control-allow-origin': '*' } })
+    } catch {
+      // 테스트가 먼저 끝나 페이지가 닫힌 경우
+    }
+  })
+
+  // 거절하면 그 뒤 찜에는 다시 묻지 않는다
+  await page.goto(`${TOSS}?pin=142`)
+  const like = page.getByTestId('preview-card').getByTestId('like')
+  await like.click({ timeout: 30_000 })
+  await expect.poll(() => asked).toBe(1)
+  await like.click()
+  await like.click()
+  await page.waitForTimeout(500)
+  expect(asked).toBe(1)
+  expect(calls.filter((c) => c.on !== undefined)).toEqual([])
+
+  // 30일이 지난 것처럼 기록을 지우고 다시 열면, 동의하는 순간 찜 목록을 보낸다
+  await page.evaluate(() => localStorage.removeItem('mukmap:near-asked:v1'))
+  agreement = 'newAgreement'
+  await page.reload()
+  const like2 = page.getByTestId('preview-card').getByTestId('like')
+  await expect(like2).toHaveAttribute('aria-pressed', 'true', { timeout: 30_000 })
+  await like2.click() // 풀기: 묻지 않는다
+  await like2.click() // 다시 찜: 묻는다
+  await expect.poll(() => asked).toBe(2)
+  await expect(page.getByTestId('near-toast')).toContainText('찜한 곳 근처에 새 맛집이 올라오면 알려 드릴게요')
+  await expect.poll(() => calls.find((c) => c.on === true)?.ids).toEqual([142])
+
+  // 켜진 뒤엔 찜을 풀면 서버 목록만 맞춘다(묻지 않는다)
+  await like2.click()
+  await expect.poll(() => calls.filter((c) => c.on === true).at(-1)?.ids).toEqual([])
+  expect(asked).toBe(2)
+  await like2.click()
+  await expect.poll(() => calls.filter((c) => c.on === true).at(-1)?.ids).toEqual([142])
+
+  await page.getByTestId('preview-card').getByRole('button', { name: '닫기' }).click()
+  await page.getByTestId('list-pill').click()
+  await page.getByTestId('list-view').getByTestId('liked-chip').click()
+  const toggle = page.getByTestId('near-toggle')
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+  expect(calls.at(-1)).toEqual({ anonKey: 'stub-anon-key-0123456789', on: false })
+})
+
+test('근처 판정: 찜한 곳 1km 안에서 확인 시각 뒤에 생긴 가게만 센다(찜한 가게 자신은 뺀다)', () => {
+  const at = (id: number, name: string, lat: number, lng: number, created_at = '2026-10-22T00:00:00Z') => ({ id, name, lat, lng, created_at })
+  const liked = [at(1, '홍대 찜', 37.5572, 126.9245, '2026-01-01T00:00:00Z'), at(2, '강남 찜', 37.4979, 127.0276, '2026-01-01T00:00:00Z')]
+  const fresh = [
+    at(1, '홍대 찜', 37.5572, 126.9245),          // 찜한 가게 자신
+    at(10, '홍대 500m', 37.5617, 126.9245),       // 약 0.5km
+    at(11, '홍대 800m', 37.5572, 126.9335),       // 약 0.8km
+    at(12, '홍대 2km', 37.5752, 126.9245),        // 약 2km
+    at(13, '강남 300m', 37.5006, 127.0276),
+    at(14, '홍대 옛 가게', 37.5580, 126.9245, '2026-10-01T00:00:00Z'), // 확인 시각 전
+  ]
+  expect(nearNew(liked, fresh, '2026-10-10T00:00:00Z')).toEqual({ count: 3, place: '홍대 찜' })
+  expect(nearNew(liked, [], '2026-10-10T00:00:00Z')).toEqual({ count: 0, place: '' })
 })

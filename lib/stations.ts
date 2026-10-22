@@ -28,7 +28,7 @@ export function stationBySlug(slug: string) {
   return STATIONS.find((s) => s.slug === slug) || null
 }
 
-function km(aLat: number, aLng: number, bLat: number, bLng: number) {
+export function km(aLat: number, aLng: number, bLat: number, bLng: number) {
   const r = Math.PI / 180
   const h = Math.sin(((bLat - aLat) * r) / 2) ** 2 + Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin(((bLng - aLng) * r) / 2) ** 2
   return 12742 * Math.asin(Math.sqrt(h))
