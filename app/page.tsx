@@ -94,7 +94,17 @@ export default async function Home() {
 
         <p className="mt-8 border-t border-line pt-4 text-meta text-sub">
           오구리웍스 다른 서비스:{' '}
-          <a href="https://kangraemin.github.io/oneul-kkum/" className="text-ink underline">생활 계산기</a>
+          {[
+            ['', '생활 계산기'],
+            ['yeonbong/', '연봉 실수령액'],
+            ['toejikgeum/', '퇴직금 계산기'],
+            ['junggae/', '부동산 중개수수료'],
+          ].map(([path, name], i) => (
+            <span key={path}>
+              {i > 0 && ', '}
+              <a href={`https://kangraemin.github.io/oneul-kkum/${path}`} className="text-ink underline">{name}</a>
+            </span>
+          ))}
         </p>
       </HomeExplorer>
       {jsonLdScript(faqJsonLd(faq))}
