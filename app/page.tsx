@@ -91,6 +91,11 @@ export default async function Home() {
           <h3 className="mt-5 text-body font-bold text-ink">{faq[1].q}</h3>
           <p className="mt-1 text-body text-sub">{faq[1].a}</p>
         </section>
+
+        <p className="mt-8 border-t border-line pt-4 text-meta text-sub">
+          오구리웍스 다른 서비스:{' '}
+          <a href="https://kangraemin.github.io/oneul-kkum/" className="text-ink underline">생활 계산기</a>
+        </p>
       </HomeExplorer>
       {jsonLdScript(faqJsonLd(faq))}
     </>

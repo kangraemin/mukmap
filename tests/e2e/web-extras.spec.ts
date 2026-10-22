@@ -158,3 +158,9 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(ratio(c.fg, c.bg)).toBeGreaterThanOrEqual(4.5)
   })
 }
+
+test('홈 HTML(자바스크립트 없이)에 오구리웍스 다른 서비스 링크가 있다', async ({ request }) => {
+  const html = await (await request.get('/')).text()
+  expect(html).toContain('href="https://kangraemin.github.io/oneul-kkum/"')
+  expect(html).toContain('생활 계산기')
+})
