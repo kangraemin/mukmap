@@ -1,6 +1,7 @@
 import { MIN_INDEXABLE, getChannelSummaries, getRegionSummaries, getAll } from '@/lib/data'
 import { RECENT_DAYS, newThisWeek, recentOf } from '@/lib/related'
 import { abs, pathOf, todayLabel } from '@/lib/seo'
+import { getPosts } from '@/lib/blog'
 
 export const revalidate = 3600
 
@@ -28,6 +29,7 @@ export async function GET() {
     '## 지역별 맛집',
     ...regions.map((r) => `- [${r.region} 유튜버 맛집 ${r.count}곳](${abs(pathOf('region', r.region))})`),
     '',
+    ...(getPosts().length ? ['## 먹맵 블로그 (데이터로 쓴 글)', ...getPosts().map((p) => `- [${p.title}](${abs(`/blog/${p.slug}`)}): ${p.description}`), ''] : []),
     '## 그 밖에',
     `- [사이트맵](${abs('/sitemap.xml')})`,
     `- [새로 추가된 가게 RSS](${abs('/feed.xml')})`,

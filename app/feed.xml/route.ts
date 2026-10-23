@@ -1,6 +1,7 @@
 import { getAll } from '@/lib/data'
 import { areaOf, leadVideo, visitorsOf } from '@/lib/format'
 import { abs } from '@/lib/seo'
+import { getPosts } from '@/lib/blog'
 
 export const revalidate = 3600
 
@@ -17,7 +18,12 @@ export async function GET() {
     const url = abs(`/restaurant/${r.id}`)
     return `<item><title>${esc(`${r.name} (${areaOf(r)})`)}</title><link>${url}</link><guid>${url}</guid><pubDate>${new Date(r.created_at).toUTCString()}</pubDate><description>${esc(desc)}</description></item>`
   })
+  // 블로그 글도 같은 피드에 넣는다(네이버 RSS 제출이 하나라서)
+  const posts = getPosts().map((p) => {
+    const url = abs(`/blog/${p.slug}`)
+    return `<item><title>${esc(p.title)}</title><link>${url}</link><guid>${url}</guid><pubDate>${new Date(`${p.date}T09:00:00+09:00`).toUTCString()}</pubDate><description>${esc(p.description)}</description></item>`
+  })
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0"><channel><title>먹맵 새로 추가된 유튜버 맛집</title><link>${abs('/')}</link><description>먹방 유튜버가 다녀간 식당 중 먹맵에 새로 추가된 곳</description><language>ko</language>${items.join('')}</channel></rss>`
+<rss version="2.0"><channel><title>먹맵 새로 추가된 유튜버 맛집</title><link>${abs('/')}</link><description>먹방 유튜버가 다녀간 식당 중 먹맵에 새로 추가된 곳</description><language>ko</language>${posts.join('')}${items.join('')}</channel></rss>`
   return new Response(xml, { headers: { 'Content-Type': 'application/rss+xml; charset=utf-8' } })
 }

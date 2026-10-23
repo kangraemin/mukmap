@@ -5,6 +5,7 @@ import { abs, pathOf } from '@/lib/seo'
 import type { RestaurantWithVideos } from '@/lib/types'
 import { newThisWeek, recentOf } from '@/lib/related'
 import { STATIONS, nearStation } from '@/lib/stations'
+import { getPosts } from '@/lib/blog'
 
 export const revalidate = 3600
 
@@ -25,6 +26,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const rs = recentOf(restaurants, c.id).map((x) => x.r)
     if (rs.length >= MIN_INDEXABLE) out.push({ url: abs(`${pathOf('youtuber', c.slug || c.id)}/new`), lastModified: latest(rs), changeFrequency: 'daily' })
   }
+  // 데이터로 쓴 글(app/blog)
+  const posts = getPosts()
+  if (posts.length) out.push({ url: abs('/blog'), lastModified: new Date(posts.map((p) => p.updated).sort().pop()!), changeFrequency: 'weekly' })
+  for (const p of posts) out.push({ url: abs(`/blog/${p.slug}`), lastModified: new Date(p.updated), changeFrequency: 'monthly' })
   const group = new Map<string, RestaurantWithVideos[]>()
   const add = (path: string, r: RestaurantWithVideos) => {
     const list = group.get(path) || []

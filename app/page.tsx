@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom'
 import HomeExplorer from '@/components/HomeExplorer'
 import { getAll, getChannelSummaries, getRegionSummaries } from '@/lib/data'
 import { newThisWeek } from '@/lib/related'
+import { getPosts } from '@/lib/blog'
 import { visitorsOf } from '@/lib/format'
 import { SITE_NAME, SITE_URL, faqJsonLd, jsonLdScript, todayLabel } from '@/lib/seo'
 
@@ -36,6 +37,7 @@ export default async function Home() {
   ReactDOM.preload(`https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID}`, { as: 'script' })
   ReactDOM.preload('/api/pins', { as: 'fetch', crossOrigin: 'anonymous' })
   const weekly = newThisWeek(restaurants)
+  const posts = getPosts()
   const names = channels.slice(0, 4).map((c) => c.name).join(', ')
   const faq = [
     {
@@ -80,6 +82,14 @@ export default async function Home() {
               이번 주 새로 뜬 곳 전체 보기
             </a>
           </section>
+        )}
+
+        {posts.length > 0 && (
+          <p className="mb-8">
+            <a href="/blog" data-track="blog_click" className="inline-flex min-h-[40px] items-center rounded-full border border-line px-3.5 text-body text-ink">
+              먹맵 블로그: {posts[0].title}
+            </a>
+          </p>
         )}
 
         <section aria-labelledby="by-youtuber">
