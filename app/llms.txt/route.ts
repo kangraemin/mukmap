@@ -1,4 +1,5 @@
-import { getChannelSummaries, getRegionSummaries, getAll } from '@/lib/data'
+import { MIN_INDEXABLE, getChannelSummaries, getRegionSummaries, getAll } from '@/lib/data'
+import { RECENT_DAYS, newThisWeek, recentOf } from '@/lib/related'
 import { abs, pathOf, todayLabel } from '@/lib/seo'
 
 export const revalidate = 3600
@@ -16,6 +17,13 @@ export async function GET() {
     '',
     '## 유튜버별 맛집',
     ...channels.map((c) => `- [${c.name} 맛집 ${c.restaurant_count}곳](${abs(pathOf('youtuber', c.slug || c.id))})`),
+    '',
+    '## 최근 새로 뜬 맛집 (매시간 갱신)',
+    `- [이번 주 새로 뜬 맛집 ${newThisWeek(restaurants, Date.now(), 60).length}곳](${abs('/this-week')})`,
+    ...channels.flatMap((c) => {
+      const n = recentOf(restaurants, c.id).length
+      return n >= MIN_INDEXABLE ? [`- [${c.name} 최근 ${RECENT_DAYS}일 새 맛집 ${n}곳](${abs(`${pathOf('youtuber', c.slug || c.id)}/new`)})`] : []
+    }),
     '',
     '## 지역별 맛집',
     ...regions.map((r) => `- [${r.region} 유튜버 맛집 ${r.count}곳](${abs(pathOf('region', r.region))})`),

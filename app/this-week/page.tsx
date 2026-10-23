@@ -3,8 +3,8 @@ import ListPage from '@/components/page/ListPage'
 import { MIN_INDEXABLE, getAll } from '@/lib/data'
 import { visitorsOf } from '@/lib/format'
 import { iGa } from '@/lib/josa'
-import { newThisWeek } from '@/lib/related'
-import { pageMetadata } from '@/lib/seo'
+import { RECENT_DAYS, newThisWeek, recentOf } from '@/lib/related'
+import { pageMetadata, pathOf } from '@/lib/seo'
 
 // 매주 다시 볼 거리: 최근 7일 새 영상에 나온 가게. SNS 주간편이 이 주소를 건다
 export const revalidate = 3600
@@ -12,9 +12,15 @@ export const revalidate = 3600
 const PATH = '/this-week'
 
 async function load() {
-  const week = newThisWeek((await getAll()).restaurants, Date.now(), 60)
+  const { channels, restaurants } = await getAll()
+  const week = newThisWeek(restaurants, Date.now(), 60)
   const names = Array.from(new Set(week.flatMap(({ r }) => visitorsOf(r).map((v) => v.name))))
-  return { week, names }
+  // 유튜버별 최근 30일 페이지로 잇는다(가게가 많은 순)
+  const recent = channels
+    .map((c) => ({ c, n: recentOf(restaurants, c.id).length }))
+    .filter((x) => x.n > 0)
+    .sort((a, b) => b.n - a.n)
+  return { week, names, recent }
 }
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -28,7 +34,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function ThisWeekPage() {
-  const { week, names } = await load()
+  const { week, names, recent } = await load()
   const title = `이번 주 새로 뜬 맛집 ${week.length}곳`
   const answer = week.length
     ? `최근 7일 동안 ${iGa(names.slice(0, 5).join('·'))} 새 영상에서 식당 ${week.length}곳을 찾아갔습니다. 새 영상이 올라온 순서대로 모았습니다.`
@@ -46,6 +52,10 @@ export default async function ThisWeekPage() {
       dateModified={week[0]?.at || null}
       facets={['channel']}
       notes={notes}
+      groups={[{
+        title: `유튜버별 최근 ${RECENT_DAYS}일 새 맛집`,
+        items: recent.map(({ c, n }) => ({ href: `${pathOf('youtuber', c.slug || c.id)}/new`, label: c.name, count: n })),
+      }]}
     />
   )
 }

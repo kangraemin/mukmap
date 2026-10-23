@@ -3,6 +3,7 @@ import { notFound, permanentRedirect } from 'next/navigation'
 import ListPage from '@/components/page/ListPage'
 import { MIN_INDEXABLE, decodeParam, factsOf, getChannelBySlugOrId, restaurantsOf, yearRange } from '@/lib/data'
 import { eunNeun, iGa } from '@/lib/josa'
+import { RECENT_DAYS, recentOf } from '@/lib/related'
 import { pageMetadata, pathOf } from '@/lib/seo'
 
 export const revalidate = 3600
@@ -41,6 +42,7 @@ export default async function YoutuberPage({ params }: Props) {
   for (const r of restaurants) if (r.region) byRegion.set(r.region, (byRegion.get(r.region) || 0) + 1)
   const regions = Array.from(byRegion.entries()).sort((a, b) => b[1] - a[1])
   const slug = channel.slug || channel.id
+  const recent = recentOf(restaurants, channel.id)
 
   const answer = [
     `${eunNeun(channel.name)} ${yearRange(facts.firstYear, facts.lastYear)} 영상에서 식당 ${facts.count}곳을 직접 찾아갔습니다.`,
@@ -62,6 +64,9 @@ export default async function YoutuberPage({ params }: Props) {
       facets={['region']}
       base={{ yt: slug }}
       groups={[{
+        title: `${channel.name} 최근 맛집`,
+        items: recent.length ? [{ href: `${path}/new`, label: `최근 ${RECENT_DAYS}일 새 영상에 나온 곳`, count: recent.length }] : [],
+      }, {
         title: `${channel.name} 지역별 맛집`,
         items: regions.map(([r, n]) => ({ href: pathOf('youtuber', slug, r), label: r, count: n })),
       }]}

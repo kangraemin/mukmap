@@ -29,3 +29,14 @@ export function newThisWeek(all: RestaurantWithVideos[], now = Date.now(), n = 1
     .sort((a, b) => b.at.localeCompare(a.at))
     .slice(0, n)
 }
+
+export const RECENT_DAYS = 30
+
+/** 이 유튜버가 최근 days일 안에 올린 영상에 나온 가게, 새 영상 순 */
+export function recentOf(all: RestaurantWithVideos[], channelId: string, now = Date.now(), days = RECENT_DAYS) {
+  const since = new Date(now - days * 864e5).toISOString()
+  return all
+    .map((r) => ({ r, at: r.videos.filter((v) => v.channel_id === channelId).reduce((m, v) => ((v.published_at || '') > m ? v.published_at! : m), '') }))
+    .filter((x) => x.at >= since)
+    .sort((a, b) => b.at.localeCompare(a.at))
+}
