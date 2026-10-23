@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { retryDb } from '@/lib/retry'
 import type { PinsPayload } from '@/lib/pins'
 
 // 모든 보이는 가게를 한 번에 준다. 한 시간 캐시, 수집 후 /api/revalidate가 비운다
@@ -37,15 +38,17 @@ export async function GET() {
   const rows: Row[] = []
   // Supabase는 한 번에 1000행까지만 준다
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
-      .from('restaurants')
-      .select(`id,name,lat,lng,category,region,city,videos(video_id,channel_id,published_at,quote,menu,${DETAIL})`)
-      .eq('is_visible', true)
-      .not('lat', 'is', null)
-      .not('lng', 'is', null)
-      .order('id')
-      .range(from, from + PAGE - 1)
-    if (error) return NextResponse.json({ error: 'pins unavailable' }, { status: 500 })
+    const data = await retryDb(() =>
+      supabase
+        .from('restaurants')
+        .select(`id,name,lat,lng,category,region,city,videos(video_id,channel_id,published_at,quote,menu,${DETAIL})`)
+        .eq('is_visible', true)
+        .not('lat', 'is', null)
+        .not('lng', 'is', null)
+        .order('id')
+        .range(from, from + PAGE - 1),
+    ).catch(() => undefined)
+    if (data === undefined) return NextResponse.json({ error: 'pins unavailable' }, { status: 500 })
     rows.push(...((data || []) as Row[]))
     if (!data || data.length < PAGE) break
   }

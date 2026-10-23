@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { retryDb } from '@/lib/retry'
 
 export const revalidate = 3600
 
@@ -8,20 +9,23 @@ const CACHE = { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=
 // 실패를 빈 목록으로 돌려주면 그게 한 시간 캐시돼 지도 핀 얼굴이 다 빠진다(2026-10-20).
 // 에러를 던지면 Next가 다시 만들기를 포기하고 전에 만든 응답을 계속 준다
 export async function GET() {
-  const { data: channels, error } = await supabase
-    .from('channels')
-    .select(`
-      *,
-      videos (
-        id,
-        restaurant_id,
-        restaurants!inner (
-          is_visible
+  // 빌드 때 페이지들과 겹쳐 부르면 statement timeout이 나 배포가 깨졌다(10/23). 일시 오류는 다시 부른다
+  const channels = await retryDb(() =>
+    supabase
+      .from('channels')
+      .select(`
+        *,
+        videos (
+          id,
+          restaurant_id,
+          restaurants!inner (
+            is_visible
+          )
         )
-      )
-    `)
-
-  if (error) throw new Error(`channels: ${error.message}`)
+      `),
+  ).catch((e) => {
+    throw new Error(`channels: ${e.message}`)
+  })
 
   const result = (channels || [])
     .map((ch) => {
