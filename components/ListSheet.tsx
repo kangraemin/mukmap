@@ -1,7 +1,9 @@
 'use client'
 // 지도 위에 반쯤 올라오는 목록. 머리줄을 위로 끌면 화면을 다 채우고, 아래로 끌면 반쯤 → 머리줄만 남게 내려간다. 다 펼쳤을 땐 목록 맨 위에서 끌어내려도 내려간다
-// 단계 높이는 inline으로 두고 끄는 동안만 px로 덮는다. iOS는 화면 아래 끝에서 끌면 pointercancel이 오니 그때도 가까운 단계로 붙인다
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+// 멈춰 있을 땐 단계 높이 그대로 두고, 끌고 붙는 동안엔 화면 높이로 펴 둔 채 transform으로만 옮긴다.
+// 높이를 매 프레임 바꾸면 목록 전체를 다시 배치해 폰에서 버벅인다(2026-10-24 녹화). 움직임은 React 상태 없이 style을 직접 바꾼다.
+// iOS는 화면 아래 끝에서 끌면 pointercancel이 오니 그때도 가까운 단계로 붙인다
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
 export type SheetSnap = 'peek' | 'half' | 'full'
 
@@ -29,20 +31,100 @@ type Drag = { y: number; h: number; last: number; moved: boolean }
 
 const MOVE = 6
 const SNAP_PX = 48
+const EASE = 'cubic-bezier(0.2, 0.9, 0.25, 1)'
+const TRANSITION = `transform 0.28s ${EASE}`
+
+/** 단계별 멈춘 높이(CSS) */
+const restHeight = (snap: SheetSnap, fullTop: number) => snap === 'full' ? `calc(100dvh - ${fullTop}px)`
+  : snap === 'peek' ? `calc(${PEEK_PX}px + env(safe-area-inset-bottom))`
+  : `${HALF_RATIO * 100}dvh`
 
 export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, children, testId, className = '' }: ListSheetProps) {
   const ref = useRef<HTMLElement>(null)
   const drag = useRef<Drag | null>(null)
   const swallowClick = useRef(false)
-  const [dragH, setDragH] = useState<number | null>(null)
+  const [dragging, setDragging] = useState(false)
+  /** 손을 뗀 순간 보이던 높이. 다음 단계로 붙는 움직임의 출발점 */
+  const fromPx = useRef<number | null>(null)
+  const restPx = useRef(0)
+  const endTimer = useRef<ReturnType<typeof setTimeout>>()
+  // 머리줄 높이가 늦게 재져 fullTop이 바뀌어도 끌던 손을 놓치지 않게 ref로 읽는다
+  const fullTopRef = useRef(fullTop)
+  fullTopRef.current = fullTop
+
+  const visible = (el: HTMLElement) => window.innerHeight - el.getBoundingClientRect().top
+  /** 끄는 동안: 화면 높이로 펴고 보이는 높이 h만큼만 올라오게 옮긴다 */
+  const follow = (h: number) => {
+    const el = ref.current
+    if (!el) return
+    const full = window.innerHeight - fullTopRef.current
+    el.style.transition = 'none'
+    el.style.height = `${full}px`
+    el.style.transform = `translateY(${full - Math.min(full, Math.max(PEEK_PX, h))}px)`
+  }
+  /** 보이는 높이 from에서 to 단계로 transform만 움직이고, 다 붙으면 단계 높이로 되돌린다 */
+  const glide = (from: number, to: SheetSnap) => {
+    const el = ref.current
+    if (!el) return
+    clearTimeout(endTimer.current)
+    const rest = restHeight(to, fullTopRef.current)
+    el.style.transition = 'none'
+    el.style.transform = ''
+    el.style.height = rest
+    const toPx = el.offsetHeight
+    restPx.current = toPx
+    if (Math.abs(from - toPx) < 1) return
+    const full = window.innerHeight - fullTopRef.current
+    const top = Math.max(full, from, toPx)
+    el.style.height = `${top}px`
+    el.style.transform = `translateY(${top - from}px)`
+    void el.offsetHeight
+    el.style.transition = TRANSITION
+    el.style.transform = `translateY(${top - toPx}px)`
+    const done = (e?: TransitionEvent) => {
+      // 안쪽 칩 색 바뀜 같은 남의 transition은 거른다
+      if (e && (e.target !== el || e.propertyName !== 'transform')) return
+      el.removeEventListener('transitionend', done)
+      clearTimeout(endTimer.current)
+      el.style.transition = 'none'
+      el.style.height = rest
+      el.style.transform = hiddenRef.current ? 'translateY(100%)' : ''
+      void el.offsetHeight
+      el.style.transition = TRANSITION
+    }
+    el.addEventListener('transitionend', done)
+    endTimer.current = setTimeout(() => done(), 400)
+  }
+
+  // 단계가 바뀌면(끌어서든 눌러서든) 직전 높이에서 새 단계로 미끄러진다. 그리기 전에 덮어 써 한 프레임도 튀지 않는다
+  // 내려 뒀다 다시 올라올 땐 hidden transform이 알아서 미끄러지니 덮지 않는다
+  const firstRun = useRef(true)
+  const hiddenRef = useRef(hidden)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const from = fromPx.current ?? restPx.current
+    fromPx.current = null
+    const wasHidden = hiddenRef.current
+    hiddenRef.current = hidden
+    if (firstRun.current || hidden || wasHidden) {
+      firstRun.current = false
+      restPx.current = el.offsetHeight
+      return
+    }
+    glide(from, snap)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snap, hidden])
+  useEffect(() => () => clearTimeout(endTimer.current), [])
 
   const settle = (d: Drag | null) => {
     if (!d?.moved) return
     swallowClick.current = true
     setTimeout(() => { swallowClick.current = false }, 0)
     const dy = d.last - d.y
-    setDragH(null)
-    if (Math.abs(dy) < SNAP_PX) return
+    setDragging(false)
+    const now = Math.min(window.innerHeight - fullTopRef.current, Math.max(PEEK_PX, d.h - dy))
+    if (Math.abs(dy) < SNAP_PX) { glide(now, snap); return }
     // 손을 뗀 높이에 가장 가까운 단계로 붙인다. 같은 단계면 끈 쪽으로 한 칸 옮긴다
     const vh = window.innerHeight
     const heights: Record<SheetSnap, number> = { peek: PEEK_PX, half: vh * HALF_RATIO, full: vh - fullTop }
@@ -50,7 +132,9 @@ export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, c
     const h = d.h - dy
     let next = order.reduce((a, b) => (Math.abs(heights[b] - h) < Math.abs(heights[a] - h) ? b : a))
     if (next === snap) next = order[Math.max(0, Math.min(2, order.indexOf(snap) + (dy < 0 ? 1 : -1)))]
-    if (next !== snap) onSnap(next)
+    if (next === snap) { glide(now, snap); return }
+    fromPx.current = now
+    onSnap(next)
   }
   const finish = () => {
     const d = drag.current
@@ -59,9 +143,14 @@ export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, c
   }
   const settleRef = useRef(settle)
   settleRef.current = settle
-  // 머리줄 높이가 늦게 재져 fullTop이 바뀌어도 끌던 손을 놓치지 않게 ref로 읽는다
-  const fullTopRef = useRef(fullTop)
-  fullTopRef.current = fullTop
+  const followRef = useRef(follow)
+  followRef.current = follow
+  const startDrag = () => {
+    clearTimeout(endTimer.current)
+    setDragging(true)
+  }
+  const startRef = useRef(startDrag)
+  startRef.current = startDrag
 
   // 다 펼친 목록은 맨 위까지 올라가 있을 때 아래로 끌면 시트째 내려간다(목록 어디를 잡아도).
   // 브라우저가 스크롤로 가져가지 않게 터치 이벤트를 passive 없이 직접 받는다
@@ -81,7 +170,7 @@ export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, c
       if (e.touches.length !== 1 || target.closest('[data-grip]')) { t = null; return }
       const sc = scrollerOf(target)
       const y = e.touches[0].clientY
-      t = { y, last: y, h: el.getBoundingClientRect().height, moved: false, top: !sc || sc.scrollTop <= 0 }
+      t = { y, last: y, h: visible(el), moved: false, top: !sc || sc.scrollTop <= 0 }
     }
     const move = (e: TouchEvent) => {
       if (!t?.top) return
@@ -91,10 +180,11 @@ export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, c
         if (dy < -MOVE) { t.top = false; return }
         if (dy < MOVE) return
         t.moved = true
+        startRef.current()
       }
       e.preventDefault()
       t.last = y
-      setDragH(Math.min(window.innerHeight - fullTopRef.current, Math.max(PEEK_PX, t.h - dy)))
+      followRef.current(t.h - dy)
     }
     const end = () => {
       const d = t
@@ -113,16 +203,12 @@ export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, c
     }
   }, [snap])
 
-  const height = dragH != null ? `${dragH}px`
-    : snap === 'full' ? `calc(100dvh - ${fullTop}px)`
-    : snap === 'peek' ? `calc(${PEEK_PX}px + env(safe-area-inset-bottom))`
-    : `${HALF_RATIO * 100}dvh`
 
   // 반쯤·내려 둔 상태에선 시트 어디를 끌어도 되고, 다 펼쳤을 땐 머리줄만 끈다(목록은 스크롤)
   const onDown = (e: React.PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return
     if (snap === 'full' && !(e.target as Element).closest('[data-grip]')) return
-    drag.current = { y: e.clientY, h: ref.current!.getBoundingClientRect().height, last: e.clientY, moved: false }
+    drag.current = { y: e.clientY, h: visible(ref.current!), last: e.clientY, moved: false }
   }
   const onMove = (e: React.PointerEvent) => {
     const d = drag.current
@@ -133,8 +219,9 @@ export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, c
       if (Math.abs(dy) < MOVE) return
       d.moved = true
       e.currentTarget.setPointerCapture(e.pointerId)
+      startDrag()
     }
-    setDragH(Math.min(window.innerHeight - fullTop, Math.max(PEEK_PX, d.h - dy)))
+    follow(d.h - dy)
   }
 
   return (
@@ -144,11 +231,12 @@ export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, c
       data-snap={hidden ? 'hidden' : snap}
       aria-hidden={hidden || undefined}
       style={{
-        height,
+        height: restHeight(snap, fullTop),
         transform: hidden ? 'translateY(100%)' : undefined,
-        transition: dragH != null ? 'none' : 'height 0.28s cubic-bezier(0.2, 0.9, 0.25, 1), transform 0.22s cubic-bezier(0.2, 0.9, 0.25, 1)',
+        transition: TRANSITION,
+        willChange: 'transform',
       }}
-      className={`fixed inset-x-0 bottom-0 flex flex-col bg-paper ${snap === 'full' && dragH == null ? '' : 'rounded-t-sheet shadow-[0_-4px_20px_rgba(27,29,31,0.14)]'} ${snap !== 'full' ? 'touch-none' : ''} ${hidden ? 'pointer-events-none' : ''} ${className}`}
+      className={`fixed inset-x-0 bottom-0 flex flex-col bg-paper ${snap === 'full' && !dragging ? '' : 'rounded-t-sheet shadow-[0_-4px_20px_rgba(27,29,31,0.14)]'} ${snap !== 'full' ? 'touch-none' : ''} ${hidden ? 'pointer-events-none' : ''} ${className}`}
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={finish}
@@ -160,7 +248,7 @@ export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, c
       }}
     >
       <div data-grip className="flex-shrink-0 touch-none select-none">
-        {snap !== 'full' || dragH != null ? (
+        {snap !== 'full' || dragging ? (
           <div className="flex justify-center pt-2"><span className="h-1 w-10 rounded-full bg-line" /></div>
         ) : null}
         {header}
