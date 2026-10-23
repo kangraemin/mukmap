@@ -1,7 +1,7 @@
 'use client'
-// 지도 위에 반쯤 올라오는 목록. 머리줄을 위로 끌면 화면을 다 채우고, 아래로 끌면 반쯤 → 머리줄만 남게 내려간다
+// 지도 위에 반쯤 올라오는 목록. 머리줄을 위로 끌면 화면을 다 채우고, 아래로 끌면 반쯤 → 머리줄만 남게 내려간다. 다 펼쳤을 땐 목록 맨 위에서 끌어내려도 내려간다
 // 단계 높이는 inline으로 두고 끄는 동안만 px로 덮는다. iOS는 화면 아래 끝에서 끌면 pointercancel이 오니 그때도 가까운 단계로 붙인다
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 export type SheetSnap = 'peek' | 'half' | 'full'
 
@@ -25,18 +25,18 @@ interface ListSheetProps {
   className?: string
 }
 
+type Drag = { y: number; h: number; last: number; moved: boolean }
+
 const MOVE = 6
 const SNAP_PX = 48
 
 export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, children, testId, className = '' }: ListSheetProps) {
   const ref = useRef<HTMLElement>(null)
-  const drag = useRef<{ y: number; h: number; last: number; moved: boolean } | null>(null)
+  const drag = useRef<Drag | null>(null)
   const swallowClick = useRef(false)
   const [dragH, setDragH] = useState<number | null>(null)
 
-  const finish = () => {
-    const d = drag.current
-    drag.current = null
+  const settle = (d: Drag | null) => {
     if (!d?.moved) return
     swallowClick.current = true
     setTimeout(() => { swallowClick.current = false }, 0)
@@ -52,6 +52,66 @@ export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, c
     if (next === snap) next = order[Math.max(0, Math.min(2, order.indexOf(snap) + (dy < 0 ? 1 : -1)))]
     if (next !== snap) onSnap(next)
   }
+  const finish = () => {
+    const d = drag.current
+    drag.current = null
+    settle(d)
+  }
+  const settleRef = useRef(settle)
+  settleRef.current = settle
+  // 머리줄 높이가 늦게 재져 fullTop이 바뀌어도 끌던 손을 놓치지 않게 ref로 읽는다
+  const fullTopRef = useRef(fullTop)
+  fullTopRef.current = fullTop
+
+  // 다 펼친 목록은 맨 위까지 올라가 있을 때 아래로 끌면 시트째 내려간다(목록 어디를 잡아도).
+  // 브라우저가 스크롤로 가져가지 않게 터치 이벤트를 passive 없이 직접 받는다
+  useEffect(() => {
+    const el = ref.current
+    if (!el || snap !== 'full') return
+    let t: (Drag & { top: boolean }) | null = null
+    const scrollerOf = (n: Element | null) => {
+      for (; n && n !== el; n = n.parentElement) {
+        const o = getComputedStyle(n).overflowY
+        if ((o === 'auto' || o === 'scroll') && n.scrollHeight > n.clientHeight) return n
+      }
+      return null
+    }
+    const start = (e: TouchEvent) => {
+      const target = e.target as Element
+      if (e.touches.length !== 1 || target.closest('[data-grip]')) { t = null; return }
+      const sc = scrollerOf(target)
+      const y = e.touches[0].clientY
+      t = { y, last: y, h: el.getBoundingClientRect().height, moved: false, top: !sc || sc.scrollTop <= 0 }
+    }
+    const move = (e: TouchEvent) => {
+      if (!t?.top) return
+      const y = e.touches[0].clientY
+      const dy = y - t.y
+      if (!t.moved) {
+        if (dy < -MOVE) { t.top = false; return }
+        if (dy < MOVE) return
+        t.moved = true
+      }
+      e.preventDefault()
+      t.last = y
+      setDragH(Math.min(window.innerHeight - fullTopRef.current, Math.max(PEEK_PX, t.h - dy)))
+    }
+    const end = () => {
+      const d = t
+      t = null
+      settleRef.current(d)
+    }
+    el.addEventListener('touchstart', start, { passive: true })
+    el.addEventListener('touchmove', move, { passive: false })
+    el.addEventListener('touchend', end)
+    el.addEventListener('touchcancel', end)
+    return () => {
+      el.removeEventListener('touchstart', start)
+      el.removeEventListener('touchmove', move)
+      el.removeEventListener('touchend', end)
+      el.removeEventListener('touchcancel', end)
+    }
+  }, [snap])
 
   const height = dragH != null ? `${dragH}px`
     : snap === 'full' ? `calc(100dvh - ${fullTop}px)`

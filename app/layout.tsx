@@ -47,10 +47,7 @@ export const viewport: Viewport = {
   // iOS가 입력칸을 누를 때 화면을 확대한 채로 두지 않게 한다
   maximumScale: 1,
   viewportFit: 'cover',
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#FFFFFF' },
-    { media: '(prefers-color-scheme: dark)', color: '#17181C' },
-  ],
+  themeColor: '#FFFFFF',
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

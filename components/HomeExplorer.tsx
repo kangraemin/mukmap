@@ -148,6 +148,8 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   // 찜: 기기에 남긴 가게 id. 찜 칩을 켜면 찜한 곳만 지도 전체에서 본다
   const [likes, setLikes] = useState<Set<number>>(() => new Set())
   const [likedOnly, setLikedOnly] = useState(false)
+  // 강추만: 유튜버가 강추한 곳만
+  const [strongOnly, setStrongOnly] = useState(false)
   useEffect(() => {
     let live = true
     likeStore.get().then((raw) => { if (live) setLikes(new Set(parseLikes(raw))) }).catch(() => {})
@@ -247,8 +249,8 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
 
   const filtered = useMemo(() => (pins || []).filter((p) =>
     (!channelId || p.ch.includes(channelId)) && (!region || p.region === region) && (!city || p.city === city) &&
-    (!textHits || textHits.has(p.id)) && (!likedOnly || likes.has(p.id))
-  ), [pins, channelId, region, city, textHits, likedOnly, likes])
+    (!textHits || textHits.has(p.id)) && (!likedOnly || likes.has(p.id)) && (!strongOnly || p.rec === '강추')
+  ), [pins, channelId, region, city, textHits, likedOnly, likes, strongOnly])
 
   // 찜한 곳은 지도 밖에 있어도 다 보여준다
   const inView = useMemo(() => (listBounds && !likedOnly ? filtered.filter((p) => inBounds(p, listBounds)) : filtered), [filtered, listBounds, likedOnly])
@@ -396,7 +398,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
 
   // 지도를 직접 옮기거나 조건·위치를 새로 정하면 붙잡아 둔 목록을 놓는다
   const releaseList = useCallback(() => setHeldBounds(null), [])
-  useEffect(() => { releaseList() }, [fitKey, channelId, region, city, text, likedOnly, releaseList])
+  useEffect(() => { releaseList() }, [fitKey, channelId, region, city, text, likedOnly, strongOnly, releaseList])
   useEffect(() => { if (focus && !('id' in focus)) releaseList() }, [focus, releaseList])
 
   const onMapClick = useCallback(() => {
@@ -631,10 +633,10 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     <nav aria-label="유튜버 고르기" className={`no-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto py-1 pr-4 lg:pr-5 ${place ? 'pl-2' : 'pl-4 lg:pl-5'}`}>
       <button
         type="button"
-        onClick={() => { setText(''); setLikedOnly(false); pickChannel(null) }}
-        aria-pressed={!channelId && !text && !likedOnly}
+        onClick={() => { setText(''); setLikedOnly(false); setStrongOnly(false); pickChannel(null) }}
+        aria-pressed={!channelId && !text && !likedOnly && !strongOnly}
         className={`flex h-9 flex-shrink-0 items-center rounded-full px-3.5 text-meta font-bold ${
-          !channelId && !text && !likedOnly ? 'bg-ink text-paper' : 'bg-paper text-ink'
+          !channelId && !text && !likedOnly && !strongOnly ? 'bg-ink text-paper' : 'bg-paper text-ink'
         } ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : 'border border-line'}`}
       >
         전체
@@ -653,6 +655,17 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
           찜 {likes.size}
         </button>
       )}
+      <button
+        type="button"
+        data-testid="strong-chip"
+        onClick={() => { closePreview(); setStrongOnly((v) => !v) }}
+        aria-pressed={strongOnly}
+        className={`flex h-9 flex-shrink-0 items-center rounded-full px-3.5 text-meta font-bold ${
+          strongOnly ? 'bg-ink text-paper' : 'bg-paper text-ink'
+        } ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : 'border border-line'}`}
+      >
+        강추만
+      </button>
       {channels.map((ch) => {
         const on = ch.id === channelId
         const empty = !on && pins !== null && !viewCount.get(ch.id)

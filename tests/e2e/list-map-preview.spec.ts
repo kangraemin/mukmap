@@ -50,16 +50,36 @@ async function drag(page: Page) {
   await page.mouse.up()
 }
 
+/** 지도 칸 안에 실제로 보이는 첫 핀·묶음. 첫 핀이 지도 가장자리 밖에 걸려 있으면 누를 수 없다 */
+async function inside(page: Page, sel: string) {
+  const all = box(page).locator(sel)
+  const i = await all.evaluateAll((els) => els.findIndex((e) => {
+    const m = e.closest('[data-testid=list-map]')!.getBoundingClientRect()
+    const r = e.getBoundingClientRect()
+    const x = r.left + r.width / 2, y = r.top + r.height / 2
+    return r.width > 0 && x > m.left && x < m.right && y > m.top && y < m.bottom
+  }))
+  return all.nth(Math.max(0, i))
+}
+
 /** 작은 지도의 핀 하나를 눌러 큰 지도 + 카드를 띄운다. 핀이 다 묶여 있으면 묶음을 눌러 큰 지도에서 핀을 고른다 */
 async function openPin(page: Page) {
   await expect(marks(page).first()).toBeVisible({ timeout: 30_000 })
+  // 큰 지도에서 돌아온 직후엔 지도가 줄어들며 핀을 다시 그린다. 핀 자리가 멈출 때까지 기다린다
+  let last = ''
+  await expect.poll(async () => {
+    const now = await marks(page).evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return `${r.left | 0},${r.top | 0}` }).join(';'))
+    const same = now === last && now !== ''
+    last = now
+    return same
+  }, { intervals: [150], timeout: 15_000 }).toBe(true)
   const single = box(page).locator('[data-pin]')
-  if (await single.count()) await single.first().click()
+  if (await single.count()) await (await inside(page, '[data-pin]')).click()
   else {
-    await box(page).locator('[data-cluster]').first().click()
+    await (await inside(page, '[data-cluster]')).click()
     await expect(box(page)).toHaveAttribute('data-full', '1')
     await expect(box(page).locator('[data-pin]').first()).toBeVisible({ timeout: 15_000 })
-    await box(page).locator('[data-pin]').first().click()
+    await (await inside(page, '[data-pin]')).click()
   }
   await expect(page.getByTestId('preview-card')).toBeVisible()
 }

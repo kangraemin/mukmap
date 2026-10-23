@@ -51,7 +51,8 @@ test('첫 화면 → 목록 → 상세 → 영상 보기가 같은 이름으로 
 
 test('검색·유튜버 칩이 결과 수와 함께 남는다', async ({ page }) => {
   await ready(page)
-  await page.locator('nav[aria-label="유튜버 고르기"] button[aria-pressed]').nth(1).click()
+  // 찜·강추만 칩은 data-testid로 빼고 0번 전체 다음 첫 유튜버 칩을 누른다
+  await page.locator('nav[aria-label="유튜버 고르기"] button[aria-pressed]:not([data-testid])').nth(1).click()
   await expect.poll(async () => (await events(page)).find((e) => e.name === 'filter_change')).toMatchObject({ type: 'channel' })
   expect(Number((await events(page)).find((e) => e.name === 'filter_change')!.count)).toBeGreaterThan(0)
 

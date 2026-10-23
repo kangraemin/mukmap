@@ -11,17 +11,7 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: 23 24 28;
-    --well: 33 35 40;
-    --line: 48 51 58;
-    --sub: 154 163 174;
-    --ink: 236 238 241;
-    color-scheme: dark;
-  }
-}
-
+/* 다크모드는 두지 않는다. 지도는 늘 밝아서 시트만 어두우면 어색하다 */
 html,
 body {
   background: rgb(var(--paper));
