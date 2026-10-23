@@ -174,3 +174,12 @@ test('홈 HTML(자바스크립트 없이)에 오구리웍스 다른 서비스 �
   expect(html).toContain('어디먹(공무원 단골 식당 지도)')
   expect(html.indexOf('eodimeok.kr')).toBeLessThan(html.indexOf('oneul-kkum'))
 })
+
+// 위치를 쓰지 않으니 '가까운 순'(실제론 지도 가운데 기준)은 오해만 부른다. 여러 명 간 순이 기본
+test('목록 정렬은 여러 명 간 순이 기본이고 가까운 순은 없다', async ({ page }) => {
+  await ready(page)
+  await page.getByTestId('list-pill').click()
+  const sort = page.getByLabel('정렬')
+  await expect(sort).toHaveValue('visitors')
+  expect(await sort.locator('option').allTextContents()).toEqual(['여러 명 간 순', '최근 영상순'])
+})

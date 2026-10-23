@@ -33,7 +33,7 @@ test('첫 화면 → 목록 → 상세 → 영상 보기가 같은 이름으로 
   await page.getByTestId('list-item').nth(1).click()
   await expect(page.getByTestId('detail-view')).toBeVisible()
   const click = (await events(page)).find((e) => e.name === 'list_click')
-  expect(click).toMatchObject({ rank: 2, sort: 'near' })
+  expect(click).toMatchObject({ rank: 2, sort: 'visitors' })
   // 개발 모드는 효과를 두 번 돌려 같은 화면이 겹칠 수 있다
   const screens = (await events(page)).filter((e) => e.name === 'screen_open').map((e) => e.screen)
   expect(screens.filter((s, i) => s !== screens[i - 1])).toEqual(['map', 'list', 'detail'])

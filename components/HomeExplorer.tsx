@@ -29,7 +29,7 @@ type Nav =
   | { v: 'list' }
   | { v: 'detail'; id: number }
 
-type Sort = 'near' | 'latest' | 'visitors'
+type Sort = 'latest' | 'visitors'
 
 const PAGE = 40
 const LIST_AD_EVERY = 8
@@ -134,7 +134,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   }
   const [text, setText] = useState('')
   const [nav, setNav] = useState<Nav>({ v: 'map' })
-  const [sort, setSort] = useState<Sort>('near')
+  const [sort, setSort] = useState<Sort>('visitors')
   const [shown, setShown] = useState(PAGE)
   const [fitKey, setFitKey] = useState(0)
   const [focus, setFocus] = useState<MapFocus | null>(null)
@@ -293,14 +293,8 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     if (!listOpen) return []
     const list = [...inView]
     if (sort === 'latest') return list.sort((a, b) => b.date.localeCompare(a.date))
-    if (sort === 'visitors') return list.sort((a, b) => b.ch.length - a.ch.length || b.date.localeCompare(a.date))
-    if (!listBounds) return list
-    const cy = (listBounds.sw_lat + listBounds.ne_lat) / 2
-    const cx = (listBounds.sw_lng + listBounds.ne_lng) / 2
-    const k = Math.cos((cy * Math.PI) / 180)
-    const d = (p: Pin) => (p.lat - cy) ** 2 + ((p.lng - cx) * k) ** 2
-    return list.sort((a, b) => d(a) - d(b))
-  }, [inView, sort, listBounds, listOpen])
+    return list.sort((a, b) => b.ch.length - a.ch.length || b.date.localeCompare(a.date))
+  }, [inView, sort, listOpen])
 
   useEffect(() => { setShown(PAGE) }, [inView, sort])
 
@@ -748,9 +742,8 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
             onChange={(e) => setSort(e.target.value as Sort)}
             className="appearance-none bg-transparent pr-5 font-bold text-ink outline-none"
           >
-            <option value="near">가까운 순</option>
-            <option value="latest">최근 영상순</option>
             <option value="visitors">여러 명 간 순</option>
+            <option value="latest">최근 영상순</option>
           </select>
           <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true" className="pointer-events-none absolute right-0"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
         </label>
