@@ -74,7 +74,8 @@ test('토스: 유튜버를 고르면 알림 버튼이 뜨고, 동의하면 켜�
   await expect(page.getByTestId('alert-toggle')).toHaveCount(0)
 
   const chips = page.getByRole('navigation', { name: '유튜버 고르기' }).first()
-  const first = chips.getByRole('button').nth(1)
+  // '전체'·'강추만' 칩 다음의 첫 유튜버 칩(얼굴 사진이 있는 칩)
+  const first = chips.getByRole('button').filter({ has: page.locator('img') }).first()
   await first.click()
   const toggle = page.getByTestId('alert-toggle')
   await expect(toggle).toHaveText('새 맛집 알림')
