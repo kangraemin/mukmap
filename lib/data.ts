@@ -5,6 +5,7 @@ import { unstable_cache } from 'next/cache'
 import { cache } from 'react'
 import { supabase } from '@/lib/supabase'
 import { retryDb } from '@/lib/retry'
+import { buildSnap } from '@/lib/build-snap'
 import type { Channel, RestaurantWithVideos, VideoDetail } from '@/lib/types'
 import { DATA_KEY, channelName, cityName, regionName, type Lang } from '@/lib/i18n'
 
@@ -22,7 +23,7 @@ type RawRestaurant = Record<string, unknown> & { videos: RawVideo[] }
 // 채널 조회가 실패한 채로 캐시하면 가게가 전부 걸러져 1시간 동안 빈 사이트가 된다
 const getChannels = unstable_cache(
   async (): Promise<Channel[]> => {
-    const data = await retryDb(() => supabase.from('channels').select('*'))
+    const data = await buildSnap('channels', () => retryDb(() => supabase.from('channels').select('*')))
     return (data || []) as Channel[]
   },
   ['mukmap-channels-v1'],
@@ -33,7 +34,7 @@ const getChannels = unstable_cache(
 const CHUNK = 500
 const getChunk = unstable_cache(
   async (from: number): Promise<{ rows: RawRestaurant[]; full: boolean }> => {
-    const data = await retryDb(() =>
+    const data = await buildSnap(`chunk:${from}`, () => retryDb(() =>
       supabase
         .from('restaurants')
         .select(`${RESTAURANT_FIELDS}, videos (${VIDEO_FIELDS})`)
@@ -41,7 +42,7 @@ const getChunk = unstable_cache(
         .not('lat', 'is', null)
         .order('id')
         .range(from, from + CHUNK - 1),
-    )
+    ))
     return { rows: (data || []) as unknown as RawRestaurant[], full: (data || []).length === CHUNK }
   },
   ['mukmap-all-chunk-v1'],
@@ -226,14 +227,14 @@ export const translatedNames = unstable_cache(
     const key = DATA_KEY[lang]
     const out: Record<number, { label: string; category: string | null }> = {}
     for (let from = 0; ; from += 1000) {
-      const data = await retryDb(() =>
+      const data = await buildSnap(`names:${lang}:${from}`, () => retryDb(() =>
         supabase
           .from('videos')
           .select(`restaurant_id, label:i18n->${key}->>store_label, category:i18n->${key}->>category_label`)
           .not(`i18n->${key}`, 'is', null)
           .order('id')
           .range(from, from + 999),
-      )
+      ))
       for (const v of (data || []) as unknown as { restaurant_id: number; label: string | null; category: string | null }[]) {
         if (v.label && !out[v.restaurant_id]) out[v.restaurant_id] = { label: v.label, category: v.category }
       }
