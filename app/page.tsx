@@ -138,16 +138,19 @@ export default async function Home() {
         <p className="mt-8 border-t border-line pt-4 text-meta text-sub">
           오구리웍스 다른 서비스:{' '}
           {[
-            ['', '생활 계산기'],
-            ['yeonbong/', '연봉 실수령액'],
-            ['toejikgeum/', '퇴직금 계산기'],
-            ['junggae/', '부동산 중개수수료'],
-            ['hyuil/2027/', '2027 공휴일'],
-          ].map(([path, name], i) => (
-            <span key={path}>
+            ['https://eodimeok.kr/', '어디먹(공무원 단골 식당 지도)'],
+            ...[
+              ['', '생활 계산기'],
+              ['yeonbong/', '연봉 실수령액'],
+              ['toejikgeum/', '퇴직금 계산기'],
+              ['junggae/', '부동산 중개수수료'],
+              ['hyuil/2027/', '2027 공휴일'],
+            ].map(([path, name]) => [`https://kangraemin.github.io/oneul-kkum/${path}`, name]),
+          ].map(([url, name], i) => (
+            <span key={url}>
               {i > 0 && ', '}
-              {/* 계산기 쪽 GA에서 먹맵 유입을 따로 셀 수 있게 utm을 붙인다 */}
-              <a href={`https://kangraemin.github.io/oneul-kkum/${path}?utm_source=mukmap&utm_medium=referral`} className="text-ink underline">{name}</a>
+              {/* 그쪽 GA에서 먹맵 유입을 따로 셀 수 있게 utm을 붙인다 */}
+              <a href={`${url}?utm_source=mukmap&utm_medium=referral`} className="text-ink underline">{name}</a>
             </span>
           ))}
         </p>

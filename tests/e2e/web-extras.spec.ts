@@ -168,4 +168,9 @@ test('홈 HTML(자바스크립트 없이)에 오구리웍스 다른 서비스 �
   // 계산기 하위 페이지도 바로 찾게 딥링크
   for (const sub of ['yeonbong/', 'toejikgeum/', 'junggae/', 'hyuil/2027/']) expect(html).toContain(`href="https://kangraemin.github.io/oneul-kkum/${sub}${utm}"`)
   for (const name of ['연봉 실수령액', '퇴직금 계산기', '부동산 중개수수료', '2027 공휴일']) expect(html).toContain(name)
+
+  // 어디먹(새 도메인)이 먹맵에서 링크를 받아 검색 수집을 앞당긴다. 목록 맨 앞
+  expect(html).toContain(`href="https://eodimeok.kr/${utm}"`)
+  expect(html).toContain('어디먹(공무원 단골 식당 지도)')
+  expect(html.indexOf('eodimeok.kr')).toBeLessThan(html.indexOf('oneul-kkum'))
 })
