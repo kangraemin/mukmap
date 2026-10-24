@@ -235,8 +235,12 @@ export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, c
         transform: hidden ? 'translateY(100%)' : undefined,
         transition: TRANSITION,
         willChange: 'transform',
+        // 카드를 꾹 누른 채 끌면 iOS가 사진 메뉴·글자 선택을 띄워 끌기를 가져간다(2026-10-24 녹화).
+        // Tailwind select-none은 접두어 없는 user-select만 써서 Safari엔 안 먹는다
+        WebkitTouchCallout: 'none',
+        WebkitUserSelect: 'none',
       }}
-      className={`fixed inset-x-0 bottom-0 flex flex-col bg-paper ${snap === 'full' && !dragging ? '' : 'rounded-t-sheet shadow-[0_-4px_20px_rgba(27,29,31,0.14)]'} ${snap !== 'full' ? 'touch-none' : ''} ${hidden ? 'pointer-events-none' : ''} ${className}`}
+      className={`fixed inset-x-0 bottom-0 flex select-none flex-col bg-paper ${snap === 'full' && !dragging ? '' : 'rounded-t-sheet shadow-[0_-4px_20px_rgba(27,29,31,0.14)]'} ${snap !== 'full' ? 'touch-none' : ''} ${hidden ? 'pointer-events-none' : ''} ${className}`}
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={finish}

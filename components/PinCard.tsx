@@ -99,7 +99,7 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, liked = fals
       <Pressable onPress={onOpen} className="block w-full px-4 pb-3.5 pt-4 text-left active:opacity-90" label={`${pin.name} 자세히 보기`}>
         <span className="flex items-center gap-3 pr-8">
           <span className="relative h-[72px] w-[128px] flex-shrink-0 overflow-hidden rounded-[10px] bg-well">
-            {pin.vid && <img src={thumb(pin.vid)} alt="" className="h-full w-full object-cover" />}
+            {pin.vid && <img src={thumb(pin.vid)} alt="" draggable={false} className="h-full w-full object-cover" />}
             {pin.vid && <PlayBadge />}
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-1">
@@ -182,7 +182,7 @@ export const PinRow = React.memo(function PinRow({ pin, faces, onOpen, selected 
     >
       <span className="flex items-center gap-3">
         <span className="relative h-[102px] w-[136px] flex-shrink-0 overflow-hidden rounded-[10px] bg-well">
-          {pin.vid && <img src={thumb(pin.vid)} alt="" loading="lazy" className="h-full w-full object-cover" />}
+          {pin.vid && <img src={thumb(pin.vid)} alt="" loading="lazy" draggable={false} className="h-full w-full object-cover" />}
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="flex min-w-0 items-center gap-1.5">
