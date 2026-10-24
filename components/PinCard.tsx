@@ -18,11 +18,11 @@ function thumb(vid: string | null) {
   return vid ? `https://i.ytimg.com/vi/${vid}/mqdefault.jpg` : ''
 }
 
-function Line({ pin }: { pin: Pin }) {
+function Line({ pin, className = '' }: { pin: Pin; className?: string }) {
   // 자막 인용은 보여주지 않는다. 메뉴·요약만
   const text = pin.quote ? pin.menu : pin.line
   if (!text) return null
-  return <span className="block truncate text-meta text-ink">{text}</span>
+  return <span className={`block truncate text-meta text-ink ${className}`}>{text}</span>
 }
 
 function meta(pin: Pin, t: UiText) {
@@ -74,8 +74,8 @@ function Pressable({ onPress, label, className, testId, children }: { onPress: (
   )
 }
 
-function chipsOf(pin: Pin, t: UiText, withPark = false): [string, string | null | undefined][] {
-  return [[t.best, pin.best], [t.price, pin.price], [t.wait, pin.wait], ...(withPark ? [[t.park, pin.park] as [string, string | null | undefined]] : [])]
+function chipsOf(pin: Pin, t: UiText): [string, string | null | undefined][] {
+  return [[t.best, pin.best], [t.price, pin.price], [t.wait, pin.wait]]
 }
 
 function PlayBadge() {
@@ -172,37 +172,34 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, liked = fals
   )
 }
 
-/** 목록 한 줄 */
+/** 목록 한 줄. 사진을 줄여 글 칸을 넓히고 이름은 두 줄까지 다 보인다. 최고 메뉴·가격 칩 줄은 목록에선 뺀다(상세·미리보기 카드에 있다).
+ * 전에는 영어 이름이 'Gayang Kal...'로 잘리고 칩 하나가 사진 밑에 따로 떠서, 한국어도 빽빽하고 읽기 힘들었다(10/25) */
 export const PinRow = React.memo(function PinRow({ pin, faces, onOpen, selected, t = KO_UI }: { pin: Pin; faces: Faces; onOpen: (id: number) => void; selected?: boolean; t?: UiText }) {
-  const fs = facesOf(pin, faces)
   return (
     <Pressable
       testId="list-item"
       onPress={() => onOpen(pin.id)}
-      className={`block w-full border-b border-line py-3 text-left ${selected ? 'bg-well' : 'active:bg-well'}`}
+      className={`flex w-full items-start gap-3 border-b border-line py-4 text-left ${selected ? 'bg-well' : 'active:bg-well'}`}
     >
-      <span className="flex items-center gap-3">
-        <span className="relative h-[102px] w-[136px] flex-shrink-0 overflow-hidden rounded-[10px] bg-well">
-          {pin.vid && <img src={thumb(pin.vid)} alt="" loading="lazy" draggable={false} className="h-full w-full object-cover" />}
-        </span>
-        <span className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate text-lead font-bold text-ink">{pin.name}</span>
-            <RecBadge rec={pin.rec} label={pin.rec ? t.rec[pin.rec] : undefined} />
-          </span>
+      <span className="relative h-[80px] w-[106px] flex-shrink-0 overflow-hidden rounded-[10px] bg-well">
+        {pin.vid && <img src={thumb(pin.vid)} alt="" loading="lazy" draggable={false} className="h-full w-full object-cover" />}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span data-testid="row-name" className="line-clamp-2 text-lead font-bold leading-[1.3] text-ink">{pin.name}</span>
+        <span className="mt-1 flex min-w-0 items-center gap-1.5">
+          <RecBadge rec={pin.rec} label={pin.rec ? t.rec[pin.rec] : undefined} />
           <span className="truncate text-meta text-sub">{meta(pin, t)}</span>
-          {pin.verdict ? (
-            <span data-testid="row-verdict" className="line-clamp-2 text-[14px] leading-[1.4] text-ink">{pin.verdict}</span>
-          ) : (
-            <Line pin={pin} />
-          )}
-          <span className="mt-0.5 flex min-w-0 items-center gap-1">
-            <VisitorLine faces={fs} size={16} others={t.others} />
-            {pin.nv ? <span className="flex-shrink-0 text-meta text-sub">· {t.videos(pin.nv)}</span> : null}
-          </span>
+        </span>
+        {pin.verdict ? (
+          <span data-testid="row-verdict" className="mt-2 line-clamp-2 text-[14px] leading-[1.45] text-ink">{pin.verdict}</span>
+        ) : (
+          <Line pin={pin} className="mt-2" />
+        )}
+        <span className="mt-2 flex min-w-0 items-center gap-1">
+          <VisitorLine faces={facesOf(pin, faces)} size={16} others={t.others} />
+          {pin.nv ? <span className="flex-shrink-0 text-meta text-sub">· {t.videos(pin.nv)}</span> : null}
         </span>
       </span>
-      {pin.verdict && <Chips items={chipsOf(pin, t, true)} />}
     </Pressable>
   )
 })
