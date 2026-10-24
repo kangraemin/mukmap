@@ -11,17 +11,26 @@ function captionFont() {
   return font
 }
 
-export async function ogImage({ line, sub }: { line: string; sub: string }) {
+/** 자막 서체(Black Han Sans)에 없는 한자·가나는 구글 폰트에서 그 글자만 받아 온다 */
+async function cjkFont(family: string, text: string) {
+  const css = await (await fetch(`https://fonts.googleapis.com/css2?family=${family}:wght@900&text=${encodeURIComponent(text)}`)).text()
+  const src = css.match(/src: url\((.+?)\) format\('(opentype|truetype)'\)/)?.[1]
+  if (!src) throw new Error(`font ${family}`)
+  return Buffer.from(await (await fetch(src)).arrayBuffer())
+}
+
+export async function ogImage({ line, sub, brand = '먹맵', cjk }: { line: string; sub: string; brand?: string; cjk?: string }) {
+  const data = cjk ? await cjkFont(cjk, brand + line + sub) : await captionFont()
   return new ImageResponse(
     (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', background: '#1B1D1F', padding: '72px 80px' }}>
-        <div style={{ display: 'flex', fontSize: 40, color: '#FFFFFF' }}>먹맵</div>
+        <div style={{ display: 'flex', fontSize: 40, color: '#FFFFFF' }}>{brand}</div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
           <div style={{ display: 'flex', background: '#FFE14D', color: '#1B1D1F', fontSize: 92, lineHeight: 1.2, padding: '6px 22px 2px' }}>{line}</div>
           <div style={{ display: 'flex', marginTop: 28, fontSize: 40, color: '#C9CDD2' }}>{sub}</div>
         </div>
       </div>
     ),
-    { ...OG_SIZE, fonts: [{ name: 'caption', data: await captionFont(), weight: 400, style: 'normal' }] },
+    { ...OG_SIZE, fonts: [{ name: 'caption', data, weight: cjk ? 900 : 400, style: 'normal' }] },
   )
 }

@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- 토스 앱과 같이 쓰는 컴포넌트라 next/image를 쓰지 않는다 */
 import type { RestaurantWithVideos, VideoDetail } from '@/lib/types'
-import { areaOf, leadVideo, placeUrl, sceneUrl, thumbOf, type VisitVideo } from '@/lib/format'
+import { areaOf, googleMapUrl, leadVideo, placeUrl, sceneUrl, thumbOf, type VisitVideo } from '@/lib/format'
 import { KO_LABELS, type DetailLabels } from '@/lib/i18n'
 import { ChannelFace } from './ChannelFace'
 import { RecBadge } from './RecBadge'
@@ -220,6 +220,19 @@ export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫�
             </button>
           )}
         </div>
+        {t.googleMaps && (
+          <a
+            href={googleMapUrl(r)}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="google-maps"
+            data-track="google_maps_click"
+            data-track-id={r.id}
+            className="mt-2 flex h-11 items-center justify-center rounded-card border border-line text-body text-ink"
+          >
+            {t.googleMaps}
+          </a>
+        )}
         {adSlot}
 
         {reviewed.length > 0 ? (

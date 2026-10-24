@@ -77,6 +77,8 @@ export interface VideoDetail {
 }
 
 export interface RestaurantWithVideos extends Restaurant {
+  /** 외국어로 바꾼 가게의 원래(한국어) 이름. 지도 검색용 */
+  name_ko?: string
   videos: (Video & {
     channel_name: string
     channel_thumbnail: string | null

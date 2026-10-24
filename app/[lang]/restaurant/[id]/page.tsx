@@ -19,18 +19,20 @@ async function load(p: Props['params']) {
   if (!isLang(p.lang) || !Number.isInteger(id) || id <= 0) notFound()
   const raw = await getRestaurant(id)
   if (!raw) notFound()
-  // 번역본이 없으면 한국어 페이지와 같은 내용이 되므로 만들지 않는다
-  const r = localize(raw, p.lang)
-  if (!r) notFound()
+  // 번역 전이어도 공유 링크·검색으로 들어온 외국인이 404를 보지 않게 로마자 이름으로 연다.
+  // 다만 내용이 한국어판보다 얇으니 번역될 때까지 색인하지 않고 hreflang에도 넣지 않는다
+  const translated = !!localize(raw, p.lang)
+  const r = localize(raw, p.lang, true)!
   const paths: Record<string, string> = { ko: `/restaurant/${id}` }
   for (const l of LANGS) if (raw.videos.some((v) => v.i18n?.[DATA_KEY[l]])) paths[l] = langPath(l, 'restaurant', String(id))
-  return { lang: p.lang, r, paths }
+  const self = langPath(p.lang, 'restaurant', String(id))
+  return { lang: p.lang, r, paths: translated ? paths : { ...paths, [p.lang]: self }, translated }
 }
 
 const area = (r: { region: string | null; city: string | null }) => [r.region, r.city].filter(Boolean).join(' ')
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { lang, r, paths } = await load(params)
+  const { lang, r, paths, translated } = await load(params)
   const t = PAGE[lang]
   const names = visitorsOf(r).map((v) => v.name).join(', ')
   const lead = leadVideo(r)
@@ -41,7 +43,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     path: paths[lang],
     image: lead ? thumbOf(lead) : undefined,
     locale: OG_LOCALE[lang],
-    languages: languagesOf(paths),
+    index: translated,
+    languages: translated ? languagesOf(paths) : undefined,
   })
 }
 

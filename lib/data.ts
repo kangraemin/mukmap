@@ -8,6 +8,7 @@ import { retryDb } from '@/lib/retry'
 import { buildSnap } from '@/lib/build-snap'
 import { coalesce } from '@/lib/coalesce'
 import type { Channel, RestaurantWithVideos, VideoDetail } from '@/lib/types'
+import { romanize } from '@/lib/romanize'
 import { CATEGORY, DATA_KEY, bilingualName, channelName, cityName, regionName, type Lang } from '@/lib/i18n'
 
 export const DATA_TAG = 'mukmap-data'
@@ -212,7 +213,9 @@ export function localize(r: WithI18n, lang: Lang, bare = false) {
     ...r,
     // 현지 간판·지도 검색용으로 한국어 이름을 같이 둔다
     name: bilingualName(label, r.name),
-    label: label || r.name,
+    label: label || romanize(r.name),
+    // 네이버·구글 지도 검색은 한국어 이름으로 해야 그 가게가 나온다
+    name_ko: r.name,
     category: tr.find((x) => x.category_label)?.category_label || CATEGORY[r.category]?.[lang] || r.category,
     region: regionName(r.region, lang) || null,
     regionKo: r.region,

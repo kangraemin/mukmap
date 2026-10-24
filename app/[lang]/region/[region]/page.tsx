@@ -40,6 +40,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description: t.description(label, items.length, names),
     path: paths[lang],
     index: items.length >= MIN_INDEXABLE,
+    // 지역 페이지엔 이미지 파일이 없어 그 언어 첫 화면의 미리보기를 쓴다
+    image: `/${lang}/opengraph-image`,
     locale: OG_LOCALE[lang],
     languages: languagesOf(paths),
   })

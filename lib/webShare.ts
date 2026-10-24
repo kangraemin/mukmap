@@ -4,7 +4,7 @@ import type { ShareMessage } from './share'
 import { track } from './analytics'
 
 /** lang: 외국어 지도(/en 등)에서 공유하면 그 언어 지도로 보낸다.
- *  번역 안 된 가게는 /en/restaurant/<id>가 404라 가게도 지도 주소(/en?place=)로 연다 */
+ *  가게도 지도 주소(/en?place=)로 연다. 번역 안 된 가게의 /en/restaurant/<id>는 색인 안 하는 임시 페이지라서다 */
 export function webShareUrl(query: string, origin = window.location.origin, lang?: string) {
   if (lang) return `${origin}/${lang}?${query}`
   const q = new URLSearchParams(query)

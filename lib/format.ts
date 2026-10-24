@@ -21,10 +21,17 @@ export function clock(sec: number | null | undefined) {
   return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`
 }
 
-export function placeUrl(r: Pick<RestaurantWithVideos, 'name' | 'address' | 'naver_place_id'>) {
+const mapQuery = (r: Pick<RestaurantWithVideos, 'name' | 'name_ko' | 'address'>) => `${r.name_ko || r.name} ${r.address || ''}`.trim()
+
+export function placeUrl(r: Pick<RestaurantWithVideos, 'name' | 'name_ko' | 'address' | 'naver_place_id'>) {
   return r.naver_place_id
     ? `https://map.naver.com/p/entry/place/${r.naver_place_id}`
-    : `https://map.naver.com/p/search/${encodeURIComponent(`${r.name} ${r.address || ''}`.trim())}`
+    : `https://map.naver.com/p/search/${encodeURIComponent(mapQuery(r))}`
+}
+
+/** 구글 지도 검색 주소(공식 Maps URLs). 이름+주소로 찾으면 그 가게 카드가 열린다 */
+export function googleMapUrl(r: Pick<RestaurantWithVideos, 'name' | 'name_ko' | 'address'>) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery(r))}`
 }
 
 export function areaOf(r: Pick<RestaurantWithVideos, 'region' | 'city'>) {

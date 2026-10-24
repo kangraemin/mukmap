@@ -2,6 +2,7 @@
 // 화면 글자는 여기 사전으로, 영상 요약은 videos.i18n(언어별 번역본)으로 바꾼다.
 import type { VideoDetail } from '@/lib/types'
 import NAMES from './i18n-names.json'
+import { romanize } from './romanize'
 
 export const LANGS = ['en', 'ja', 'zh-cn', 'zh-tw'] as const
 export type Lang = (typeof LANGS)[number]
@@ -27,6 +28,8 @@ export interface DetailLabels {
   best: string
   watch: string
   directions: string
+  /** 있으면 길찾기(네이버) 아래에 구글 지도 버튼을 둔다. 외국어 화면만 */
+  googleMaps?: string
   share: string
   reviewOf: (name: string) => [string, string]
   visitors: (n: number) => string
@@ -56,7 +59,7 @@ export const LABELS: Record<Lang, DetailLabels> = {
   en: {
     chips: { price: 'Price', wait: 'Wait', parking: 'Parking', reserve: 'Reservations', hours: 'Hours', solo_ok: 'Dining solo' },
     more: { vibe: 'Atmosphere', service: 'Service', revisit: 'Would return', good_for: 'Good for', value: 'Value' },
-    pros: 'Liked', cons: 'Downsides', tips: 'Tips', best: 'Best', watch: 'Watch video', directions: 'Directions', share: 'Share',
+    pros: 'Liked', cons: 'Downsides', tips: 'Tips', best: 'Best', watch: 'Watch video', directions: 'Directions', googleMaps: 'Google Maps', share: 'Share',
     reviewOf: (name) => [name, '’s review'],
     visitors: (n) => `${n} YouTuber${n > 1 ? 's' : ''} visited`,
     ate: 'Ate', videoPrice: 'Price in video', visitSummary: 'Summary',
@@ -67,7 +70,7 @@ export const LABELS: Record<Lang, DetailLabels> = {
   ja: {
     chips: { price: '価格', wait: '待ち時間', parking: '駐車場', reserve: '予約', hours: '営業時間', solo_ok: 'ひとり客' },
     more: { vibe: '雰囲気', service: 'サービス', revisit: 'リピート', good_for: 'おすすめの場面', value: 'コスパ' },
-    pros: '良かった点', cons: 'いまひとつな点', tips: 'ヒント', best: 'イチオシ', watch: '動画を見る', directions: '道順', share: '共有',
+    pros: '良かった点', cons: 'いまひとつな点', tips: 'ヒント', best: 'イチオシ', watch: '動画を見る', directions: '道順', googleMaps: 'Googleマップで見る', share: '共有',
     reviewOf: (name) => [name, 'の評価'],
     visitors: (n) => `訪れたYouTuber ${n}人`,
     ate: '食べたもの', videoPrice: '動画内の価格', visitSummary: '訪問まとめ',
@@ -78,7 +81,7 @@ export const LABELS: Record<Lang, DetailLabels> = {
   'zh-cn': {
     chips: { price: '价格', wait: '排队', parking: '停车', reserve: '预约', hours: '营业时间', solo_ok: '一人食' },
     more: { vibe: '氛围', service: '服务', revisit: '回访', good_for: '适合场合', value: '性价比' },
-    pros: '优点', cons: '不足', tips: '小贴士', best: '最佳', watch: '看视频', directions: '路线', share: '分享',
+    pros: '优点', cons: '不足', tips: '小贴士', best: '最佳', watch: '看视频', directions: '路线', googleMaps: '在谷歌地图中查看', share: '分享',
     reviewOf: (name) => [name, '的评价'],
     visitors: (n) => `${n}位YouTuber来过`,
     ate: '吃了什么', videoPrice: '视频中的价格', visitSummary: '探店摘要',
@@ -89,7 +92,7 @@ export const LABELS: Record<Lang, DetailLabels> = {
   'zh-tw': {
     chips: { price: '價格', wait: '排隊', parking: '停車', reserve: '訂位', hours: '營業時間', solo_ok: '一人用餐' },
     more: { vibe: '氛圍', service: '服務', revisit: '回訪', good_for: '適合場合', value: 'CP值' },
-    pros: '優點', cons: '缺點', tips: '小提醒', best: '最推', watch: '看影片', directions: '路線', share: '分享',
+    pros: '優點', cons: '缺點', tips: '小提醒', best: '最推', watch: '看影片', directions: '路線', googleMaps: '在 Google 地圖查看', share: '分享',
     reviewOf: (name) => [name, '的評價'],
     visitors: (n) => `${n}位YouTuber造訪`,
     ate: '吃了什麼', videoPrice: '影片中的價格', visitSummary: '探店摘要',
@@ -261,9 +264,11 @@ export const PAGE: Record<Lang, {
   },
 }
 
-/** 외국어 가게 이름. 현지 간판·지도 검색용으로 한국어 이름을 같이 둔다 */
-export const bilingualName = (label: string | null | undefined, ko: string) =>
-  !label || label === ko ? ko : label.includes('(') ? `${label} · ${ko}` : `${label} (${ko})`
+/** 외국어 가게 이름. 현지 간판·지도 검색용으로 한국어 이름을 같이 둔다. 번역 전이면 로마자로 읽게 한다 */
+export const bilingualName = (label: string | null | undefined, ko: string) => {
+  label ||= romanize(ko)
+  return label === ko ? ko : label.includes('(') ? `${label} · ${ko}` : `${label} (${ko})`
+}
 
 /** 언어별 경로. lang이 없으면 한국어(원래 주소) */
 export function langPath(lang: Lang | null, ...parts: string[]) {

@@ -15,6 +15,7 @@ export type EventName =
   | 'list_click'        // 목록에서 가게를 누름. id, rank, sort
   | 'video_watch_click' // 핵심 행동: 영상 장면 보러 유튜브로. id, where, rank
   | 'directions_click'  // 네이버 지도 길찾기로. id
+  | 'google_maps_click' // 외국어 화면에서 구글 지도로. id
   | 'share_attempt'     // 공유 버튼. kind, id
   | 'share_success'     // 공유 창이 끝까지 열림. kind, id
   | 'share_fail'        // 공유 실패. kind, msg
