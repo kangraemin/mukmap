@@ -131,6 +131,12 @@ function flyToFit(map: naver.maps.Map, lats: number[], lngs: number[], pad: numb
   map.morph(bottom ? centerAbove(lat, lng, zoom, -bottom / 2) : new naver.maps.LatLng(lat, lng), zoom, { duration: 600, easing: 'easeOutCubic' })
 }
 
+/** 핀을 눌렀을 때 갈 줌. 전국 지도(7)에서 한 번에 15까지 당기면 흐린 타일이 수백 배로 커지며 지도가 앞으로 확 덮쳐 왔다(10/25).
+ * 한 번에 세 단계까지만 당기고, 이미 가까우면 그대로 둔다 */
+export function tapZoom(z: number) {
+  return Math.max(z, Math.min(15, Math.floor(z) + 3))
+}
+
 // 앞 움직임이 막 끝난 참에 morph를 부르면 네이버 지도가 가끔 그냥 삼킨다(역을 눌렀는데 전국 지도 그대로).
 // 멈췄을 때 목표 줌에 못 갔으면 한 번 더 보낸다
 function morphSure(map: naver.maps.Map, center: naver.maps.LatLng, zoom: number, duration: number) {
@@ -354,6 +360,7 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey, sdkLoaded])
 
+  const cardZoom = useRef<{ id: number; zoom: number } | null>(null)
   // 핀보다 focus가 먼저 오면(공유 링크 ?place, 느린 망) 못 옮긴 focus를 기억해 두고 그 가게 핀이 오면 한 번 옮긴다
   const missedFocus = useRef<typeof focus>(null)
   const appliedFocus = useRef<typeof focus>(null)
@@ -371,6 +378,8 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
     if (!p) return
     appliedFocus.current = focus
     const zoom = 'id' in focus ? Math.max(map.getZoom(), 15) : 'zoom' in focus && focus.zoom ? focus.zoom : 16
+    // 같은 가게로 카드도 뜨면 카드 쪽 이동도 이 줌을 쓴다(둘이 다른 줌으로 서로 덮어쓰지 않게)
+    if ('id' in focus) cardZoom.current = { id: focus.id, zoom }
     morphSure(map, fitBottom ? centerAbove(p.lat, p.lng, zoom, -fitBottom / 2) : new naver.maps.LatLng(p.lat, p.lng), zoom, 500)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus, sdkLoaded, missedReady])
@@ -381,12 +390,16 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
   useEffect(() => {
     const map = mapRef.current
     const el = mapElRef.current
+    if (selectedId == null) cardZoom.current = null
     if (!map || !el || selectedId == null || insetTop == null || insetBottom == null) return
     const p = pins.find((x) => x.id === selectedId)
     if (!p) return
     const h = el.clientHeight
     const freeMid = insetTop + (h - insetTop - insetBottom) / 2
-    const zoom = Math.max(map.getZoom(), 15)
+    // 줌은 그 가게를 처음 고를 때 한 번만 정한다. 카드 높이를 잰 뒤 다시 불릴 때 움직이는 중의 줌으로 다시 정하면
+    // 목표가 바뀌어 지도가 한 번 더 튀었다(10/25 실기기, 가끔만 재현)
+    if (cardZoom.current?.id !== selectedId) cardZoom.current = { id: selectedId, zoom: tapZoom(map.getZoom()) }
+    const zoom = cardZoom.current.zoom
     map.morph(centerAbove(p.lat, p.lng, zoom, freeMid - h / 2), zoom, { duration: 500, easing: 'easeOutCubic' })
     // 핀 목록이 바뀔 때마다 다시 옮기지 않는다
     // eslint-disable-next-line react-hooks/exhaustive-deps
