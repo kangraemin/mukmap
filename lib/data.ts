@@ -6,10 +6,14 @@ import { cache } from 'react'
 import { supabase } from '@/lib/supabase'
 import { retryDb } from '@/lib/retry'
 import { buildSnap } from '@/lib/build-snap'
+import { coalesce } from '@/lib/coalesce'
 import type { Channel, RestaurantWithVideos, VideoDetail } from '@/lib/types'
 import { DATA_KEY, channelName, cityName, regionName, type Lang } from '@/lib/i18n'
 
 export const DATA_TAG = 'mukmap-data'
+// 새 가게가 들어오면 수집기가 /api/revalidate로 바로 비운다. 시간 만료는 하루에 한 번 안전망으로만 둔다.
+// 1시간으로 두면 만료 때마다 가게 전체(12덩어리)를 다시 읽어 DB 부하 1위였다(10/24)
+const DATA_REVALIDATE = 86400
 
 // Next 데이터 캐시는 항목당 2MB까지다. 넘으면 캐시가 안 돼 요청마다 DB 전체를 다시 읽는다.
 // 그래서 캐시에는 화면에 쓰는 칸만 담고, 채널 이름·얼굴은 캐시 밖에서 붙인다.
@@ -27,7 +31,7 @@ const getChannels = unstable_cache(
     return (data || []) as Channel[]
   },
   ['mukmap-channels-v1'],
-  { revalidate: 3600, tags: [DATA_TAG] },
+  { revalidate: DATA_REVALIDATE, tags: [DATA_TAG] },
 )
 
 // 가게 전체를 한 항목으로 담으면 2MB를 넘어 캐시가 안 된다. 500곳씩 따로 담는다
@@ -46,10 +50,13 @@ const getChunk = unstable_cache(
     return { rows: (data || []) as unknown as RawRestaurant[], full: (data || []).length === CHUNK }
   },
   ['mukmap-all-chunk-v1'],
-  { revalidate: 3600, tags: [DATA_TAG] },
+  { revalidate: DATA_REVALIDATE, tags: [DATA_TAG] },
 )
 
-async function getCompact(): Promise<{ channels: Channel[]; restaurants: RawRestaurant[] }> {
+// 동시에 그려지는 페이지들이 한 번만 모으게 묶는다
+const getCompact = coalesce(readCompact)
+
+async function readCompact(): Promise<{ channels: Channel[]; restaurants: RawRestaurant[] }> {
   const channels = await getChannels()
   const ids = new Set(channels.map((c) => c.id))
   const rows: RawRestaurant[] = []

@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import fs from 'fs'
 import path from 'path'
+import { coalesce } from '../../lib/coalesce'
 
 // 가게 전체 목록이 Next 데이터 캐시(항목당 2MB)에 실제로 들어간다.
 // 안 들어가면 페이지를 열 때마다 전체를 다시 읽고 가공해 서버 CPU를 태운다
@@ -31,5 +32,27 @@ test('가게 전체 목록이 2MB 아래 덩어리로 캐시에 저장된다', a
 
   // 캐시 파일은 응답을 보낸 뒤에 써진다
   await expect.poll(() => restaurantEntries(since).length, { timeout: 30_000 }).toBeGreaterThan(0)
-  for (const f of restaurantEntries(since)) expect(fs.statSync(f).size, f).toBeLessThan(LIMIT)
+  for (const f of restaurantEntries(since)) {
+    expect(fs.statSync(f).size, f).toBeLessThan(LIMIT)
+    // 1시간 만료면 만료 때마다 전체를 다시 읽어 DB 부하 1위가 됐다(10/24). 갱신은 /api/revalidate가 맡는다
+    expect(JSON.parse(fs.readFileSync(f, 'utf8')).revalidate, f).toBeGreaterThanOrEqual(86400)
+  }
+})
+
+test('읽는 중에 겹친 전체 목록 요청은 DB를 한 번만 부르고, 다 읽은 뒤·실패 뒤엔 새로 부른다', async () => {
+  let n = 0
+  let fail = false
+  const get = coalesce(async () => {
+    n++
+    await new Promise((r) => setTimeout(r, 100))
+    if (fail) throw new Error('db')
+    return n
+  })
+  expect(await Promise.all([get(), get(), get()])).toEqual([1, 1, 1])
+  // 캐시를 비운 뒤 옛 결과를 들고 있으면 안 된다
+  expect(await get()).toBe(2)
+  fail = true
+  await expect(Promise.all([get(), get()])).rejects.toThrow('db')
+  fail = false
+  expect(await get()).toBe(4)
 })
