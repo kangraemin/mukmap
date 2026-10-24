@@ -14,7 +14,9 @@ async function expectHalf(page: Page, id: string) {
   const vp = page.viewportSize()!
   await expect.poll(async () => {
     const b = (await sheet.boundingBox())!
-    return b.height > vp.height * 0.3 && b.height < vp.height * 0.6 && Math.abs(b.y + b.height - vp.height) < 2
+    // 시트는 화면 높이로 펴진 채 아래로 밀려 있다. 보이는 높이는 화면 아래 끝에서 윗변까지다
+    const shown = vp.height - b.y
+    return shown > vp.height * 0.3 && shown < vp.height * 0.6 && b.y + b.height >= vp.height - 2
   }).toBe(true)
   await expect(sheet.getByTestId('list-item').first()).toBeVisible()
 }
@@ -291,7 +293,8 @@ async function expectPeek(page: Page, id: string) {
   const vp = page.viewportSize()!
   await expect.poll(async () => {
     const b = (await sheet.boundingBox())!
-    return b.height > 50 && b.height < 130 && Math.abs(b.y + b.height - vp.height) < 2
+    const shown = vp.height - b.y
+    return shown > 50 && shown < 130 && b.y + b.height >= vp.height - 2
   }).toBe(true)
 }
 
