@@ -41,6 +41,41 @@ test('다 펼친 목록을 맨 위에서 손가락으로 끌어내리면 반쯤�
   await expect(sheet).not.toHaveAttribute('data-snap', 'full')
 })
 
+test('실제 손가락처럼 처음 몇 px을 천천히 끌어도 첫 움직임부터 스크롤을 막아 시트가 내려간다', async ({ page, browserName }) => {
+  // 폰 브라우저(토스 웹뷰 포함)는 첫 touchmove를 안 막으면 그 손짓을 스크롤로 정하고, 뒤에서 막아도 목록만 고무줄처럼 늘어난다(2026-10-24 녹화)
+  test.skip(browserName !== 'chromium', 'Touch 생성자는 크롬에만 있다')
+  await ready(page)
+  await page.getByTestId('list-pill').click()
+  const sheet = page.getByTestId('list-view')
+  await expect(sheet).toHaveAttribute('data-snap', 'full')
+  let h = 0
+  await expect.poll(async () => { const prev = h; h = (await sheet.boundingBox())!.height; return h === prev }, { intervals: [100] }).toBe(true)
+  // iOS는 1~2px 움직임도 바로 touchmove로 보낸다(크롬은 15px 안쪽을 안 보내 CDP로는 재현이 안 된다). 같은 순서로 직접 보낸다
+  const prevented = await sheet.getByTestId('list-item').first().evaluate(async (el) => {
+    const r = el.getBoundingClientRect()
+    const x = r.x + r.width / 2
+    let y = r.y + 20
+    const fire = (type: string) => {
+      const t = new Touch({ identifier: 1, target: el, clientX: x, clientY: y })
+      const e = new TouchEvent(type, { bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [t], targetTouches: type === 'touchend' ? [] : [t], changedTouches: [t] })
+      el.dispatchEvent(e)
+      return e.defaultPrevented
+    }
+    fire('touchstart')
+    const out: boolean[] = []
+    for (const step of [2, 2, 2, 30, 30, 30, 30, 30, 30, 30, 30]) {
+      y += step
+      out.push(fire('touchmove'))
+      await new Promise((r) => requestAnimationFrame(r))
+    }
+    fire('touchend')
+    return out
+  })
+  // 첫 움직임을 안 막으면 실제 폰은 스크롤로 정해 버린다
+  expect(prevented[0]).toBe(true)
+  await expect(sheet).not.toHaveAttribute('data-snap', 'full')
+})
+
 test('강추만 칩을 누르면 강추 가게만 남고, 다시 누르면 돌아온다', async ({ page }) => {
   await ready(page)
   const before = await count(page)

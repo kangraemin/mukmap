@@ -161,6 +161,10 @@ export default function ListSheet({ snap, onSnap, hidden, fullTop = 0, header, c
       const dy = y - t.y
       if (!t.moved) {
         if (dy < -MOVE) { t.top = false; return }
+        if (dy <= 0) return
+        // iOS는 첫 touchmove를 안 막으면 그 손짓을 스크롤로 정하고 뒤의 preventDefault를 무시한다.
+        // 그러면 시트 대신 목록만 고무줄처럼 늘어났다(2026-10-24 토스 앱 녹화). 아래로 움직이기 시작한 순간부터 막는다
+        e.preventDefault()
         if (dy < MOVE) return
         t.moved = true
         startRef.current()
