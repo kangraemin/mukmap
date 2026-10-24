@@ -16,12 +16,13 @@ for (const L of LANGS) {
     const res = await page.goto(`/${L.lang}`)
     expect(res!.status()).toBe(200)
     await expect(page.locator('html')).toHaveAttribute('lang', L.html)
+    // 첫 화면은 지도 앱이라 가게 목록 링크는 목록 시트 맨 아래에 있다. 주소를 따라간다
     const first = page.getByTestId('lang-list').locator('a').first()
-    await expect(first).toBeVisible()
+    await expect(first).toBeAttached()
     const href = (await first.getAttribute('href'))!
     expect(href).toMatch(new RegExp(`^/${L.lang}/restaurant/\\d+$`))
 
-    await first.click()
+    await page.goto(href)
     await expect(page).toHaveURL(new RegExp(`${href}$`))
     await expect(page.locator('html')).toHaveAttribute('lang', L.html)
     await expect(page.locator('h1')).toBeVisible()
@@ -53,7 +54,7 @@ test('지역 페이지는 영문 주소(/en/region/seoul)로 열리고 그 지�
   await page.goto('/en')
   const region = page.locator('a[href^="/en/region/"]').first()
   const href = (await region.getAttribute('href'))!
-  await region.click()
+  await page.goto(href)
   await expect(page).toHaveURL(new RegExp(`${href}$`))
   const items = page.getByTestId('lang-list').locator('a')
   await expect(items.first()).toBeVisible()

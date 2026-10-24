@@ -123,6 +123,21 @@ export const REGIONS: Record<string, { slug: string } & Record<Lang, string>> = 
 export const regionName = (region: string | null | undefined, lang: Lang) => (region && REGIONS[region]?.[lang]) || region || ''
 export const regionBySlug = (slug: string) => Object.keys(REGIONS).find((k) => REGIONS[k].slug === slug) || null
 
+/** 가게 분류(DB의 category 값 11개). 영상 번역이 없는 가게도 분류는 이걸로 보인다 */
+export const CATEGORY: Record<string, Record<Lang, string>> = {
+  한식: { en: 'Korean', ja: '韓国料理', 'zh-cn': '韩餐', 'zh-tw': '韓式料理' },
+  고기: { en: 'Meat', ja: '肉料理', 'zh-cn': '肉类', 'zh-tw': '肉類' },
+  구이: { en: 'BBQ', ja: '焼肉', 'zh-cn': '烤肉', 'zh-tw': '燒烤' },
+  일식: { en: 'Japanese', ja: '和食', 'zh-cn': '日料', 'zh-tw': '日式料理' },
+  중식: { en: 'Chinese', ja: '中華料理', 'zh-cn': '中餐', 'zh-tw': '中式料理' },
+  해산물: { en: 'Seafood', ja: '海鮮', 'zh-cn': '海鲜', 'zh-tw': '海鮮' },
+  양식: { en: 'Western', ja: '洋食', 'zh-cn': '西餐', 'zh-tw': '西式料理' },
+  분식: { en: 'Street food', ja: '粉食(軽食)', 'zh-cn': '小吃', 'zh-tw': '小吃' },
+  디저트: { en: 'Dessert', ja: 'デザート', 'zh-cn': '甜点', 'zh-tw': '甜點' },
+  카페: { en: 'Cafe', ja: 'カフェ', 'zh-cn': '咖啡馆', 'zh-tw': '咖啡廳' },
+  기타: { en: 'Other', ja: 'その他', 'zh-cn': '其他', 'zh-tw': '其他' },
+}
+
 /** 외국어 목록·가게 페이지 글자 */
 export const PAGE: Record<Lang, {
   siteName: string
@@ -157,7 +172,7 @@ export const PAGE: Record<Lang, {
       description: (names, area, cat, name, what) => `${name}, a ${cat} restaurant in ${area}, Korea, visited by ${names}. ${what}Address and a link to the video scene.`,
     },
     visitedBy: (names) => `Visited by ${names}`,
-    openMap: 'Open map (Korean)',
+    openMap: 'Open map',
     koreanNote: 'Summaries are machine-translated from Korean videos. The address is in Korean so you can paste it into Naver Map or Kakao Map.',
     places: (n) => `${n} places`,
     more: 'More in this area',
@@ -184,7 +199,7 @@ export const PAGE: Record<Lang, {
       description: (names, area, cat, name, what) => `${names}が訪れた${area}の${cat}「${name}」。${what}住所と動画の場面へのリンク。`,
     },
     visitedBy: (names) => `${names}が訪問`,
-    openMap: '地図で見る(韓国語)',
+    openMap: '地図で見る',
     koreanNote: '要約は韓国語の動画から機械翻訳しています。住所は韓国語のままなので、NAVERマップやカカオマップに貼り付けて使えます。',
     places: (n) => `${n}軒`,
     more: 'この地域をもっと見る',
@@ -211,7 +226,7 @@ export const PAGE: Record<Lang, {
       description: (names, area, cat, name, what) => `${names}去过的${area}${cat}「${name}」。${what}地址和视频片段链接。`,
     },
     visitedBy: (names) => `${names}去过`,
-    openMap: '查看地图(韩语)',
+    openMap: '查看地图',
     koreanNote: '摘要由韩语视频机器翻译。地址保留韩语,可直接粘贴到Naver地图或Kakao地图。',
     places: (n) => `${n}家`,
     more: '这个地区的更多餐厅',
@@ -238,13 +253,17 @@ export const PAGE: Record<Lang, {
       description: (names, area, cat, name, what) => `${names}造訪的${area}${cat}「${name}」。${what}地址和影片片段連結。`,
     },
     visitedBy: (names) => `${names}造訪`,
-    openMap: '查看地圖(韓語)',
+    openMap: '查看地圖',
     koreanNote: '摘要由韓語影片機器翻譯。地址保留韓語,可直接貼到Naver地圖或Kakao地圖。',
     places: (n) => `${n}家`,
     more: '這個地區的更多餐廳',
     langs: '語言',
   },
 }
+
+/** 외국어 가게 이름. 현지 간판·지도 검색용으로 한국어 이름을 같이 둔다 */
+export const bilingualName = (label: string | null | undefined, ko: string) =>
+  !label || label === ko ? ko : label.includes('(') ? `${label} · ${ko}` : `${label} (${ko})`
 
 /** 언어별 경로. lang이 없으면 한국어(원래 주소) */
 export function langPath(lang: Lang | null, ...parts: string[]) {

@@ -1,13 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { getRestaurant, localize } from '@/lib/data'
+import { isLang } from '@/lib/i18n'
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const id = Number(params.id)
   if (isNaN(id)) {
     return NextResponse.json({ error: 'Invalid id' }, { status: 400 })
+  }
+
+  // 외국어 지도(?lang=en): 그 언어 번역본. 아직 번역 안 된 가게는 한국어 글을 뺀 채로 준다
+  const lang = request.nextUrl.searchParams.get('lang')
+  if (lang && isLang(lang)) {
+    const raw = await getRestaurant(id).catch(() => null)
+    if (!raw) return NextResponse.json({ error: 'Restaurant not found' }, { status: 404 })
+    return NextResponse.json(localize(raw, lang, true), {
+      headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400' },
+    })
   }
 
   try {

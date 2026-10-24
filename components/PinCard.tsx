@@ -6,6 +6,7 @@ import type { Pin } from '@/lib/pins'
 import { VisitorLine } from './ChannelFace'
 import { RecBadge } from './RecBadge'
 import type { Face } from './NaverMap'
+import { KO_UI, type UiText } from '@/lib/ui-text'
 
 type Faces = Record<string, Face>
 
@@ -24,8 +25,8 @@ function Line({ pin }: { pin: Pin }) {
   return <span className="block truncate text-meta text-ink">{text}</span>
 }
 
-function meta(pin: Pin) {
-  return [pin.category, [pin.region, pin.city].filter(Boolean).join(' ')].filter(Boolean).join(' · ')
+function meta(pin: Pin, t: UiText) {
+  return [pin.category && t.category(pin.category), t.area(pin.region, pin.city)].filter(Boolean).join(' · ')
 }
 
 /** 최고 메뉴·가격·웨이팅 같은 짧은 정보. 넘치면 잘라 내지 않고 옆으로 밀어 본다(실기기에서 '웨이팅 한.'처럼 잘렸다) */
@@ -73,8 +74,8 @@ function Pressable({ onPress, label, className, testId, children }: { onPress: (
   )
 }
 
-function chipsOf(pin: Pin, withPark = false): [string, string | null | undefined][] {
-  return [['최고', pin.best], ['가격', pin.price], ['웨이팅', pin.wait], ...(withPark ? [['주차', pin.park] as [string, string | null | undefined]] : [])]
+function chipsOf(pin: Pin, t: UiText, withPark = false): [string, string | null | undefined][] {
+  return [[t.best, pin.best], [t.price, pin.price], [t.wait, pin.wait], ...(withPark ? [[t.park, pin.park] as [string, string | null | undefined]] : [])]
 }
 
 function PlayBadge() {
@@ -86,7 +87,7 @@ function PlayBadge() {
 }
 
 /** 핀을 누르면 지도 아래에 뜨는 카드. 누르면 상세로 간다 */
-export function PreviewCard({ pin, faces, onOpen, onClose, onShare, liked = false, onLike, leaving, adSlot }: { pin: Pin; faces: Faces; onOpen: () => void; onClose: () => void; onShare?: () => void; liked?: boolean; onLike?: () => void; leaving?: boolean; adSlot?: React.ReactNode }) {
+export function PreviewCard({ pin, faces, onOpen, onClose, onShare, liked = false, onLike, leaving, adSlot, t = KO_UI }: { pin: Pin; faces: Faces; onOpen: () => void; onClose: () => void; onShare?: () => void; liked?: boolean; onLike?: () => void; leaving?: boolean; adSlot?: React.ReactNode; t?: UiText }) {
   // 오른쪽 위엔 닫기만 둔다. 찜·공유까지 위에 두면 글 칸이 60px 남짓만 남아 이름이 잘렸다
   const stop = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); fn() }
   return (
@@ -96,7 +97,7 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, liked = fals
         leaving ? 'pointer-events-none animate-sheet-out' : 'animate-sheet-in'
       }`}
     >
-      <Pressable onPress={onOpen} className="block w-full px-4 pb-3.5 pt-4 text-left active:opacity-90" label={`${pin.name} 자세히 보기`}>
+      <Pressable onPress={onOpen} className="block w-full px-4 pb-3.5 pt-4 text-left active:opacity-90" label={t.openDetail(pin.name)}>
         <span className="flex items-center gap-3 pr-8">
           <span className="relative h-[72px] w-[128px] flex-shrink-0 overflow-hidden rounded-[10px] bg-well">
             {pin.vid && <img src={thumb(pin.vid)} alt="" draggable={false} className="h-full w-full object-cover" />}
@@ -104,10 +105,10 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, liked = fals
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="truncate text-lead font-bold text-ink">{pin.name}</span>
-            <span className="truncate text-meta text-sub">{meta(pin)}</span>
+            <span className="truncate text-meta text-sub">{meta(pin, t)}</span>
             <span className="flex min-w-0 items-center gap-1.5">
-              <VisitorLine faces={facesOf(pin, faces)} size={18} />
-              <RecBadge rec={pin.rec} />
+              <VisitorLine faces={facesOf(pin, faces)} size={18} others={t.others} />
+              <RecBadge rec={pin.rec} label={pin.rec ? t.rec[pin.rec] : undefined} />
             </span>
           </span>
         </span>
@@ -118,20 +119,20 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, liked = fals
         ) : (
           pin.menu && (
             <span className="mt-3 block truncate text-body text-ink">
-              <span className="mr-1.5 text-sub">먹은 것</span>{pin.menu}
+              <span className="mr-1.5 text-sub">{t.ate}</span>{pin.menu}
             </span>
           )
         )}
-        {pin.verdict && <Chips items={chipsOf(pin)} bleed="-mx-4 px-4" />}
+        {pin.verdict && <Chips items={chipsOf(pin, t)} bleed="-mx-4 px-4" />}
         <span className="mt-3 flex items-center justify-between text-meta">
-          <span className="text-sub">{pin.nv ? `영상 ${pin.nv}개` : ''}</span>
+          <span className="text-sub">{pin.nv ? t.videos(pin.nv) : ''}</span>
           <span className="flex items-center">
             {onLike && (
               <button
                 type="button"
                 onClick={stop(onLike)}
                 onKeyDown={(e) => e.stopPropagation()}
-                aria-label="찜"
+                aria-label={t.like}
                 aria-pressed={liked}
                 data-testid="like"
                 className="-my-2 flex h-11 w-11 items-center justify-center text-ink"
@@ -144,7 +145,7 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, liked = fals
                 type="button"
                 onClick={stop(onShare)}
                 onKeyDown={(e) => e.stopPropagation()}
-                aria-label="공유"
+                aria-label={t.share}
                 data-testid="share-place"
                 className="-my-2 mr-1 flex h-11 w-11 items-center justify-center text-ink"
               >
@@ -152,7 +153,7 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, liked = fals
               </button>
             )}
             <span className="flex items-center gap-0.5 text-body font-bold text-ink">
-              자세히
+              {t.more}
               <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </span>
           </span>
@@ -162,7 +163,7 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, liked = fals
       <button
         type="button"
         onClick={onClose}
-        aria-label="닫기"
+        aria-label={t.close}
         className="absolute right-1 top-1 flex h-11 w-11 items-center justify-center text-sub"
       >
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
@@ -172,7 +173,7 @@ export function PreviewCard({ pin, faces, onOpen, onClose, onShare, liked = fals
 }
 
 /** 목록 한 줄 */
-export const PinRow = React.memo(function PinRow({ pin, faces, onOpen, selected }: { pin: Pin; faces: Faces; onOpen: (id: number) => void; selected?: boolean }) {
+export const PinRow = React.memo(function PinRow({ pin, faces, onOpen, selected, t = KO_UI }: { pin: Pin; faces: Faces; onOpen: (id: number) => void; selected?: boolean; t?: UiText }) {
   const fs = facesOf(pin, faces)
   return (
     <Pressable
@@ -187,21 +188,21 @@ export const PinRow = React.memo(function PinRow({ pin, faces, onOpen, selected 
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="truncate text-lead font-bold text-ink">{pin.name}</span>
-            <RecBadge rec={pin.rec} />
+            <RecBadge rec={pin.rec} label={pin.rec ? t.rec[pin.rec] : undefined} />
           </span>
-          <span className="truncate text-meta text-sub">{meta(pin)}</span>
+          <span className="truncate text-meta text-sub">{meta(pin, t)}</span>
           {pin.verdict ? (
             <span data-testid="row-verdict" className="line-clamp-2 text-[14px] leading-[1.4] text-ink">{pin.verdict}</span>
           ) : (
             <Line pin={pin} />
           )}
           <span className="mt-0.5 flex min-w-0 items-center gap-1">
-            <VisitorLine faces={fs} size={16} />
-            {pin.nv ? <span className="flex-shrink-0 text-meta text-sub">· 영상 {pin.nv}개</span> : null}
+            <VisitorLine faces={fs} size={16} others={t.others} />
+            {pin.nv ? <span className="flex-shrink-0 text-meta text-sub">· {t.videos(pin.nv)}</span> : null}
           </span>
         </span>
       </span>
-      {pin.verdict && <Chips items={chipsOf(pin, true)} />}
+      {pin.verdict && <Chips items={chipsOf(pin, t, true)} />}
     </Pressable>
   )
 })

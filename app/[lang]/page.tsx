@@ -1,9 +1,11 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import ReactDOM from 'react-dom'
+import HomeExplorer from '@/components/HomeExplorer'
+import { getChannelSummaries } from '@/lib/data'
 import LangLinks from '@/components/page/LangLinks'
 import LangList from '@/components/page/LangList'
-import SiteHeader from '@/components/page/SiteHeader'
-import { LANGS, OG_LOCALE, PAGE, REGIONS, isLang, langPath, regionName, NAV_LABEL } from '@/lib/i18n'
+import { LANGS, OG_LOCALE, PAGE, REGIONS, isLang, langPath, regionName } from '@/lib/i18n'
 import { collectionJsonLd, jsonLdScript, languagesOf, pageMetadata } from '@/lib/seo'
 import { translatedRestaurants } from './_list'
 
@@ -31,17 +33,20 @@ export default async function LangHome({ params }: Props) {
   if (!isLang(params.lang)) notFound()
   const lang = params.lang
   const t = PAGE[lang]
-  const { restaurants, items } = await translatedRestaurants(lang)
+  const [{ restaurants, items }, channels] = await Promise.all([translatedRestaurants(lang), getChannelSummaries()])
+  // 한국어 홈과 같은 지도 앱을 그 언어로 띄운다. 지도 SDK·핀 목록을 HTML 파싱과 동시에 받기 시작한다
+  ReactDOM.preconnect('https://oapi.map.naver.com')
+  ReactDOM.preload(`https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID}&language=${lang.startsWith('zh') ? 'zh' : lang}`, { as: 'script' })
+  ReactDOM.preload(`/api/pins/${lang}`, { as: 'fetch', crossOrigin: 'anonymous' })
   const byRegion = new Map<string, number>()
   for (const r of restaurants) if (r.region && REGIONS[r.region]) byRegion.set(r.region, (byRegion.get(r.region) || 0) + 1)
   const latest = restaurants[0]?.videos[0]?.published_at || null
   const year = new Date().getFullYear()
   return (
     <>
-      <SiteHeader crumbs={[]} mapHref="/" home={{ href: PATHS[lang], name: t.siteName }} mapLabel={t.openMap} navLabel={NAV_LABEL[lang]} />
-      <main className="mx-auto max-w-2xl px-4 pb-6 pt-6 sm:px-0">
-        <h1 className="text-title font-bold text-ink">{t.home.h1}</h1>
-        <h2 className="mt-4 text-lead font-bold text-ink">{t.home.question}</h2>
+      <h1 className="sr-only">{t.home.h1}</h1>
+      <HomeExplorer channels={channels} lang={lang}>
+        <h2 className="text-lead font-bold text-ink">{t.home.question}</h2>
         <p className="mt-1.5 text-body text-ink">{t.home.answer(restaurants.length, year)}</p>
         <h2 className="mt-8 text-lead font-bold text-ink">{t.home.regions}</h2>
         <ul className="mt-2 flex flex-wrap gap-2">
@@ -56,8 +61,8 @@ export default async function LangHome({ params }: Props) {
         <h2 className="mt-8 text-lead font-bold text-ink">{t.home.recent}</h2>
         <LangList items={items.slice(0, 60)} />
         <p className="mt-4 text-meta text-sub">{t.koreanNote}</p>
-      </main>
-      <LangLinks paths={PATHS} current={lang} label={t.langs} />
+        <LangLinks paths={PATHS} current={lang} label={t.langs} />
+      </HomeExplorer>
       {jsonLdScript({
         ...collectionJsonLd({ title: t.home.title, description: t.home.description, path: PATHS[lang], restaurants: [], dateModified: latest }),
         inLanguage: lang,

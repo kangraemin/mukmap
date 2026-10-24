@@ -5,11 +5,14 @@ import { REGIONS } from '@/lib/constants'
 import type { Pin } from '@/lib/pins'
 import { findStations, isStationQuery, loadStations, norm, searchPins, tokensOf, type SearchIndex, type Station, type StationRow } from '@/lib/search'
 import { ChannelFace } from './ChannelFace'
+import { KO_UI, type UiText } from '@/lib/ui-text'
 
 interface SearchChannel {
   id: string
   name: string
   thumbnail_url: string | null
+  /** 이 이름으로도 찾는다(외국어 화면의 한국어 원래 이름) */
+  alt?: string
 }
 
 interface SearchBarProps {
@@ -25,6 +28,7 @@ interface SearchBarProps {
   onSearchAll: (q: string) => void
   /** 검색창을 누르면 */
   onFocus?: () => void
+  t?: UiText
 }
 
 type Item =
@@ -62,7 +66,7 @@ function PinIcon() {
 
 const MAX_SHOPS = 8
 
-export default function SearchBar({ index, channels, onSelectRestaurant, onSelectChannel, onSelectRegion, onSelectStation, apiBase = '', onSearchAll, onFocus }: SearchBarProps) {
+export default function SearchBar({ index, channels, onSelectRestaurant, onSelectChannel, onSelectRegion, onSelectStation, apiBase = '', onSearchAll, onFocus, t = KO_UI }: SearchBarProps) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(-1)
@@ -73,7 +77,9 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
   const [stationRows, setStationRows] = useState<StationRow[] | null>(null)
   const term = query.trim()
   const stationQuery = isStationQuery(term)
-  const localStations = useMemo(() => (stationQuery && stationRows ? findStations(stationRows, term) : []), [stationQuery, stationRows, term])
+  // '역'을 안 붙여도 앞 글자가 맞는 역을 띄운다(구 → 구의역·구로역, 사용자 지시 2026-10-25). 한 낱말일 때만
+  const stationPrefix = !stationQuery && /^[가-힣]+$/.test(term)
+  const localStations = useMemo(() => ((stationQuery || stationPrefix) && stationRows ? findStations(stationRows, term) : []), [stationQuery, stationPrefix, stationRows, term])
   // 목록에 없는 역만 서버(네이버 검색)에 묻는다. 답이 오기 전엔 '찾는 중'
   const askServer = stationQuery && stationRows !== null && localStations.length === 0
   const stationPending = stationQuery && (stationRows === null || (askServer && stationResult?.q !== term))
@@ -104,8 +110,8 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
     if (!q) return []
     const toks = tokensOf(q, index || undefined)
     const single = toks.length === 1
-    const chs = single ? channels.filter((c) => norm(c.name).includes(toks[0])).slice(0, 3) : []
-    const regs = single ? REGIONS.filter((r) => r.includes(toks[0])).slice(0, 3) : []
+    const chs = single ? channels.filter((c) => norm(c.name).includes(toks[0]) || (c.alt && norm(c.alt).includes(toks[0]))).slice(0, 3) : []
+    const regs = single ? REGIONS.filter((r) => r.includes(toks[0]) || norm(t.regionLabel(r)).includes(toks[0])).slice(0, 3) : []
     const shops = index ? searchPins(index, q) : []
     return [
       ...(localStations.length ? localStations : stationResult?.q === query.trim() ? stationResult.rows : []).map((station) => ({ type: 'station' as const, station })),
@@ -114,7 +120,7 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
       ...regs.map((name) => ({ type: 'region' as const, name })),
       ...shops.slice(0, MAX_SHOPS).map((pin) => ({ type: 'restaurant' as const, pin })),
     ]
-  }, [q, query, index, channels, stationResult, localStations])
+  }, [q, query, index, channels, stationResult, localStations, t])
 
   const close = () => {
     setOpen(false)
@@ -160,14 +166,14 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
             // 결과 선택 직후 다시 입력하면 앞선 blur가 새 검색까지 닫지 않게 한다.
             if (document.activeElement !== inputRef.current) setOpen(false)
           }, 150)}
-          placeholder="가게, 메뉴, 유튜버, 지역, 역"
-          aria-label="검색"
+          placeholder={t.placeholder}
+          aria-label={t.searchLabel}
           className="min-w-0 flex-1 bg-transparent text-[16px] leading-[22px] text-ink placeholder:text-sub focus:outline-none [&::-webkit-search-cancel-button]:hidden"
         />
         {query && (
           <button
             type="button"
-            aria-label="검색어 지우기"
+            aria-label={t.clearQuery}
             onMouseDown={(e) => { e.preventDefault(); setQuery(''); setActive(-1) }}
             className="-mr-2 flex h-11 w-11 flex-shrink-0 items-center justify-center text-sub"
           >
@@ -181,12 +187,12 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
           data-testid="search-results"
           className="absolute left-0 right-0 top-full z-50 mt-2 max-h-[60vh] animate-drop-in overflow-y-auto overscroll-contain rounded-card bg-paper py-1.5 shadow-[0_12px_32px_rgba(27,29,31,0.18)]"
         >
-          {!index && <p className="px-4 py-3 text-body text-sub">가게 목록을 받는 중이에요…</p>}
-          {stationPending && <p data-testid="station-pending" className="px-4 py-3 text-body text-sub">역을 찾는 중이에요…</p>}
+          {!index && <p className="px-4 py-3 text-body text-sub">{t.indexLoading}</p>}
+          {stationPending && <p data-testid="station-pending" className="px-4 py-3 text-body text-sub">{t.stationPending}</p>}
           {index && items.length === 0 && !stationPending && (
             <div className="px-4 py-3">
-              <p className="text-body font-bold text-ink">‘{q}’에 맞는 가게가 없어요</p>
-              <p className="mt-0.5 text-meta text-sub">메뉴(국밥), 유튜버(쯔양), 지역(광주)을 띄어 써서 찾아보세요.</p>
+              <p className="text-body font-bold text-ink">{t.noMatch(q)}</p>
+              <p className="mt-0.5 text-meta text-sub">{t.noMatchHint}</p>
             </div>
           )}
           <ul>
@@ -198,13 +204,13 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
                 <li key={key}>
                   <button type="button" data-testid={`search-${it.type}`} onMouseDown={(e) => e.preventDefault()} onClick={() => choose(it)} className={base}>
                     {it.type === 'station' && (
-                      <span className="min-w-0 flex-1 truncate text-body text-ink">📍 <b>{it.station.name}</b> — 지도 이동</span>
+                      <span className="min-w-0 flex-1 truncate text-body text-ink">📍 <b>{it.station.name}</b>{t.stationGo}</span>
                     )}
                     {it.type === 'all' && (
                       <>
                         <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-caption text-ink"><SearchIcon /></span>
                         <span className="min-w-0 flex-1 truncate text-body text-ink">
-                          <b>‘{it.q}’</b> 가게 <b>{it.n}곳</b> 지도에서 보기
+                          {(([a, b, c, d]) => <><b>{a}</b>{b}<b>{c}</b>{d}</>)(t.seeAll(it.q, it.n))}
                         </span>
                       </>
                     )}
@@ -212,14 +218,14 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
                       <>
                         <ChannelFace face={{ id: it.ch.id, name: it.ch.name, thumbnail: it.ch.thumbnail_url }} size={36} />
                         <span className="min-w-0 flex-1 truncate text-body font-bold text-ink">{it.ch.name}</span>
-                        <span className="text-meta text-sub">유튜버</span>
+                        <span className="text-meta text-sub">{t.youtuber}</span>
                       </>
                     )}
                     {it.type === 'region' && (
                       <>
                         <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-well text-ink"><PinIcon /></span>
-                        <span className="min-w-0 flex-1 truncate text-body font-bold text-ink">{it.name}</span>
-                        <span className="text-meta text-sub">지역</span>
+                        <span className="min-w-0 flex-1 truncate text-body font-bold text-ink">{t.regionLabel(it.name)}</span>
+                        <span className="text-meta text-sub">{t.region}</span>
                       </>
                     )}
                     {it.type === 'restaurant' && (
@@ -231,7 +237,7 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-body font-bold text-ink">{it.pin.name}</span>
                           <span className="block truncate text-meta text-sub">
-                            {[it.pin.category, [it.pin.region, it.pin.city].filter(Boolean).join(' '), it.pin.menu].filter(Boolean).join(' · ')}
+                            {[it.pin.category && t.category(it.pin.category), t.area(it.pin.region, it.pin.city), it.pin.menu].filter(Boolean).join(' · ')}
                           </span>
                         </span>
                       </>
@@ -241,7 +247,7 @@ export default function SearchBar({ index, channels, onSelectRestaurant, onSelec
               )
             })}
           </ul>
-          {localStations.length > 0 && <p className="px-4 pb-1 pt-0.5 text-[11px] text-sub">역 위치 © OpenStreetMap 기여자</p>}
+          {localStations.length > 0 && <p className="px-4 pb-1 pt-0.5 text-[11px] text-sub">{t.osm}</p>}
         </div>
       )}
     </div>

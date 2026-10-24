@@ -11,6 +11,8 @@ interface DetailPanelProps {
   restaurant: RestaurantWithVideos
   onClose?: () => void
   closeLabel?: string
+  /** 찜 버튼 읽어 주는 글자 */
+  likeLabel?: string
   /** 유튜버 이름을 누르면 갈 주소. 없으면 링크 없이 이름만 */
   channelHref?: (slug: string) => string
   /** 페이지(가게 상세)에서는 이름을 h1로 */
@@ -131,7 +133,7 @@ function Review({ v, d, channelHref, Sub, t }: { v: VisitVideo; d: VideoDetail; 
   )
 }
 
-export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫기', channelHref, asPage, adSlot, onShare, shareSlot, liked = false, onLike, labels: t = KO_LABELS }: DetailPanelProps) {
+export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫기', likeLabel = '찜', channelHref, asPage, adSlot, onShare, shareSlot, liked = false, onLike, labels: t = KO_LABELS }: DetailPanelProps) {
   const lead = leadVideo(r)
   // 상세 요약이 있는 영상만, 최근 순(videos는 이미 최근 순)
   const reviewed = r.videos.filter((v) => v.detail && (has(v.detail.verdict) || (v.detail.dishes || []).length))
@@ -209,7 +211,7 @@ export default function DetailPanel({ restaurant: r, onClose, closeLabel = '닫�
             <button
               type="button"
               onClick={onLike}
-              aria-label="찜"
+              aria-label={likeLabel}
               aria-pressed={liked}
               data-testid="like"
               className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-card border border-line text-ink"

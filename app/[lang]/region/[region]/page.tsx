@@ -52,7 +52,7 @@ export default async function LangRegionPage({ params }: Props) {
   const crumbs = [{ name: label, path: paths[lang] }]
   return (
     <>
-      <SiteHeader crumbs={crumbs} mapHref={mapHrefOf({ region })} home={home} mapLabel={t.openMap} navLabel={NAV_LABEL[lang]} />
+      <SiteHeader crumbs={crumbs} mapHref={mapHrefOf({ region, lang })} home={home} mapLabel={t.openMap} navLabel={NAV_LABEL[lang]} />
       <main className="mx-auto max-w-2xl px-4 pb-6 pt-6 sm:px-0">
         <h1 className="text-title font-bold text-ink">{t.region.title(label, items.length).replace(/ \| .*$/, '')}</h1>
         <h2 className="mt-4 text-lead font-bold text-ink">{t.region.question(label)}</h2>

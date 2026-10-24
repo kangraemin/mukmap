@@ -8,7 +8,7 @@ import { retryDb } from '@/lib/retry'
 import { buildSnap } from '@/lib/build-snap'
 import { coalesce } from '@/lib/coalesce'
 import type { Channel, RestaurantWithVideos, VideoDetail } from '@/lib/types'
-import { DATA_KEY, channelName, cityName, regionName, type Lang } from '@/lib/i18n'
+import { CATEGORY, DATA_KEY, bilingualName, channelName, cityName, regionName, type Lang } from '@/lib/i18n'
 
 export const DATA_TAG = 'mukmap-data'
 // 새 가게가 들어오면 수집기가 /api/revalidate로 바로 비운다. 시간 만료는 하루에 한 번 안전망으로만 둔다.
@@ -202,24 +202,24 @@ export interface VideoI18n {
 
 type WithI18n = NonNullable<Awaited<ReturnType<typeof getRestaurant>>>
 
-/** 가게를 그 언어로 바꾼다. 번역본이 하나도 없으면 null. 주소·구 이름은 현지에서 찾을 수 있게 한국어로 둔다 */
-export function localize(r: WithI18n, lang: Lang) {
+/** 가게를 그 언어로 바꾼다. 번역본이 하나도 없으면 null(bare면 한국어 글만 빼고 돌려준다). 주소·구 이름은 현지에서 찾을 수 있게 한국어로 둔다 */
+export function localize(r: WithI18n, lang: Lang, bare = false) {
   const key = DATA_KEY[lang]
   const tr = r.videos.map((v) => v.i18n?.[key]).filter(Boolean) as VideoI18n[]
-  if (!tr.length) return null
+  if (!tr.length && !bare) return null
   const label = tr.find((x) => x.store_label)?.store_label
   return {
     ...r,
     // 현지 간판·지도 검색용으로 한국어 이름을 같이 둔다
-    name: !label || label === r.name ? r.name : label.includes('(') ? `${label} · ${r.name}` : `${label} (${r.name})`,
+    name: bilingualName(label, r.name),
     label: label || r.name,
-    category: tr.find((x) => x.category_label)?.category_label || r.category,
+    category: tr.find((x) => x.category_label)?.category_label || CATEGORY[r.category]?.[lang] || r.category,
     region: regionName(r.region, lang) || null,
     regionKo: r.region,
     city: cityName(r.region, r.city, lang) || null,
     videos: r.videos.map((v) => {
       const x = v.i18n?.[key]
-      const base = { ...v, channel_name: channelName(v.channel_name, lang), summary: null, quote: null }
+      const base = { ...v, i18n: null, channel_name: channelName(v.channel_name, lang), summary: null, quote: null }
       // 아직 번역 안 된 영상은 한국어 제목 대신 '영상 보기'로 둔다
       return x
         ? { ...base, title: x.title?.replace(/\s*#\S*[가-힣]\S*/g, '').trim() || null, menu: x.menu || null, price: x.price || null, why: x.why || null, detail: x.detail || null }

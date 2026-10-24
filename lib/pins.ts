@@ -59,12 +59,14 @@ export function faceSrc(url: string): string {
   return url.replace(/=s\d+(-|$)/, '=s120$1')
 }
 
-export function loadPins(apiBase = ''): Promise<PinsPayload> {
-  let p = loading.get(apiBase)
+/** lang: 외국어 지도(en·ja·zh-cn·zh-tw)면 그 언어판 핀 */
+export function loadPins(apiBase = '', lang?: string): Promise<PinsPayload> {
+  const url = `${apiBase}/api/pins${lang ? `/${lang}` : ''}`
+  let p = loading.get(url)
   if (!p) {
-    p = fetch(`${apiBase}/api/pins`).then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-    p.catch(() => loading.delete(apiBase))
-    loading.set(apiBase, p)
+    p = fetch(url).then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+    p.catch(() => loading.delete(url))
+    loading.set(url, p)
   }
   return p
 }

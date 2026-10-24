@@ -3,15 +3,18 @@
 import type { ShareMessage } from './share'
 import { track } from './analytics'
 
-export function webShareUrl(query: string, origin = window.location.origin) {
+/** lang: 외국어 지도(/en 등)에서 공유하면 그 언어 지도로 보낸다.
+ *  번역 안 된 가게는 /en/restaurant/<id>가 404라 가게도 지도 주소(/en?place=)로 연다 */
+export function webShareUrl(query: string, origin = window.location.origin, lang?: string) {
+  if (lang) return `${origin}/${lang}?${query}`
   const q = new URLSearchParams(query)
   const id = Number(q.get('pin') || q.get('place'))
   return id > 0 ? `${origin}/restaurant/${id}` : `${origin}/?${query}`
 }
 
 /** 공유창을 열었으면 false(창이 알아서 알린다), 복사했으면 안내 글, 실패하면 false */
-export async function webShare({ query, text }: ShareMessage): Promise<boolean | string> {
-  const url = webShareUrl(query)
+export async function webShare({ query, text }: ShareMessage, { lang, copied = '링크를 복사했어요' }: { lang?: string; copied?: string } = {}): Promise<boolean | string> {
+  const url = webShareUrl(query, window.location.origin, lang)
   const id = Number(new URLSearchParams(query).get('pin') || new URLSearchParams(query).get('place')) || undefined
   const kind = id ? 'place' : 'list'
   track('share_attempt', { kind, id, via: 'web' }, 'click')
@@ -28,7 +31,7 @@ export async function webShare({ query, text }: ShareMessage): Promise<boolean |
   try {
     await navigator.clipboard.writeText(`${text}\n${url}`)
     track('share_success', { kind, id, via: 'copy' })
-    return '링크를 복사했어요'
+    return copied
   } catch (e) {
     track('share_fail', { kind, id, via: 'copy', msg: String(e).slice(0, 100) })
     return false

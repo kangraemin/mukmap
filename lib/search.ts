@@ -55,13 +55,14 @@ export interface SearchIndex {
   vocab: string[]
 }
 
-export function buildIndex(pins: Pin[], channelName: (id: string) => string): SearchIndex {
+/** extra: 외국어 화면에서 함께 찾을 글자(번역한 지역·분류 등) */
+export function buildIndex(pins: Pin[], channelName: (id: string) => string, extra?: (p: Pin) => string): SearchIndex {
   const vocab = new Set<string>(REGIONS)
   const hay = pins.map((p) => {
     const chs = p.ch.map(channelName)
     chs.forEach((c) => c && vocab.add(norm(c)))
     if (p.city) vocab.add(norm(p.city))
-    return norm([p.name, p.category, p.region, p.city, p.menu, p.line, ...chs].filter(Boolean).join(' '))
+    return norm([p.name, p.category, p.region, p.city, p.menu, p.line, ...chs, extra?.(p)].filter(Boolean).join(' '))
   })
   return {
     pins,

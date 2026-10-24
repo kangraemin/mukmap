@@ -15,7 +15,8 @@ import { localLikeStore, parseLikes, type LikeStore } from '@/lib/likes'
 import Toast from '@/components/Toast'
 import RetryNotice from '@/components/RetryNotice'
 import { entryOf, track, visitInfo } from '@/lib/analytics'
-import { iGa } from '@/lib/josa'
+import { uiText } from '@/lib/ui-text'
+import { LABELS, channelName, type Lang } from '@/lib/i18n'
 import { decodePins, inBounds, loadPins, type Bounds, type Pin, type PinsPayload } from '@/lib/pins'
 import { buildIndex, searchPins, type Station } from '@/lib/search'
 import Intro from '@/components/Intro'
@@ -34,6 +35,8 @@ type Sort = 'latest' | 'visitors'
 const PAGE = 40
 const LIST_AD_EVERY = 8
 const CACHE_KEY = 'mukmap:pins:v2'
+// 외국어 지도는 가게 이름·메뉴가 그 언어라 따로 둔다
+const cacheKey = (lang?: Lang) => (lang ? `${CACHE_KEY}:${lang}` : CACHE_KEY)
 // 앱을 연 기록은 페이지당 한 번(개발 모드의 효과 두 번 실행에도)
 let appOpenSent = false
 
@@ -64,6 +67,8 @@ interface HomeExplorerProps {
   likedAction?: (likedIds: number[]) => React.ReactNode
   /** 찜을 켜거나 끈 뒤 부른다. 바뀐 뒤의 찜 전체와 이번에 켰는지 */
   onLikeChange?: (likedIds: number[], liked: boolean) => void
+  /** 외국어 지도(/en 등). 없으면 한국어 그대로 */
+  lang?: Lang
 }
 
 function readNav(): Nav {
@@ -71,17 +76,17 @@ function readNav(): Nav {
   return mk && typeof mk === 'object' && 'v' in mk ? mk : { v: 'map' }
 }
 
-function readCache(): Pin[] | null {
+function readCache(key: string): Pin[] | null {
   try {
-    const raw = localStorage.getItem(CACHE_KEY)
+    const raw = localStorage.getItem(key)
     return raw ? decodePins(JSON.parse(raw)) : null
   } catch {
     return null
   }
 }
 
-function writeCache(p: PinsPayload) {
-  try { localStorage.setItem(CACHE_KEY, JSON.stringify(p)) } catch {}
+function writeCache(key: string, p: PinsPayload) {
+  try { localStorage.setItem(key, JSON.stringify(p)) } catch {}
 }
 
 /** 사라질 때도 잠깐 그려 두어 닫히는 움직임을 보여준다 */
@@ -109,7 +114,8 @@ function XIcon() {
   )
 }
 
-export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true, hostNav = false, detailAd, listAd, previewAd, onShare = webShare, likeStore = localLikeStore, channelAction, likedAction, onLikeChange }: HomeExplorerProps) {
+export default function HomeExplorer({ channels, children, apiBase = '', pageLinks = true, hostNav = false, detailAd, listAd, previewAd, onShare = webShare, likeStore = localLikeStore, channelAction, likedAction, onLikeChange, lang }: HomeExplorerProps) {
+  const t = useMemo(() => uiText(lang), [lang])
   const [pins, setPins] = useState<Pin[] | null>(null)
   const [bounds, setBounds] = useState<Bounds | null>(null)
   // 핀을 누르면 지도가 그 가게로 다가간다. 목록은 누르기 전 지도 기준으로 붙잡아 둬서, 카드를 닫아도 보던 목록 그대로다
@@ -172,15 +178,15 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
 
   // 핀은 한 번만 받는다. 전에 받은 게 있으면 먼저 보여주고 뒤에서 새로 받는다
   useEffect(() => {
-    const cached = readCache()
+    const cached = readCache(cacheKey(lang))
     hadCache.current = !!cached
     if (cached) setPins(cached)
     // 토스 앱을 막 띄운 순간엔 요청이 바로 실패하곤 해서 몇 번 더 받아 본다
     let live = true
     const t0 = performance.now()
-    const load = (n: number) => loadPins(apiBase)
+    const load = (n: number) => loadPins(apiBase, lang)
       .then((p: PinsPayload) => {
-        writeCache(p)
+        writeCache(cacheKey(lang), p)
         if (live) setPins(decodePins(p))
         track('pins_load', { ok: true, ms: Math.round(performance.now() - t0), tries: n + 1, cached: !!cached })
       })
@@ -199,7 +205,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       })
     load(0)
     return () => { live = false }
-  }, [apiBase, pinsTry])
+  }, [apiBase, pinsTry, lang])
 
   const retryPins = useCallback(() => {
     track('load_retry_tap', { what: 'pins' })
@@ -215,7 +221,13 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   }, [])
 
   // 프로필 사진은 우리 주소를 거쳐 받는다(app/api/face)
-  const faceChannels = useMemo(() => channels.map((c) => ({ ...c, thumbnail_url: c.thumbnail_url ? `${apiBase}/api/face/${c.id}` : null })), [channels, apiBase])
+  // 외국어 지도는 유튜버 이름을 그 언어로 보이고, 한글 이름(alt)으로도 찾게 한다
+  const faceChannels = useMemo(() => channels.map((c) => ({
+    ...c,
+    name: lang ? channelName(c.name, lang) : c.name,
+    alt: lang ? c.name : undefined,
+    thumbnail_url: c.thumbnail_url ? `${apiBase}/api/face/${c.id}` : null,
+  })), [channels, apiBase, lang])
 
   // 지도 핀이 빈 동그라미로 먼저 그려지지 않게 시작 화면이 떠 있는 동안 사진을 받아 둔다
   const [facesReady, setFacesReady] = useState(false)
@@ -244,7 +256,10 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   const pinById = useMemo(() => new Map((pins || []).map((p) => [p.id, p])), [pins])
   const nameOf = useCallback((id: string) => faces[id]?.name || '', [faces])
 
-  const index = useMemo(() => (pins ? buildIndex(pins, (id) => faces[id]?.name || '') : null), [pins, faces])
+  const koName = useMemo(() => new Map(channels.map((c) => [c.id, c.name])), [channels])
+  const index = useMemo(() => (pins ? buildIndex(pins, (id) => faces[id]?.name || '', lang
+    ? (p) => [...p.ch.map((id) => koName.get(id) || ''), t.area(p.region, p.city)].join(' ')
+    : undefined) : null), [pins, faces, lang, koName, t])
   const textHits = useMemo(() => (index && text ? new Set(searchPins(index, text).map((p) => p.id)) : null), [index, text])
 
   const filtered = useMemo(() => (pins || []).filter((p) =>
@@ -351,13 +366,13 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
   const loadDetail = useCallback((id: number) => {
     let p = details.current.get(id)
     if (!p) {
-      p = fetch(`${apiBase}/api/restaurants/${id}`)
+      p = fetch(`${apiBase}/api/restaurants/${id}${lang ? `?lang=${lang}` : ''}`)
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null)
       details.current.set(id, p)
     }
     return p
-  }, [apiBase])
+  }, [apiBase, lang])
 
   const previewId = nav.v === 'preview' ? nav.id : null
   const detailId = nav.v === 'detail' ? nav.id : null
@@ -373,11 +388,11 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       if (r) setDetail(r)
       else {
         details.current.delete(detailId)
-        setToast('가게 정보를 불러오지 못했어요.')
+        setToast(t.loadFail)
       }
     })
     return () => { live = false }
-  }, [detailId, loadDetail])
+  }, [detailId, loadDetail, t])
 
   // ── 동작 ─────────────────────────────────────────────
   const openDetail = useCallback((id: number) => {
@@ -544,9 +559,9 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     setLikes(next)
     likeStore.set(JSON.stringify(Array.from(next))).catch(() => {})
     track('like_toggle', { id, on, count: next.size })
-    setToast(on ? '찜했어요' : '찜을 풀었어요')
+    setToast(on ? t.liked : t.unliked)
     onLikeChange?.(Array.from(next), on)
-  }, [likeStore, onLikeChange])
+  }, [likeStore, onLikeChange, t])
 
   const place = [region, city].filter(Boolean).join(' ')
   // 카드가 떠 있으면 지도에서 가려지는 위(검색·칩)·아래(카드) 높이. 고른 핀을 그 사이 가운데에 둔다
@@ -587,17 +602,26 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
     if (region) sp.set('region', region)
     if (city) sp.set('city', city)
     if (text) sp.set('q', text)
+    if (lang) {
+      const what = [ch && nameOf(ch.id), region && t.area(region, city), text && t.quoted(text).trim()].filter(Boolean).join(' · ')
+      return { query: sp.toString(), text: `🍽️ ${what} — ${t.brand}` }
+    }
     const what = [ch?.name, city ? `${region} ${city}` : region, text && `‘${text}’`].filter(Boolean).join(' ')
     return listMessage(sp.toString(), what, filtered, nameOf)
-  }, [pins, channelId, channels, region, city, text, filtered, nameOf])
+  }, [pins, channelId, channels, region, city, text, filtered, nameOf, lang, t])
   // 공유 창까지 열었으면 완료 안내
   const doShare = (msg: ShareMessage) => {
     if (!onShare) return
-    Promise.resolve(onShare(msg)).then((ok) => { if (ok) setToast(typeof ok === 'string' ? ok : '공유 링크를 만들었어요') })
+    // 외국어 지도의 웹 공유는 그 언어 페이지 주소와 안내 글로
+    const run = lang && onShare === webShare ? webShare(msg, { lang, copied: t.copied }) : onShare(msg)
+    Promise.resolve(run).then((ok) => { if (ok) setToast(typeof ok === 'string' ? ok : t.shared) })
   }
   const sharePlace = (id: number, query: string) => {
     const p = pinById.get(id)
-    if (p) doShare(placeMessage(p, query, nameOf))
+    if (lang) {
+      const name = p?.name || (detail?.id === id ? detail.name : '')
+      if (name) doShare({ query, text: `🍽️ ${name} — ${t.tagline}` })
+    } else if (p) doShare(placeMessage(p, query, nameOf))
     // 핀 목록보다 상세가 먼저 뜬 경우에도 누르면 공유한다
     else if (detail?.id === id) doShare(placeNameMessage(detail.name, detail.address, query))
   }
@@ -612,6 +636,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       apiBase={apiBase}
       onSearchAll={searchAll}
       onFocus={closePreview}
+      t={t}
     />
   )
 
@@ -625,12 +650,12 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
         onClick={() => { closePreview(); setRegion(''); setCity('') }}
         className={`ml-4 flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full bg-ink px-3.5 text-meta font-bold text-paper lg:ml-5 ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : ''}`}
       >
-        {place}만
+        {t.placeOnly(lang ? t.area(region, city) : place)}
         <XIcon />
-        <span className="sr-only">지역 조건 풀기</span>
+        <span className="sr-only">{t.clearPlace}</span>
       </button>
     )}
-    <nav aria-label="유튜버 고르기" className={`no-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto py-1 pr-4 lg:pr-5 ${place ? 'pl-2' : 'pl-4 lg:pl-5'}`}>
+    <nav aria-label={t.pickYoutuber} className={`no-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto py-1 pr-4 lg:pr-5 ${place ? 'pl-2' : 'pl-4 lg:pl-5'}`}>
       <button
         type="button"
         onClick={() => { setText(''); setLikedOnly(false); setStrongOnly(false); pickChannel(null) }}
@@ -639,7 +664,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
           !channelId && !text && !likedOnly && !strongOnly ? 'bg-ink text-paper' : 'bg-paper text-ink'
         } ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : 'border border-line'}`}
       >
-        전체
+        {t.all}
       </button>
       {likes.size > 0 && (
         <button
@@ -652,7 +677,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
           } ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : 'border border-line'}`}
         >
           <HeartIcon on={likedOnly} size={14} />
-          찜 {likes.size}
+          {t.likedN(likes.size)}
         </button>
       )}
       <button
@@ -664,7 +689,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
           strongOnly ? 'bg-ink text-paper' : 'bg-paper text-ink'
         } ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : 'border border-line'}`}
       >
-        강추만
+        {t.strongOnly}
       </button>
       {channels.map((ch) => {
         const on = ch.id === channelId
@@ -681,10 +706,10 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
             } ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : 'border border-line'}`}
           >
             <span className={`flex ${empty ? 'opacity-40 grayscale' : ''}`}>
-              <ChannelFace face={{ id: ch.id, name: ch.name, thumbnail: faces[ch.id]?.thumbnail ?? null }} size={28} />
+              <ChannelFace face={{ id: ch.id, name: faces[ch.id]?.name || ch.name, thumbnail: faces[ch.id]?.thumbnail ?? null }} size={28} />
             </span>
-            {ch.name}
-            {empty && <span className="sr-only">(이 화면엔 가게 없음)</span>}
+            {faces[ch.id]?.name || ch.name}
+            {empty && <span className="sr-only">{t.noPlacesHere}</span>}
           </button>
         )
       })}
@@ -695,9 +720,9 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
           onClick={() => { closePreview(); setText(''); setFitKey((k) => k + 1) }}
           className={`order-first flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full bg-ink px-3.5 text-meta font-bold text-paper ${floating ? 'shadow-[0_2px_8px_rgba(27,29,31,0.15)]' : ''}`}
         >
-          ‘{text}’
+          {t.quoted(text).trim()}
           <XIcon />
-          <span className="sr-only">검색 조건 풀기</span>
+          <span className="sr-only">{t.clearSearch}</span>
         </button>
       )}
     </nav>
@@ -710,14 +735,14 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       href={from}
       onClick={backToList}
       data-testid="back-to-list"
-      aria-label="목록으로"
+      aria-label={t.backToList}
       className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-paper text-ink shadow-[0_2px_12px_rgba(27,29,31,0.12)] lg:shadow-none"
     >
       <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M12.5 4 6.5 10l6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
     </a>
   )
 
-  const label = text ? `‘${text}’ ` : likedOnly ? '찜한 곳 ' : '이 지도 안 '
+  const label = text ? t.quoted(text) : likedOnly ? t.likedPlaces : t.inMap
   const halfSheet = !desktop && sheetSnap !== 'full' && !sheetHidden
   // 시트 머리줄: 개수·공유·정렬. 반쯤일 땐 개수를 누르면 목록을 다 펼친다
   const listHead = (
@@ -726,12 +751,13 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
         <button type="button" data-testid="list-pill" onClick={() => (peek ? setPeek(false) : push({ v: 'list' }))} className="flex min-h-[44px] min-w-0 flex-1 items-center text-left text-lead font-bold text-ink">
           {label}
           {count !== null
-            ? <span data-testid="pill-count" className="ml-1">{count}곳</span>
-            : pins === null && <span data-testid="pins-loading" className="ml-1 font-normal text-sub">불러오는 중</span>}
+            ? <span data-testid="pill-count" className="ml-1">{t.count(count)}</span>
+            : pins === null && <span data-testid="pins-loading" className="ml-1 font-normal text-sub">{t.loading}</span>}
         </button>
       ) : (
         <h2 className="text-lead font-bold text-ink" aria-live="polite">
-          {label}<span data-testid="list-count">{count ?? 0}</span>곳
+          {label}
+          {lang ? <span data-testid="list-count">{t.count(count ?? 0)}</span> : <><span data-testid="list-count">{count ?? 0}</span>곳</>}
         </h2>
       )}
       <div className="flex flex-shrink-0 items-center gap-1">
@@ -745,18 +771,18 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
             className="flex min-h-[44px] items-center gap-1 px-2 text-meta font-bold text-ink"
           >
             <ShareIcon />
-            공유
+            {t.share}
           </button>
         )}
         <label className="relative inline-flex min-h-[44px] items-center pl-2 text-meta font-bold text-ink">
-          <span className="sr-only">정렬</span>
+          <span className="sr-only">{t.sort}</span>
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as Sort)}
             className="appearance-none bg-transparent pr-5 font-bold text-ink outline-none"
           >
-            <option value="visitors">여러 명 간 순</option>
-            <option value="latest">최근 영상순</option>
+            <option value="visitors">{t.sortVisitors}</option>
+            <option value="latest">{t.sortLatest}</option>
           </select>
           <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true" className="pointer-events-none absolute right-0"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
         </label>
@@ -769,16 +795,16 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
         {pins && sorted.length === 0 && (
           <div className="py-10 text-center">
             <p className="text-body text-ink">
-              {text ? `‘${text}’에 맞는 가게가 이 지도 안에 없어요.`
-                : channelId ? `${iGa(nameOf(channelId) || '고른 유튜버')} 다녀간 가게가 이 지도 안에 없어요.`
-                : '이 지도 안에는 아직 가게가 없어요.'}
+              {text ? t.emptyText(text)
+                : channelId ? t.emptyChannel(nameOf(channelId) || null)
+                : t.emptyMap}
             </p>
-            <p className="mt-1 text-meta text-sub">지도를 줄이거나 다른 지역으로 옮겨 보세요.</p>
+            <p className="mt-1 text-meta text-sub">{t.emptyHint}</p>
           </div>
         )}
         {sorted.slice(0, shown).map((p, i) => (
           <Fragment key={p.id}>
-            <PinRow pin={p} faces={faces} onOpen={openFromList} selected={p.id === detailId} />
+            <PinRow pin={p} faces={faces} onOpen={openFromList} selected={p.id === detailId} t={t} />
             {listAd && i >= 2 && (i - 2) % LIST_AD_EVERY === 0 && listAd((i - 2) / LIST_AD_EVERY)}
           </Fragment>
         ))}
@@ -801,10 +827,10 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
 
       {/* 목록: 모바일은 지도 위에 반쯤 올라온 시트(끌어올리면 전체 화면), 데스크톱은 왼쪽 기둥 */}
       {desktop ? (
-        <section data-testid="list-view" aria-label="가게 목록" className="static flex h-full w-[400px] flex-shrink-0 flex-col border-r border-line bg-paper">
+        <section data-testid="list-view" aria-label={t.listTitle} className="static flex h-full w-[400px] flex-shrink-0 flex-col border-r border-line bg-paper">
           <header className="px-5 pb-3 pt-5">
-            <p className="font-caption text-title text-ink">먹맵</p>
-            <p className="mt-0.5 text-meta text-sub">유튜버가 실제로 가서 먹은 집</p>
+            <p className="font-caption text-title text-ink">{t.brand}</p>
+            <p className="mt-0.5 text-meta text-sub">{t.tagline}</p>
             <div className="mt-4 flex items-center gap-2">
               {backBtn}
               {search}
@@ -848,7 +874,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                 className="pointer-events-auto flex h-12 items-center gap-2 rounded-full bg-ink px-5 text-body font-bold text-paper shadow-[0_4px_16px_rgba(27,29,31,0.16)]"
               >
                 <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true"><path d="M2 4.5 6.5 3l5 1.5L16 3v10.5L11.5 15l-5-1.5L2 15z M6.5 3v10.5 M11.5 4.5V15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
-                지도 보기
+                {t.viewMap}
               </button>
             </div>
           )}
@@ -867,6 +893,8 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
           fitKey={fitKey}
           focus={focus}
           insets={insets}
+          t={t}
+          language={lang ? (lang.startsWith('zh') ? 'zh' : lang) : undefined}
           fitBottom={desktop || sheetHidden || sheetSnap === 'full' || typeof window === 'undefined' ? 0 : sheetSnap === 'peek' ? PEEK_PX : Math.round(window.innerHeight * HALF_RATIO)}
         />
 
@@ -885,6 +913,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                 liked={likes.has(preview.shown.id)}
                 onLike={() => toggleLike(preview.shown!.id)}
                 adSlot={previewAd?.(preview.shown.id)}
+                t={t}
               />
             </div>
           </div>
@@ -895,7 +924,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
       {shownDetailId && (
         <section
           data-testid="detail-view"
-          aria-label="가게 정보"
+          aria-label={t.detailTitle}
           className={`fixed inset-0 z-40 flex flex-col bg-paper shadow-[-8px_0_24px_rgba(27,29,31,0.12)] lg:right-auto lg:w-[400px] lg:border-r lg:border-line lg:shadow-none ${
             detailP.leaving ? 'pointer-events-none animate-slide-out lg:animate-none' : 'animate-slide-in lg:animate-none'
           }`}
@@ -906,7 +935,7 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
                 type="button"
                 data-testid="detail-back"
                 onClick={back}
-                aria-label="뒤로"
+                aria-label={t.back}
                 className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-ink"
               >
                 <BackIcon />
@@ -917,18 +946,19 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
           <div
             className="min-h-0 flex-1 overflow-y-auto overscroll-contain sm:px-5"
             onClickCapture={(e) => {
-              if ((e.target as Element).closest('[data-track="video_watch_click"]')) setToast('유튜브에서 그 장면부터 열어요')
+              if ((e.target as Element).closest('[data-track="video_watch_click"]')) setToast(t.openScene)
             }}
           >
             {shownDetail ? (
               <>
                 <DetailPanel
                   restaurant={shownDetail}
-                  channelHref={pageLinks ? (slug) => `/youtuber/${encodeURIComponent(slug)}` : undefined}
+                  channelHref={pageLinks && !lang ? (slug) => `/youtuber/${encodeURIComponent(slug)}` : undefined}
                   adSlot={detailAd?.(shownDetail.id)}
                   onShare={() => sharePlace(shownDetail.id, `place=${shownDetail.id}`)}
                   liked={likes.has(shownDetail.id)}
                   onLike={() => toggleLike(shownDetail.id)}
+                  {...(lang && { labels: LABELS[lang], closeLabel: t.close, likeLabel: t.like })}
                 />
               </>
             ) : (
@@ -945,9 +975,9 @@ export default function HomeExplorer({ channels, children, apiBase = '', pageLin
         </section>
       )}
 
-      {pinsFailed && <RetryNotice testId="pins-retry" title="가게 목록을 불러오지 못했어요" onRetry={retryPins} />}
+      {pinsFailed && <RetryNotice testId="pins-retry" title={t.pinsFail} hint={t.retryHint} retry={t.retry} onRetry={retryPins} />}
       {toast && <Toast message={toast} onClose={handleToastClose} />}
-      <Intro ready={mapReady} loaded={pins !== null} channels={faceChannels} />
+      <Intro ready={mapReady} loaded={pins !== null} channels={faceChannels} brand={t.brand} tagline={t.tagline} />
     </div>
   )
 }

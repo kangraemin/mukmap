@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
   revalidatePath('/api/channels')
   revalidatePath('/api/restaurants')
   revalidatePath('/api/pins')
+  revalidatePath('/api/pins/[lang]', 'page')
 
   return NextResponse.json({ revalidated: true, ts: Date.now() })
 }

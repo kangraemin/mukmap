@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { DEFAULT_CENTER, DEFAULT_ZOOM } from '@/lib/constants'
 import { faceSrc, type Bounds, type Pin } from '@/lib/pins'
+import { KO_UI, type UiText } from '@/lib/ui-text'
 
 export interface Face {
   name: string
@@ -34,6 +35,10 @@ interface NaverMapProps {
   onClusterClick?: (lats: number[], lngs: number[]) => void
   /** 지도 아래가 목록 시트로 가려진 높이(px). 핀을 맞출 때 그 위쪽 칸에 맞춘다 */
   fitBottom?: number
+  /** 화면 글자. 외국어 첫 화면은 그 언어판 */
+  t?: Pick<UiText, 'cluster' | 'mapLoading' | 'mapError' | 'mapRetry'>
+  /** 지도 바탕 글자 언어(en·ja·zh) */
+  language?: string
 }
 
 // 핀끼리 이 거리(px) 안이면 묶는다. 줌과 상관없이 같은 기준이라 얼굴이 겹치지 않는다
@@ -79,13 +84,13 @@ function singleIcon(pin: Pin, faces: Record<string, Face>, selected: boolean): n
   return { content, size: new naver.maps.Size(size, size + 8), anchor: new naver.maps.Point(size / 2, size + 6) }
 }
 
-function clusterIcon(items: Pin[], faces: Record<string, Face>): naver.maps.MarkerIcon {
+function clusterIcon(items: Pin[], faces: Record<string, Face>, label: string): naver.maps.MarkerIcon {
   // 대표 얼굴: 이 묶음에서 가장 많이 다녀간 유튜버
   const tally = new Map<string, number>()
   for (const p of items) for (const c of p.ch) tally.set(c, (tally.get(c) || 0) + 1)
   const top = Array.from(tally.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0]
   const count = items.length > 999 ? '999+' : String(items.length)
-  const content = `<div class="mk-pop" role="button" aria-label="가게 ${items.length}곳" data-cluster="${items.length}" style="position:relative;width:${CLUSTER_FACE}px;height:${CLUSTER_FACE}px;cursor:pointer;">${faceImg(top ? faces[top] : undefined, CLUSTER_FACE, '#FFFFFF', 2)}${badge(count)}</div>`
+  const content = `<div class="mk-pop" role="button" aria-label="${label}" data-cluster="${items.length}" style="position:relative;width:${CLUSTER_FACE}px;height:${CLUSTER_FACE}px;cursor:pointer;">${faceImg(top ? faces[top] : undefined, CLUSTER_FACE, '#FFFFFF', 2)}${badge(count)}</div>`
   return { content, size: new naver.maps.Size(CLUSTER_FACE, CLUSTER_FACE), anchor: new naver.maps.Point(CLUSTER_FACE / 2, CLUSTER_FACE / 2) }
 }
 
@@ -136,19 +141,23 @@ function morphSure(map: naver.maps.Map, center: naver.maps.LatLng, zoom: number,
   })
 }
 
-export function preloadMapSdk(): boolean {
+export const mapSdkUrl = (clientId: string | undefined, language?: string) =>
+  `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${clientId}${language ? `&language=${language}` : ''}`
+
+/** language: 지도 글자 언어(ko·en·ja·zh, 네이버 지도 공식 지원). 없으면 한국어 */
+export function preloadMapSdk(language?: string): boolean {
   const clientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID
   if (!clientId) return false
   if (!document.querySelector('script[src*="oapi.map.naver.com"]')) {
     const script = document.createElement('script')
-    script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${clientId}`
+    script.src = mapSdkUrl(clientId, language)
     script.async = true
     document.head.appendChild(script)
   }
   return true
 }
 
-export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapClick, onBoundsChange, fitKey, focus, insets, still = false, onUserMove, onClusterClick, fitBottom = 0 }: NaverMapProps) {
+export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapClick, onBoundsChange, fitKey, focus, insets, still = false, onUserMove, onClusterClick, fitBottom = 0, t = KO_UI, language }: NaverMapProps) {
   const mapElRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<naver.maps.Map | null>(null)
   const markersRef = useRef<Map<string, { marker: naver.maps.Marker; listener: unknown; sig: string }>>(new Map())
@@ -158,15 +167,15 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
   const [idleTick, setIdleTick] = useState(0)
 
   // 콜백은 바뀌어도 리스너를 다시 달지 않게 ref로 읽는다
-  const cb = useRef({ onPinClick, onMapClick, onBoundsChange, onUserMove, onClusterClick, fitBottom })
-  cb.current = { onPinClick, onMapClick, onBoundsChange, onUserMove, onClusterClick, fitBottom }
+  const cb = useRef({ onPinClick, onMapClick, onBoundsChange, onUserMove, onClusterClick, fitBottom, t })
+  cb.current = { onPinClick, onMapClick, onBoundsChange, onUserMove, onClusterClick, fitBottom, t }
 
   useEffect(() => {
     if ((window as Window & { naver?: { maps?: unknown } }).naver?.maps) {
       setSdkLoaded(true)
       return
     }
-    if (!preloadMapSdk()) return
+    if (!preloadMapSdk(language)) return
     let timeoutId: ReturnType<typeof setTimeout> | null = null
     const poll = setInterval(() => {
       if ((window as Window & { naver?: { maps?: unknown } }).naver?.maps) {
@@ -183,7 +192,7 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
       clearInterval(poll)
       if (timeoutId) clearTimeout(timeoutId)
     }
-  }, [])
+  }, [language])
 
   useEffect(() => {
     if (!sdkLoaded || !mapElRef.current || mapRef.current) return
@@ -303,7 +312,7 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
           position: new naver.maps.LatLng(lat, lng),
           map,
           zIndex: 20 + Math.min(items.length, 500),
-          icon: clusterIcon(items, faces),
+          icon: clusterIcon(items, faces, cb.current.t.cluster(items.length)),
         })
         listener = naver.maps.Event.addListener(marker, 'click', () => {
           const lats = items.map((p) => p.lat)
@@ -387,17 +396,17 @@ export default function NaverMap({ pins, faces, selectedId, onPinClick, onMapCli
     <div ref={mapElRef} data-testid="map" className="h-full w-full">
       {!sdkLoaded && !sdkError && (
         <div className="flex h-full items-center justify-center bg-well text-body text-sub">
-          지도를 불러오는 중
+          {t.mapLoading}
         </div>
       )}
       {sdkError && (
         <div className="flex h-full flex-col items-center justify-center gap-2 bg-well text-body text-sub">
-          <span>지도를 불러오지 못했어요. 네트워크를 확인하고 다시 시도하세요.</span>
+          <span>{t.mapError}</span>
           <button
             onClick={() => window.location.reload()}
             className="min-h-[44px] px-3 font-bold text-ink underline"
           >
-            다시 시도
+            {t.mapRetry}
           </button>
         </div>
       )}

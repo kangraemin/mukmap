@@ -30,9 +30,9 @@ export function ChannelFace({ face, size = 24, ring = false, eager = false }: { 
 }
 
 /** 여러 유튜버가 다녀갔으면 얼굴을 겹쳐 보여주고 이름을 붙인다 */
-export function VisitorLine({ faces, size = 20 }: { faces: Face[]; size?: number }) {
+export function VisitorLine({ faces, size = 20, others = (name, n) => `${name} 외 ${n}명` }: { faces: Face[]; size?: number; others?: (name: string, n: number) => string }) {
   if (!faces.length) return null
-  const label = faces.length === 1 ? faces[0].name : `${faces[0].name} 외 ${faces.length - 1}명`
+  const label = faces.length === 1 ? faces[0].name : others(faces[0].name, faces.length - 1)
   return (
     // 이름은 한 줄로 두고 넘치면 말줄임한다(좁은 카드에서 '히/밥'처럼 세로로 쪼개졌다)
     <span className="flex min-w-0 items-center gap-1.5">

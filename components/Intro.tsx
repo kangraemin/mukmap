@@ -16,7 +16,7 @@ interface IntroChannel {
 }
 
 /** 처음 들어왔을 때 지도가 준비될 때까지 덮어 두는 화면. 세션당 한 번만 */
-export default function Intro({ ready, loaded, channels }: { ready: boolean; loaded: boolean; channels: IntroChannel[] }) {
+export default function Intro({ ready, loaded, channels, brand = '먹맵', tagline = '유튜버가 실제로 가서 먹은 집' }: { ready: boolean; loaded: boolean; channels: IntroChannel[]; brand?: string; tagline?: string }) {
   const [phase, setPhase] = useState<'show' | 'leaving' | 'gone'>('show')
   const [minDone, setMinDone] = useState(false)
   const [maxDone, setMaxDone] = useState(false)
@@ -51,10 +51,10 @@ export default function Intro({ ready, loaded, channels }: { ready: boolean; loa
       className={`fixed inset-0 z-[60] flex flex-col items-center justify-center bg-paper ${phase === 'leaving' ? 'pointer-events-none animate-fade-out' : ''}`}
     >
       <p className="animate-rise-in font-caption text-[56px] leading-none text-ink">
-        <span className="caption-band rounded-[10px] px-3">먹맵</span>
+        <span className="caption-band rounded-[10px] px-3">{brand}</span>
       </p>
       <p className="mt-5 animate-rise-in text-lead font-bold text-ink [animation-delay:120ms] [animation-fill-mode:both]">
-        유튜버가 실제로 가서 먹은 집
+        {tagline}
       </p>
       {faces.length > 0 && (
         <div className="mt-7 flex -space-x-2 animate-rise-in [animation-delay:240ms] [animation-fill-mode:both]">

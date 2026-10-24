@@ -56,7 +56,7 @@ export default async function LangRestaurantPage({ params }: Props) {
   ]
   return (
     <>
-      <SiteHeader crumbs={crumbs} mapHref={mapHrefOf({ place: r.id })} home={home} mapLabel={t.openMap} navLabel={NAV_LABEL[lang]} />
+      <SiteHeader crumbs={crumbs} mapHref={mapHrefOf({ place: r.id, lang })} home={home} mapLabel={t.openMap} navLabel={NAV_LABEL[lang]} />
       <main className="mx-auto max-w-2xl sm:px-4 sm:pt-6">
         <DetailPanel restaurant={r} asPage labels={LABELS[lang as Lang]} />
         <p className="px-4 pt-2 text-meta text-sub sm:px-0">{t.koreanNote}</p>
