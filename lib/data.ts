@@ -175,16 +175,41 @@ export async function getRegionSummaries() {
   }))
 }
 
+// 가게 하나는 DB에서 바로 읽는다. 전체 캐시(getAll)를 거치면 크론이 캐시를 비운 직후 수천 곳을 다시 모으느라
+// 상세 하나에 20~80초가 걸려 빈 화면으로 남았다(10/25). 모양은 getAll과 같게 맞춘다
 export async function getRestaurant(id: number) {
-  const { restaurants } = await getAll()
-  const r = restaurants.find((x) => x.id === id)
-  if (!r) return null
-  // 상세 요약은 커서 전체 캐시(2MB 한도)에 넣지 않고 가게 하나만 따로 읽는다
-  const { data } = await supabase.from('videos').select('id, detail, i18n').eq('restaurant_id', id)
-  const byId = new Map((data || []).map((v) => [v.id as number, v as { detail: VideoDetail | null; i18n: Record<string, VideoI18n> | null }]))
-  return {
-    ...r,
-    videos: r.videos.map((v) => ({ ...v, detail: byId.get(v.id)?.detail || null, i18n: byId.get(v.id)?.i18n || null })),
+  const [channels, row] = await Promise.all([
+    getChannels(),
+    retryDb(() =>
+      supabase
+        .from('restaurants')
+        .select(`${RESTAURANT_FIELDS}, videos (${VIDEO_FIELDS}, detail, i18n)`)
+        .eq('id', id)
+        .eq('is_visible', true)
+        .not('lat', 'is', null)
+        .maybeSingle(),
+    ),
+  ])
+  if (!row) return null
+  const byId = new Map(channels.map((c) => [c.id, c]))
+  const videos = ((row as unknown as RawRestaurant).videos || [])
+    .filter((v) => byId.has(v.channel_id))
+    .sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''))
+    .map((v) => {
+      const ch = byId.get(v.channel_id)!
+      return {
+        ...v,
+        thumbnail_url: null,
+        channel_name: ch.name,
+        channel_thumbnail: ch.thumbnail_url,
+        channel_slug: ch.slug,
+        detail: (v.detail as VideoDetail | null) || null,
+        i18n: (v.i18n as Record<string, VideoI18n> | null) || null,
+      }
+    })
+  if (!videos.length) return null
+  return { ...(row as unknown as RestaurantWithVideos), needs_review: false, is_visible: true, videos } as Omit<RestaurantWithVideos, 'videos'> & {
+    videos: (RestaurantWithVideos['videos'][number] & { detail: VideoDetail | null; i18n: Record<string, VideoI18n> | null })[]
   }
 }
 
