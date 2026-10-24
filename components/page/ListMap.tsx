@@ -125,6 +125,14 @@ export default function ListMap({ pins: pagePins, allPins, faces, title, loading
     setMoved(false)
   }
 
+  // 주소에 ?map=1이 있으면(스레드 댓글 링크 등) 핀을 받은 뒤 큰 지도로 바로 연다. 한 번만
+  const autoOpened = useRef(false)
+  useEffect(() => {
+    if (autoOpened.current || !armed || loading || !pagePins.length) return
+    autoOpened.current = true
+    if (new URLSearchParams(location.search).get('map') === '1') open(() => setFitKey((k) => k + 1))
+  }, [armed, loading, pagePins.length, open])
+
   useEffect(() => {
     if (full && barRef.current) setBarH(barRef.current.offsetHeight)
   }, [full])
