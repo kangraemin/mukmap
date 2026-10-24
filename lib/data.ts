@@ -250,7 +250,7 @@ export const translatedNames = unstable_cache(
     return out
   },
   ['mukmap-i18n-names-v1'],
-  { revalidate: 3600, tags: [DATA_TAG] },
+  { revalidate: DATA_REVALIDATE, tags: [DATA_TAG] },
 )
 
 /** 목록 페이지 첫 문단용 사실 문장 재료. LLM 없이 데이터로만 만든다. */

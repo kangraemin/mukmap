@@ -37,6 +37,19 @@ test('가게 전체 목록이 2MB 아래 덩어리로 캐시에 저장된다', a
     // 1시간 만료면 만료 때마다 전체를 다시 읽어 DB 부하 1위가 됐다(10/24). 갱신은 /api/revalidate가 맡는다
     expect(JSON.parse(fs.readFileSync(f, 'utf8')).revalidate, f).toBeGreaterThanOrEqual(86400)
   }
+  // 채널·외국어 가게 이름처럼 같은 태그로 묶인 캐시도 하루 만료다(외국어 이름 질의가 DB 부하 5위였다)
+  const tagged = fs.readdirSync(DIR).map((f) => path.join(DIR, f))
+    .filter((f) => fs.statSync(f).isFile() && fs.statSync(f).mtimeMs >= since)
+    .map((f) => ({ f, e: JSON.parse(fs.readFileSync(f, 'utf8')) }))
+    .filter(({ e }) => (e.tags || []).includes('mukmap-data'))
+  expect(tagged.length).toBeGreaterThan(restaurantEntries(since).length)
+  for (const { f, e } of tagged) expect(e.revalidate, f).toBeGreaterThanOrEqual(86400)
+})
+
+test('지도 핀 API는 서버 캐시를 하루 들고 있는다(새 데이터는 /api/revalidate가 비운다)', () => {
+  // CDN(s-maxage 1시간)이 만료돼도 DB 대신 서버 캐시를 읽게 한다. 1시간이면 DB 부하 4위였다(10/24)
+  const src = fs.readFileSync('app/api/pins/route.ts', 'utf8')
+  expect(Number(src.match(/export const revalidate = (\d+)/)?.[1])).toBeGreaterThanOrEqual(86400)
 })
 
 test('읽는 중에 겹친 전체 목록 요청은 DB를 한 번만 부르고, 다 읽은 뒤·실패 뒤엔 새로 부른다', async () => {

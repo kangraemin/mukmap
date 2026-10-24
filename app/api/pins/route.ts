@@ -3,8 +3,9 @@ import { supabase } from '@/lib/supabase'
 import { retryDb } from '@/lib/retry'
 import type { PinsPayload } from '@/lib/pins'
 
-// 모든 보이는 가게를 한 번에 준다. 한 시간 캐시, 수집 후 /api/revalidate가 비운다
-export const revalidate = 3600
+// 모든 보이는 가게를 한 번에 준다. 수집 후 /api/revalidate가 비운다.
+// CDN은 1시간(s-maxage)만 들고, 서버 캐시는 하루 들고 있어 CDN이 만료돼도 DB를 다시 읽지 않는다(1시간이면 DB 부하 4위였다, 10/24)
+export const revalidate = 86400
 
 const PAGE = 1000
 
